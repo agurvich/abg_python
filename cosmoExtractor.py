@@ -1,8 +1,8 @@
 import h5py,sys,getopt,os
 import numpy as np
-from abg_utils.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors
+from abg_python.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors
 
-from abg_utils.snapshot_utils import openSnapshot
+from abg_python.snapshot_utils import openSnapshot
 
 def makeOutputDir(snapdir):
     datadir=os.path.join(snapdir,'subsnaps')
@@ -89,10 +89,10 @@ def findContainedScaleHeight(zs,ms):
     return np.sqrt(np.sum(zs**2*ms)/np.sum(ms))
 
 ##### main extraction protocols
-def extractDiskFromReadsnap(star_res,res,radius,scom=None,orient_stars=0):
+def extractDiskFromReadsnap(star_snap,snap,radius,scom=None,orient_stars=0):
     return extractDiskFromArrays(
-        star_res['p'],star_res['v'],star_res['m'],
-        res['p'],res['v'],res['m'],res['rho'],
+        star_snap['Coordinates'],star_snap['Velocities'],star_snap['Masses'],
+        snap['Coordinates'],snap['Velocities'],snap['Masses'],snap['Density'],
         radius,scom=scom,orient_stars=orient_stars)
 
 def extractDiskFromArrays(
@@ -140,95 +140,95 @@ def extractDiskFromArrays(
     return thetay,thetaz,scom,vscom,gindices,sindices,radius
 
 def diskFilterDictionary(
-    star_res,res,
+    star_snap,snap,
     radius,cylinder=0,
-    scom=None,dark_res=None,orient_stars=0):
+    scom=None,dark_snap=None,orient_stars=0):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromReadsnap(
-        star_res,res,radius,scom=scom,orient_stars=orient_stars)
+        star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
     ## store com information in case its relevant
-    new_res = {'scale_radius':radius,
+    new_snap = {'scale_radius':radius,
         'scom':scom,'vscom':vscom,
         'thetay':thetay,'thetaz':thetaz,}
     ## rotate the coordinates of the spherical extraction
-    new_rs = rotateVectorsZY(thetay,thetaz,res['p']-scom)
-    new_vs = rotateVectorsZY(thetay,thetaz,res['v']-vscom)
+    new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
+    new_vs = rotateVectorsZY(thetay,thetaz,snap['Velocities']-vscom)
 
-    new_star_res = {'scale_radius':radius,
+    new_star_snap = {'scale_radius':radius,
         'scom':scom,'vscom':vscom,
         'thetay':thetay,'thetaz':thetaz}
     ## rotate the coordinates of the spherical extraction
-    new_star_rs = rotateVectorsZY(thetay,thetaz,star_res['p']-scom)
-    new_star_vs = rotateVectorsZY(thetay,thetaz,star_res['v']-vscom)
+    new_star_rs = rotateVectorsZY(thetay,thetaz,star_snap['Coordinates']-scom)
+    new_star_vs = rotateVectorsZY(thetay,thetaz,star_snap['Velocities']-vscom)
 
-    if dark_res is not None:
-        new_dark_res = {'scale_radius':radius,
+    if dark_snap is not None:
+        new_dark_snap = {'scale_radius':radius,
             'scom':scom,'vscom':vscom,
             'thetay':thetay,'thetaz':thetaz}
         ## rotate position/velocity vectors
-        new_dark_rs = rotateVectorsZY(thetay,thetaz,dark_res['p']-scom)
-        new_dark_vs = rotateVectorsZY(thetay,thetaz,dark_res['v']-vscom)
+        new_dark_rs = rotateVectorsZY(thetay,thetaz,dark_snap['Coordinates']-scom)
+        new_dark_vs = rotateVectorsZY(thetay,thetaz,dark_snap['Velocities']-vscom)
         ## extract spherical volume
         dindices = extractSphericalVolumeIndices(new_dark_rs,np.zeros(3),radius**2)
 
     if orient_stars:
         ## calculate stars "diskiness"
         angMom = getAngularMomentum(new_star_rs[sindices],
-            star_res['m'][sindices]*1e10,new_star_vs[sindices])# msun - kpc - km/s units of L
+            star_snap['Masses'][sindices]*1e10,new_star_vs[sindices])# msun - kpc - km/s units of L
             ## post-rotation, lz == ltot by definition, lx, ly = 0 
         lz = angMom[2]
 
             ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
         ltot = getAngularMomentumSquared(new_star_rs[sindices],
-            star_res['m'][sindices]*1e10,new_star_vs[sindices])**0.5 # msun - kpc - km/s units of L
+            star_snap['Masses'][sindices]*1e10,new_star_vs[sindices])**0.5 # msun - kpc - km/s units of L
 
-        new_star_res['star_lz']=lz
-        new_star_res['star_ltot']=ltot
+        new_star_snap['star_lz']=lz
+        new_star_snap['star_ltot']=ltot
     else:
         ## calculate gas "diskiness"
         angMom = getAngularMomentum(new_rs[gindices],
-            res['m'][gindices]*1e10,new_vs[gindices])# msun - kpc - km/s units of L
+            snap['Masses'][gindices]*1e10,new_vs[gindices])# msun - kpc - km/s units of L
             ## post-rotation, lz == ltot by definition, lx, ly = 0 
         lz = angMom[2]
 
             ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
         ltot = getAngularMomentumSquared(new_rs[gindices],
-            res['m'][gindices]*1e10,new_vs[gindices])**0.5 # msun - kpc - km/s units of L
+            snap['Masses'][gindices]*1e10,new_vs[gindices])**0.5 # msun - kpc - km/s units of L
 
-        new_res['lz']=lz
-        new_res['ltot']=ltot
+        new_snap['lz']=lz
+        new_snap['ltot']=ltot
 
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':
         if cylinder is None:
-            cylinder = findContainedScaleHeight(new_rs[:,2][gindices],res['m'][gindices])
+            cylinder = findContainedScaleHeight(new_rs[:,2][gindices],snap['Masses'][gindices])
         gindices = extractRectangularVolumeIndices(new_rs,np.zeros(3),radius,cylinder) 
         sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius,cylinder)
-        if dark_res is not None:
+        if dark_snap is not None:
             dindices = extractRectangularVolumeIndices(new_dark_rs,np.zeros(3),radius,cylinder)
-        new_res['scale_h']=cylinder
+        new_snap['scale_h']=cylinder
 
     ## add positions and velocities separately, since they need to be rotated and indexed
-    new_res['p'] = new_rs[gindices]
-    new_res['v'] = new_vs[gindices]
-    ## index the rest of the keys
-    new_res = filterDictionary(res,gindices,dict1 = new_res, key_exceptions = ['p','v'])
+    new_snap['Coordinates'] = new_rs[gindices]
+    new_snap['Velocities'] = new_vs[gindices]
+    ## index the snapt of the keys
+    new_snap = filterDictionary(snap,gindices,dict1 = new_snap, key_exceptions = ['Coordinates','Velocities'])
 
     ## add positions and velocities separately, since they need to be rotated and indexed
-    new_star_res['p'] = new_star_rs[sindices]
-    new_star_res['v'] = new_star_vs[sindices]
+    new_star_snap['Coordinates'] = new_star_rs[sindices]
+    new_star_snap['Velocities'] = new_star_vs[sindices]
     ## index the rest of the keys
-    new_star_res = filterDictionary(star_res,sindices,dict1 = new_star_res, key_exceptions = ['p','v'])
+    new_star_snap = filterDictionary(star_snap,sindices,dict1 = new_star_snap, key_exceptions = ['Coordinates','Velocities'])
 
-    if dark_res is not None:
+    if dark_snap is not None:
         ## update positions/velocities 
-        new_dark_res['p'] = new_dark_rs[dindices]
-        new_dark_res['v'] = new_dark_vs[dindices]
-        new_dark_res = filterDictionary(dark_res,dindices,dict1 = new_dark_res, key_exceptions = ['p','v'])
+        new_dark_snap['Coordinates'] = new_dark_rs[dindices]
+        new_dark_snap['Velocities'] = new_dark_vs[dindices]
+        new_dark_snap = filterDictionary(dark_snap,dindices,dict1 = new_dark_snap, key_exceptions = ['Coordinates','Velocities'])
 
-    if dark_res is None:
-        return new_star_res,new_res
+    if dark_snap is None:
+        return new_star_snap,new_snap
     else:
-        return new_star_res,new_res,new_dark_res
+        return new_star_snap,new_snap,new_dark_snap
