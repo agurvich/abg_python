@@ -239,6 +239,7 @@ def openSnapshot(
                 fillHeader(new_dictionary,handle)
 
                 if not header_only:
+
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
                         unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)

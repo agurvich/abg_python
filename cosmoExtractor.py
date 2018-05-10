@@ -2,6 +2,8 @@ import h5py,sys,getopt,os
 import numpy as np
 from abg_utils.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors
 
+from abg_utils.snapshot_utils import openSnapshot
+
 def makeOutputDir(snapdir):
     datadir=os.path.join(snapdir,'subsnaps')
     if 'subsnaps' not in os.listdir(snapdir):
@@ -141,7 +143,7 @@ def diskFilterDictionary(
     star_res,res,
     radius,cylinder=0,
     scom=None,dark_res=None,orient_stars=0):
-    """ Takes two readsnap dictionaries and returns a filtered subset of the particles
+    """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromReadsnap(
         star_res,res,radius,scom=scom,orient_stars=orient_stars)
