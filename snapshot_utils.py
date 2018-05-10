@@ -2,7 +2,6 @@ import h5py,sys,os
 from readsnap import readsnap
 import numpy as np
 
-
 def makeHeader(snapshot,build_snapshot):
     ref_header = dict(zip(['Flag_IC_Info','NumFilesPerSnapshot','MassTable','Time',
                             'HubbleParam','Flag_Metals','BoxSize','NumPart_Total',
@@ -227,31 +226,54 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
 def openSnapshot(
     snapdir,snapnum,ptype,
     snapshot_name='snapshot', extension='.hdf5',
-    cosmological=0,header_only=0, loud=0):
+    cosmological=0,header_only=0):
 
     fnames = get_fnames(snapdir,snapnum)
     
     new_dictionary = {}
 
     for i,fname in enumerate(sorted(fnames)):
-        print fname
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
                 fillHeader(new_dictionary,handle)
 
-                ## initialize particle arrays
-                for pkey in handle['PartType%d'%ptype].keys():
-                    unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-                    new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
+                if not header_only:
+                    ## initialize particle arrays
+                    for pkey in handle['PartType%d'%ptype].keys():
+                        unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
+                        new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
 
             else:
-                ## append particle array for each file
-                for pkey in handle['PartType%d'%ptype].keys():
-                    unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-                    new_dictionary[pkey] = np.append(
-                        new_dictionary[pkey],
-                        np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact,axis=0)
+                if not header_only:
+                    ## append particle array for each file
+                    for pkey in handle['PartType%d'%ptype].keys():
+                        unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
+                        new_dictionary[pkey] = np.append(
+                            new_dictionary[pkey],
+                            np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact,axis=0)
 
     return new_dictionary
 
+
+
+## pandas dataframe stuff
+def readsnapToDF(snapdir,snapnum,parttype):
+    res = readsnap(snapdir,snapnum,parttype,cosmological='m12i' in snapdir)
+    
+    ids = res.pop('id')
+
+    vels = res.pop('v')
+    coords = res.pop('p')
+
+    res['xs'],res['vxs'] = coords[:,0],vels[:,0]
+    res['ys'],res['vys'] = coords[:,1],vels[:,1]
+    res['zs'],res['vzs'] = coords[:,2],vels[:,2]
+
+
+    metallicity = res.pop('z')
+    for i,zarray in enumerate(metallicity.T):
+        res['met%d'%i]=zarray
+    
+    snap_df = pd.DataFrame(res,index=ids)
+    return snap_df
