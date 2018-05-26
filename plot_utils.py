@@ -26,7 +26,7 @@ def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
 
     cur_height = cur_size[1]
     cur_width = cur_size[0]
-    offset = cmap_number*(150/cur_width)
+    offset = 0.00 + cmap_number*(25/cur_width+50/cur_width)
 
     ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
 
@@ -42,7 +42,7 @@ def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
     cb1.set_ticks(ticks)
     cb1.set_ticklabels(tick_labels)
     cb1.ax.tick_params(labelsize=fontsize-2)
-    return cb1
+    return cb1,ax1
 
 
 def addSegmentedColorbar(ax,colors,vmin,vmax,label,logflag=0,fontsize=16,cmap_number=0,
