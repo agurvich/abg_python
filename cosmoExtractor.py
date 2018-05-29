@@ -90,8 +90,13 @@ def findContainedScaleHeight(zs,ms):
 
 ##### main extraction protocols
 def extractDiskFromReadsnap(star_snap,snap,radius,scom=None,orient_stars=0):
+    if star_snap is None:
+        srs,svs,smasses=None,None,None
+    else:
+        srs,svs,smasses=star_snap['Coordinates'],star_snap['Velocities'],star_snap['Masses']
+
     return extractDiskFromArrays(
-        star_snap['Coordinates'],star_snap['Velocities'],star_snap['Masses'],
+        srs,svs,smasses,
         snap['Coordinates'],snap['Velocities'],snap['Masses'],snap['Density'],
         radius,scom=scom,orient_stars=orient_stars)
 
@@ -128,7 +133,10 @@ def extractDiskFromArrays(
     #sindices = extractRectangularVolumeIndices(srs,scom,radius,height=radius)
 
     ## extract particles within radius sphere
-    sindices= extractSphericalVolumeIndices(srs,scom,radius**2)
+    if srs is not None:
+        sindices = extractSphericalVolumeIndices(srs,scom,radius**2)
+    else:
+        sindices = None
     gindices= extractSphericalVolumeIndices(rs,scom,radius**2)
     
     ## orient along angular momentum vector
@@ -141,10 +149,14 @@ def extractDiskFromArrays(
 
 def diskFilterDictionary(
     star_snap,snap,
-    radius,cylinder=0,
+    radius,cylinder='',
     scom=None,dark_snap=None,orient_stars=0):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
+    ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
+    if star_snap is None:
+        orient_stars=0
+
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromReadsnap(
         star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
@@ -156,12 +168,13 @@ def diskFilterDictionary(
     new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
     new_vs = rotateVectorsZY(thetay,thetaz,snap['Velocities']-vscom)
 
-    new_star_snap = {'scale_radius':radius,
-        'scom':scom,'vscom':vscom,
-        'thetay':thetay,'thetaz':thetaz}
-    ## rotate the coordinates of the spherical extraction
-    new_star_rs = rotateVectorsZY(thetay,thetaz,star_snap['Coordinates']-scom)
-    new_star_vs = rotateVectorsZY(thetay,thetaz,star_snap['Velocities']-vscom)
+    if star_snap is not None:
+        new_star_snap = {'scale_radius':radius,
+            'scom':scom,'vscom':vscom,
+            'thetay':thetay,'thetaz':thetaz}
+        ## rotate the coordinates of the spherical extraction
+        new_star_rs = rotateVectorsZY(thetay,thetaz,star_snap['Coordinates']-scom)
+        new_star_vs = rotateVectorsZY(thetay,thetaz,star_snap['Velocities']-vscom)
 
     if dark_snap is not None:
         new_dark_snap = {'scale_radius':radius,
@@ -205,7 +218,8 @@ def diskFilterDictionary(
         if cylinder is None:
             cylinder = findContainedScaleHeight(new_rs[:,2][gindices],snap['Masses'][gindices])
         gindices = extractRectangularVolumeIndices(new_rs,np.zeros(3),radius,cylinder) 
-        sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius,cylinder)
+        if star_snap is not None:
+            sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius,cylinder)
         if dark_snap is not None:
             dindices = extractRectangularVolumeIndices(new_dark_rs,np.zeros(3),radius,cylinder)
         new_snap['scale_h']=cylinder
@@ -216,19 +230,30 @@ def diskFilterDictionary(
     ## index the snapt of the keys
     new_snap = filterDictionary(snap,gindices,dict1 = new_snap, key_exceptions = ['Coordinates','Velocities'])
 
-    ## add positions and velocities separately, since they need to be rotated and indexed
-    new_star_snap['Coordinates'] = new_star_rs[sindices]
-    new_star_snap['Velocities'] = new_star_vs[sindices]
-    ## index the rest of the keys
-    new_star_snap = filterDictionary(star_snap,sindices,dict1 = new_star_snap, key_exceptions = ['Coordinates','Velocities'])
+    if star_snap is not None:
+        ## add positions and velocities separately, since they need to be rotated and indexed
+        new_star_snap['Coordinates'] = new_star_rs[sindices]
+        new_star_snap['Velocities'] = new_star_vs[sindices]
+        ## index the rest of the keys
+        new_star_snap = filterDictionary(
+            star_snap,sindices,
+            dict1 = new_star_snap,
+            key_exceptions = ['Coordinates','Velocities'])
 
     if dark_snap is not None:
         ## update positions/velocities 
         new_dark_snap['Coordinates'] = new_dark_rs[dindices]
         new_dark_snap['Velocities'] = new_dark_vs[dindices]
-        new_dark_snap = filterDictionary(dark_snap,dindices,dict1 = new_dark_snap, key_exceptions = ['Coordinates','Velocities'])
+        new_dark_snap = filterDictionary(
+            dark_snap,dindices,
+            dict1 = new_dark_snap,
+            key_exceptions = ['Coordinates','Velocities'])
 
-    if dark_snap is None:
-        return new_star_snap,new_snap
-    else:
-        return new_star_snap,new_snap,new_dark_snap
+    return_list = [new_snap]
+
+    if star_snap is not None:
+        return_list+=[new_star_snap]
+    if dark_snap is not None:
+        return_list+=[new_dark_snap]
+
+    return return_list

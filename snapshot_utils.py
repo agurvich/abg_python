@@ -1,6 +1,9 @@
 import h5py,sys,os
 from readsnap import readsnap
 import numpy as np
+from abg_python.all_utils import getTemperature
+from abg_python.cosmo_utils import getAgesGyrs
+
 
 def makeHeader(snapshot,build_snapshot):
     ref_header = dict(zip(['Flag_IC_Info','NumFilesPerSnapshot','MassTable','Time',
@@ -237,7 +240,9 @@ def openSnapshot(
             if i == 0:
                 ## read header once
                 fillHeader(new_dictionary,handle)
-
+                if new_dictionary['HubbleParam']!=1 and not cosmological:
+                    print 'This is a cosmological snapshot'
+                    cosmological=1
                 if not header_only:
 
                     ## initialize particle arrays
@@ -254,9 +259,23 @@ def openSnapshot(
                             new_dictionary[pkey],
                             np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact,axis=0)
 
+    ## get temperatures if this is a gas particle dataset
+    if ptype ==0 and not header_only:
+        new_dictionary['Temperature']=getTemperature(
+            new_dictionary['InternalEnergy'],
+            new_dictionary['Metallicity'][:,1],
+            new_dictionary['ElectronAbundance'])
+    
+    ## get stellar ages if this is a star particle dataset
+    if 'StellarFormationTime' in new_dictionary.keys(): 
+        if cosmological:
+            ## cosmological galaxy -> SFT is in scale factor, need to convert to age
+            new_dictionary['AgeGyr']=getAgesGyrs(new_dictionary)
+        else:
+            ## isolated galaxy -> SFT is in Gyr, just need the age then
+            new_dictionary['AgeGyr']=(new_dictionary['Time']-new_dictionary['StellarFormationTime'])/0.978 #Gyr
+
     return new_dictionary
-
-
 
 ## pandas dataframe stuff
 def readsnapToDF(snapdir,snapnum,parttype):
