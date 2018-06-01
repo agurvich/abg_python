@@ -242,7 +242,7 @@ def openSnapshot(
                 fillHeader(new_dictionary,handle)
                 if new_dictionary['HubbleParam']!=1 and not cosmological:
                     print 'This is a cosmological snapshot'
-                    #cosmological=1
+                    cosmological=1
                 if not header_only:
 
                     ## initialize particle arrays
