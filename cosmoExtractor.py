@@ -150,7 +150,8 @@ def extractDiskFromArrays(
 def diskFilterDictionary(
     star_snap,snap,
     radius,cylinder='',
-    scom=None,dark_snap=None,orient_stars=0):
+    scom=None,dark_snap=None,orient_stars=0,
+    rect_buffer=1.1):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
@@ -217,11 +218,11 @@ def diskFilterDictionary(
     if cylinder != '':
         if cylinder is None:
             cylinder = findContainedScaleHeight(new_rs[:,2][gindices],snap['Masses'][gindices])
-        gindices = extractRectangularVolumeIndices(new_rs,np.zeros(3),radius,cylinder) 
+        gindices = extractRectangularVolumeIndices(new_rs,np.zeros(3),radius*rect_buffer,cylinder) 
         if star_snap is not None:
-            sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius,cylinder)
+            sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius*rect_buffer,cylinder)
         if dark_snap is not None:
-            dindices = extractRectangularVolumeIndices(new_dark_rs,np.zeros(3),radius,cylinder)
+            dindices = extractRectangularVolumeIndices(new_dark_rs,np.zeros(3),radius*rect_buffer,cylinder)
         new_snap['scale_h']=cylinder
 
     ## add positions and velocities separately, since they need to be rotated and indexed

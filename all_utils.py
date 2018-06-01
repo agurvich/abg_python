@@ -204,6 +204,15 @@ def distance(obj1,obj2):
     return ((obj1.x-obj2.x)**2+(obj1.y-obj2.y)**2+(obj1.z-obj2.z)**2)**0.5
 
 #list operations
+def substep(arr,N):
+    my_arr = np.array([])
+    for lx,rx in zip(arr[:-1],arr[1:]):
+        my_arr=np.append(my_arr,np.linspace(lx,rx,N+1)[:-1])
+        
+    ## excluded the right end, need to include the final right end
+    my_arr = np.append(my_arr,rx)
+    return my_arr
+
 def pairFilter(xs,ys,bool_fn):
     """filters both x and y corresponding pairs by
         bool_fn"""

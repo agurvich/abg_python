@@ -217,7 +217,7 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
     if pkey in ['SmoothingLength','Masses','Coordinates']:
         unit_fact*=hinv
     if cosmological:
-        ascale = (1+new_dictionary['Redshift'])
+        ascale = 1/(1+new_dictionary['Redshift'])
         if pkey in ['SmoothingLength','Coordinates']:
             unit_fact*=ascale
         if pkey in ['Density']:
@@ -242,12 +242,13 @@ def openSnapshot(
                 fillHeader(new_dictionary,handle)
                 if new_dictionary['HubbleParam']!=1 and not cosmological:
                     print 'This is a cosmological snapshot'
-                    cosmological=1
+                    #cosmological=1
                 if not header_only:
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
                         unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
+                        if pkey == 'Coordinates': print unit_fact
                         new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
 
             else:

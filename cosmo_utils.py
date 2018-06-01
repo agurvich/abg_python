@@ -59,7 +59,7 @@ def load_AHF(
         ## snapnum is not in this halo file
         raise IOError
     ## psnapumably in comoving kpc/h 
-    scom = np.array([xs[index],ys[index],zs[index]])/hubble*(1/(1+current_redshift))
+    scom = np.array([xs[index],ys[index],zs[index]])/hubble/(1/(1+current_redshift))
     scom = scom.reshape(3,)
 
     ## comoving kpc to pkpc
