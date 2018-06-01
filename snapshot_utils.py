@@ -248,7 +248,6 @@ def openSnapshot(
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
                         unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-                        if pkey == 'Coordinates': print unit_fact
                         new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
 
             else:
