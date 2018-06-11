@@ -28,7 +28,11 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
         if key in key_exceptions:
             continue
         try:
-            dict1[key]=dict0[key][indices]
+            if np.shape(dict0[key])[0]==indices.shape[0]:
+                dict1[key]=dict0[key][indices]
+            ## should only be center of mass and center of mass velocity
+            else:
+                raise Exception("Save this array verbatim")
         except:
             dict1[key]=dict0[key]
     if free_mem:
