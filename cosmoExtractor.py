@@ -183,7 +183,8 @@ def diskFilterDictionary(
     if star_snap is None:
         orient_stars=0
     if 'overwritten' in snap:
-        raise Exception("This snapshot is already overwritten!")
+        print "This snapshot has already been rotated and offset!"
+        scom = np.zeros(3)
 
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
         star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
