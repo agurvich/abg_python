@@ -38,6 +38,7 @@ def extractCylindricalVolumeIndices(rs,rcom,radius,height):
 
 ## physics helper functions
 def getVcom(masses,velocities):
+    assert np.sum(masses) > 0 
     return np.sum(masses[:,None]*velocities,axis=0)/np.sum(masses)
 
 def getAngularMomentum(vectors,masses,velocities):
@@ -137,6 +138,7 @@ def extractDiskFromArrays(
         sindices = extractSphericalVolumeIndices(srs,scom,radius**2)
     else:
         sindices = None
+    print rs, scom
     gindices= extractSphericalVolumeIndices(rs,scom,radius**2)
     
     ## orient along angular momentum vector
@@ -160,10 +162,11 @@ def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz):
     ## store com information in case its relevant
     add_to_dict = {
         'scom':scom,'vscom':vscom,
-        'thetay':thetay,'thetaz':thetaz}
+        'thetay':thetay,'thetaz':thetaz,
+        'overwritten':1}
 
     ## add relevant keys
-    snap = snap.update(add_to_dict)
+    snap.update(add_to_dict)
 
     return snap
 
@@ -179,24 +182,26 @@ def diskFilterDictionary(
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
     if star_snap is None:
         orient_stars=0
+    if 'overwritten' in snap:
+        raise Exception("This snapshot is already overwritten!")
 
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
         star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
-    snap = offsetRotateFilterSnapshot(
+    snap = offsetRotateSnapshot(
         snap,
         scom,vscom,
         thetay,thetaz)
 
     if star_snap is not None:
-        star_snap = offsetRotateFilterSnapshot(
+        star_snap = offsetRotateSnapshot(
             star_snap,
             scom,vscom,
             thetay,thetaz)
         
     if dark_snap is not None:
         ## rotate position/velocity vectors
-        dark_snap = offsetRotateFilterSnapshot(
+        dark_snap = offsetRotateSnapshot(
             dark_snap,
             scom,vscom,
             thetay,thetaz)
@@ -222,10 +227,9 @@ def diskFilterDictionary(
             dindices = extractRectangularVolumeIndices(
                 dark_snap['Coordinates'],
                 np.zeros(3),radius*rect_buffer,cylinder)
-        new_snap['scale_h']=cylinder
 
         ## add the scale height to the snapshot
-        add_to_dict.update('scale_height':cylinder)
+        add_to_dict.update({'scale_height':cylinder})
 
     ## create the volume filtered dictionaries, snapshots are already rotated/offset
     new_snap = filterDictionary(snap,gindices)
@@ -266,13 +270,5 @@ def diskFilterDictionary(
         return_list+=[new_star_snap]
     if dark_snap is not None:
         return_list+=[new_dark_snap]
-
-    ## what about the full snapshots? 
-    if return_full_rotated_snaps:
-        return_list = [snap]
-        if star_snap is not None:
-            return_list+=[star_snap]
-        if dark_snap is not None:
-            return_list+=[dark_snap]
 
     return return_list
