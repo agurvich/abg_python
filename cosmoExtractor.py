@@ -89,7 +89,7 @@ def findContainedScaleHeight(zs,ms):
     return np.sqrt(np.sum(zs**2*ms)/np.sum(ms))
 
 ##### main extraction protocols
-def extractDiskFromReadsnap(star_snap,snap,radius,scom=None,orient_stars=0):
+def extractDiskFromSnapdict(star_snap,snap,radius,scom=None,orient_stars=0):
     if star_snap is None:
         srs,svs,smasses=None,None,None
     else:
@@ -180,7 +180,7 @@ def diskFilterDictionary(
     if star_snap is None:
         orient_stars=0
 
-    thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromReadsnap(
+    thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
         star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
     snap = offsetRotateFilterSnapshot(
