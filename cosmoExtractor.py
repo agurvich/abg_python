@@ -147,11 +147,33 @@ def extractDiskFromArrays(
 
     return thetay,thetaz,scom,vscom,gindices,sindices,radius
 
+def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz):
+
+    ## rotate the coordinates of the spherical extraction
+    new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
+    new_vs = rotateVectorsZY(thetay,thetaz,snap['Velocities']-vscom)
+
+    ## add positions and velocities separately, since they need to be rotated and indexed
+    snap['Coordinates'] = new_rs
+    snap['Velocities'] = new_vs
+
+    ## store com information in case its relevant
+    add_to_dict = {
+        'scom':scom,'vscom':vscom,
+        'thetay':thetay,'thetaz':thetaz}
+
+    ## add relevant keys
+    snap = snap.update(add_to_dict)
+
+    return snap
+
+
 def diskFilterDictionary(
     star_snap,snap,
     radius,cylinder='',
     scom=None,dark_snap=None,orient_stars=0,
-    rect_buffer=1.1):
+    rect_buffer=1.1,
+    return_full_rotated_snaps=False):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
@@ -161,100 +183,96 @@ def diskFilterDictionary(
     thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromReadsnap(
         star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
-    ## store com information in case its relevant
-    new_snap = {'scale_radius':radius,
-        'scom':scom,'vscom':vscom,
-        'thetay':thetay,'thetaz':thetaz,}
-    ## rotate the coordinates of the spherical extraction
-    new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
-    new_vs = rotateVectorsZY(thetay,thetaz,snap['Velocities']-vscom)
+    snap = offsetRotateFilterSnapshot(
+        snap,
+        scom,vscom,
+        thetay,thetaz)
 
     if star_snap is not None:
-        new_star_snap = {'scale_radius':radius,
-            'scom':scom,'vscom':vscom,
-            'thetay':thetay,'thetaz':thetaz}
-        ## rotate the coordinates of the spherical extraction
-        new_star_rs = rotateVectorsZY(thetay,thetaz,star_snap['Coordinates']-scom)
-        new_star_vs = rotateVectorsZY(thetay,thetaz,star_snap['Velocities']-vscom)
-
+        star_snap = offsetRotateFilterSnapshot(
+            star_snap,
+            scom,vscom,
+            thetay,thetaz)
+        
     if dark_snap is not None:
-        new_dark_snap = {'scale_radius':radius,
-            'scom':scom,'vscom':vscom,
-            'thetay':thetay,'thetaz':thetaz}
         ## rotate position/velocity vectors
-        new_dark_rs = rotateVectorsZY(thetay,thetaz,dark_snap['Coordinates']-scom)
-        new_dark_vs = rotateVectorsZY(thetay,thetaz,dark_snap['Velocities']-vscom)
+        dark_snap = offsetRotateFilterSnapshot(
+            dark_snap,
+            scom,vscom,
+            thetay,thetaz)
+
         ## extract spherical volume
-        dindices = extractSphericalVolumeIndices(new_dark_rs,np.zeros(3),radius**2)
+        dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
 
-    if orient_stars:
-        ## calculate stars "diskiness"
-        angMom = getAngularMomentum(new_star_rs[sindices],
-            star_snap['Masses'][sindices]*1e10,new_star_vs[sindices])# msun - kpc - km/s units of L
-            ## post-rotation, lz == ltot by definition, lx, ly = 0 
-        lz = angMom[2]
-
-            ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
-        ltot = getAngularMomentumSquared(new_star_rs[sindices],
-            star_snap['Masses'][sindices]*1e10,new_star_vs[sindices])**0.5 # msun - kpc - km/s units of L
-
-        new_star_snap['star_lz']=lz
-        new_star_snap['star_ltot']=ltot
-    else:
-        ## calculate gas "diskiness"
-        angMom = getAngularMomentum(new_rs[gindices],
-            snap['Masses'][gindices]*1e10,new_vs[gindices])# msun - kpc - km/s units of L
-            ## post-rotation, lz == ltot by definition, lx, ly = 0 
-        lz = angMom[2]
-
-            ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
-        ltot = getAngularMomentumSquared(new_rs[gindices],
-            snap['Masses'][gindices]*1e10,new_vs[gindices])**0.5 # msun - kpc - km/s units of L
-
-        new_snap['lz']=lz
-        new_snap['ltot']=ltot
+    ## dictionary to add to extracted snapshot
+    add_to_dict = {'scale_radius':radius}
 
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':
         if cylinder is None:
-            cylinder = findContainedScaleHeight(new_rs[:,2][gindices],snap['Masses'][gindices])
-        gindices = extractRectangularVolumeIndices(new_rs,np.zeros(3),radius*rect_buffer,cylinder) 
+            cylinder = findContainedScaleHeight(snap['Coordinates'][:,2][gindices],snap['Masses'][gindices])
+        gindices = extractRectangularVolumeIndices(
+            snap['Coordinates'],
+            np.zeros(3),radius*rect_buffer,cylinder) 
         if star_snap is not None:
-            sindices = extractRectangularVolumeIndices(new_star_rs,np.zeros(3),radius*rect_buffer,cylinder)
+            sindices = extractRectangularVolumeIndices(
+                star_snap['Coordinates'],
+                np.zeros(3),radius*rect_buffer,cylinder)
         if dark_snap is not None:
-            dindices = extractRectangularVolumeIndices(new_dark_rs,np.zeros(3),radius*rect_buffer,cylinder)
+            dindices = extractRectangularVolumeIndices(
+                dark_snap['Coordinates'],
+                np.zeros(3),radius*rect_buffer,cylinder)
         new_snap['scale_h']=cylinder
 
-    ## add positions and velocities separately, since they need to be rotated and indexed
-    new_snap['Coordinates'] = new_rs[gindices]
-    new_snap['Velocities'] = new_vs[gindices]
-    ## index the snapt of the keys
-    new_snap = filterDictionary(snap,gindices,dict1 = new_snap, key_exceptions = ['Coordinates','Velocities'])
+        ## add the scale height to the snapshot
+        add_to_dict.update('scale_height':cylinder)
 
+    ## create the volume filtered dictionaries, snapshots are already rotated/offset
+    new_snap = filterDictionary(snap,gindices)
+    new_snap.update(add_to_dict)
     if star_snap is not None:
-        ## add positions and velocities separately, since they need to be rotated and indexed
-        new_star_snap['Coordinates'] = new_star_rs[sindices]
-        new_star_snap['Velocities'] = new_star_vs[sindices]
-        ## index the rest of the keys
-        new_star_snap = filterDictionary(
-            star_snap,sindices,
-            dict1 = new_star_snap,
-            key_exceptions = ['Coordinates','Velocities'])
-
+        new_star_snap = filterDictionary(star_snap,sindices)
+        new_star_snap.update(add_to_dict)
     if dark_snap is not None:
-        ## update positions/velocities 
-        new_dark_snap['Coordinates'] = new_dark_rs[dindices]
-        new_dark_snap['Velocities'] = new_dark_vs[dindices]
-        new_dark_snap = filterDictionary(
-            dark_snap,dindices,
-            dict1 = new_dark_snap,
-            key_exceptions = ['Coordinates','Velocities'])
+        new_dark_snap = filterDictionary(dark_snap,dindices)
+        new_dark_snap.update(add_to_dict)
 
+    ## calculate the diskiness --  but only in the quantity that 
+    ##  we actually aligned the galaxy with respect to, for consistency
+    if orient_stars:
+        ## calculate stars "diskiness," alias new_star_snap
+        my_snap = new_star_snap
+        key_add = "star_"
+    else:
+        my_snap = new_snap
+        key_add = ""
+
+    angMom = getAngularMomentum(my_snap['Coordinates'],
+        my_snap['Masses']*1e10,my_snap['Velocities'])# msun - kpc - km/s units of L
+        ## post-rotation, lz == ltot by definition, lx, ly = 0 
+    lz = angMom[2]
+
+        ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
+    ltot = getAngularMomentumSquared(my_snap['Coordinates'],
+        my_snap['Masses']*1e10,my_snap['Velocities'])**0.5 # msun - kpc - km/s units of L
+
+    my_snap[key_add+'lz']=lz
+    my_snap[key_add+'ltot']=ltot
+
+    ## figure out what we're returning
+    ## the extracted snapshots, obviously
     return_list = [new_snap]
-
     if star_snap is not None:
         return_list+=[new_star_snap]
     if dark_snap is not None:
         return_list+=[new_dark_snap]
+
+    ## what about the full snapshots? 
+    if return_full_rotated_snaps:
+        return_list = [snap]
+        if star_snap is not None:
+            return_list+=[star_snap]
+        if dark_snap is not None:
+            return_list+=[dark_snap]
 
     return return_list
