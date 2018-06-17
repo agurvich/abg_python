@@ -138,7 +138,6 @@ def extractDiskFromArrays(
         sindices = extractSphericalVolumeIndices(srs,scom,radius**2)
     else:
         sindices = None
-    print rs, scom
     gindices= extractSphericalVolumeIndices(rs,scom,radius**2)
     
     ## orient along angular momentum vector
@@ -176,7 +175,7 @@ def diskFilterDictionary(
     radius,cylinder='',
     scom=None,dark_snap=None,orient_stars=0,
     rect_buffer=1.1,
-    return_full_rotated_snaps=False):
+    overwrite_full_snaps_with_rotated_versions=False):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars

@@ -34,7 +34,8 @@ def load_AHF(
     snapdir,snapnum,
     current_redshift,
     hubble = 0.702,
-    ahf_path=None):
+    ahf_path=None,
+    extra_names_to_read = ['Rstar0.5']):
 
     ahf_path = '../halo/ahf/' if ahf_path is None else ahf_path
 
@@ -43,7 +44,7 @@ def load_AHF(
         print "Looking in Zach's halo directories for ahf halo"
         path = "/scratch/03057/zhafen/core/%s/halo/halo_00000_smooth.dat"%name
 
-    names_to_read = ['snum','Xc','Yc','Zc','Rvir','v_esc','Rstar0.5']
+    names_to_read = ['snum','Xc','Yc','Zc','Rvir','v_esc']+extra_names_to_read
 
     names = list(np.genfromtxt(path,skip_header=0,max_rows = 1,dtype=str))
     cols = []
@@ -51,10 +52,13 @@ def load_AHF(
     for name in names_to_read:
         cols+=[names.index(name)]
 
-    sns,xs,ys,zs, rvirs, vescs, rstar_halfs = np.genfromtxt(
-        path,delimiter='\t',usecols=cols,unpack=1,skip_header=1)
+    output = np.genfromtxt(
+        path,delimiter='\t',usecols=cols,skip_header=1)
 
-    index = sns==snapnum
+    ## unpack rows of output
+    xs,ys,zs = output[:,1:4].T
+
+    index = output[:,0]==snapnum
     if np.sum(index)==0:
         ## snapnum is not in this halo file
         raise IOError
@@ -63,7 +67,11 @@ def load_AHF(
     scom = scom.reshape(3,)
 
     ## comoving kpc to pkpc
-    rvir = rvirs[index][0]/hubble*(1/(1+current_redshift))
-    vesc = vescs[index][0]
-    rstar_half = rstar_halfs[index][0]/hubble*(1/(1+current_redshift))
-    return scom, rvir,rstar_half
+    rvir = output[:,4][index][0]/hubble*(1/(1+current_redshift))
+    vesc = output[:,5][index][0]
+
+    return_val = [scom, rvir, vesc]
+    if 'Rstar0.5' in names_to_read:
+        rstar_half = output[:,names_to_read.index('Rstar0.5')][index][0]/hubble*(1/(1+current_redshift))
+        return_val+=[rstar_half]
+    return return_val

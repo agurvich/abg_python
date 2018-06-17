@@ -229,7 +229,8 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
 def openSnapshot(
     snapdir,snapnum,ptype,
     snapshot_name='snapshot', extension='.hdf5',
-    cosmological=0,header_only=0):
+    cosmological=0,header_only=0,
+    keys_to_extract = None):
 
     fnames = get_fnames(snapdir,snapnum)
     
@@ -247,17 +248,19 @@ def openSnapshot(
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
-                        unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-                        new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
+                        if keys_to_extract is None or pkey in keys_to_extract:
+                            unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
+                            new_dictionary[pkey] = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
 
             else:
                 if not header_only:
                     ## append particle array for each file
                     for pkey in handle['PartType%d'%ptype].keys():
-                        unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-                        new_dictionary[pkey] = np.append(
-                            new_dictionary[pkey],
-                            np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact,axis=0)
+                        if keys_to_extract is None or pkey in keys_to_extract:
+                            unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
+                            new_dictionary[pkey] = np.append(
+                                new_dictionary[pkey],
+                                np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact,axis=0)
 
     ## get temperatures if this is a gas particle dataset
     if ptype ==0 and not header_only:
