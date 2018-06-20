@@ -40,14 +40,16 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     return dict1
 
 ## physics helper functions
-def getTemperature(U_code,y_helium,ElectronAbundance):
-    """U_codes = res['u']
-        y_heliums = res['z'][:,1]
-        ElectronAbundance=res['ne']"""
+def getTemperature(U_code,helium_mass_fraction,ElectronAbundance):
+    """U_code = snapdict['InternalEnergy']
+        helium_mass_fraction = snapdict['Metallicity'][:,1]
+        ElectronAbundance= snapdict['ElectronAbundance']"""
     U_cgs = U_code*1e10
     gamma=5/3.
     kB=1.38e-16 #erg /K
     m_proton=1.67e-24 # g
+    y_helium = helium_mass_fraction / (4*(1-helium_mass_fraction))
+
     mu = (1.0 + 4*y_helium) / (1+y_helium+ElectronAbundance) 
     mean_molecular_weight=mu*m_proton
     return mean_molecular_weight * (gamma-1) * U_cgs / kB
