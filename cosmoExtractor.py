@@ -184,30 +184,38 @@ def diskFilterDictionary(
     if 'overwritten' in snap:
         print "This snapshot has already been rotated and offset!"
         scom = np.zeros(3)
+        thetay,thetaz = snap['thetay'],snap['thetaz']
+        scom,vscom = snap['scom'],snap['vscom']
 
-    thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
-        star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
+        gindices = extractSphericalVolumeIndices(snap['Coordinates'],np.zeros(3),radius**2)
+        sindices = extractSphericalVolumeIndices(star_snap['Coordinates'],np.zeros(3),radius**2)
+        if dark_snap is not None:
+            dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
+
+    else:
+        thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
+            star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
     
-    snap = offsetRotateSnapshot(
-        snap,
-        scom,vscom,
-        thetay,thetaz)
-
-    if star_snap is not None:
-        star_snap = offsetRotateSnapshot(
-            star_snap,
-            scom,vscom,
-            thetay,thetaz)
-        
-    if dark_snap is not None:
-        ## rotate position/velocity vectors
-        dark_snap = offsetRotateSnapshot(
-            dark_snap,
+        snap = offsetRotateSnapshot(
+            snap,
             scom,vscom,
             thetay,thetaz)
 
-        ## extract spherical volume
-        dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
+        if star_snap is not None:
+            star_snap = offsetRotateSnapshot(
+                star_snap,
+                scom,vscom,
+                thetay,thetaz)
+            
+        if dark_snap is not None:
+            ## rotate position/velocity vectors
+            dark_snap = offsetRotateSnapshot(
+                dark_snap,
+                scom,vscom,
+                thetay,thetaz)
+
+            ## extract spherical volume
+            dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
 
     ## dictionary to add to extracted snapshot
     add_to_dict = {'scale_radius':radius}
