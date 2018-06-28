@@ -230,9 +230,10 @@ def openSnapshot(
     snapdir,snapnum,ptype,
     snapshot_name='snapshot', extension='.hdf5',
     cosmological=0,header_only=0,
-    keys_to_extract = None):
+    keys_to_extract = None,
+    fnames = None):
 
-    fnames = get_fnames(snapdir,snapnum)
+    fnames = get_fnames(snapdir,snapnum) if fnames is None else fnames
     
     new_dictionary = {}
 
