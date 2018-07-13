@@ -279,6 +279,9 @@ def openSnapshot(
 		chimes_keys+=[keys_to_extract.pop(i-popped)]
     
     new_dictionary = {}
+
+    ## save the ordering of the files if necessary
+    new_dictionary['fnames']=fnames
     
     ## need these keys to calculate the temperature
     ##	create this list IFF I want temperature but NOT these keys in the dictionary
