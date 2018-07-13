@@ -236,6 +236,34 @@ def openSnapshot(
     keys_to_extract = None,
     fnames = None,
     chimes_keys = []):
+    """
+    A straightforward function that concatenates snapshots by particle type and stores
+	it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
+	flexible enough to be memory efficient, as well, if you'd like using the 
+	`keys_to_extract` argument, just pass a list of snapshot keys you want to 
+	keep and the rest will be ignored. You can have it automagically detect
+	whether the snapshot lives in a snapdir or not (and is blind to your
+	naming scheme, as long as it includes "_%03d"%snapnum-- which might get
+	confused if you've got snapshots 100 and 1000, say) or you can just pass
+	the list of filenames you want explicitly using the `fnames` argument.
+    Input:
+	snapdir - output directory that .hdf5 or snapdir/.hdf5 files live in
+	snapnum - the snapshot number
+	ptype - the particle type
+	cosmological=False - flag for whether the snapshot is in comoving units,
+	    if HubbleParam in the Header != 1 then it is assumed to be cosmological
+	    and your choice is **OVERWRITTEN**, there's a friendly print statement
+	    telling you when this happens, so I accept no liability for bugs this 
+	    might induce...
+	header_only=False - flag for retrieving the header information only
+	keys_to_extract=None - list of snapshot keys to put in the final dictionary
+	    along with the header keys. If None, extracts all of them!
+	fnames=None - list of (full) filepaths to open, if None goes and looks for the files
+	    inside snapdir.
+	chimes_keys=[] - List of chemical abundances to extract from the snapshot, see 
+	    `chimes_dict` below. If you put a key that matches `chimes_dict`'s into 
+	    keys_to_extract it will be removed and automatically added to chimes_keys.
+    """
 
     ## get filenames of the snapshot in question
     fnames = get_fnames(snapdir,snapnum) if fnames is None else fnames
@@ -267,7 +295,7 @@ def openSnapshot(
                 ## read header once
                 fillHeader(new_dictionary,handle)
                 if new_dictionary['HubbleParam']!=1 and not cosmological:
-                    print 'This is a cosmological snapshot'
+                    print 'This is a cosmological snapshot... converting to physical units'
                     cosmological=1
                 if not header_only:
 		    ## decide if the coordinates are in double precision, by default they are not
