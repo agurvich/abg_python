@@ -14,7 +14,7 @@ def makeHeader(snapshot,build_snapshot):
                          [2,1,np.array([0,0,0,0,0]),0,1,17,100,
                           np.array([0,0,0,0,0]),np.array([0,0,0,0,0]),
                          np.array([0,0,0,0,0]),0,0,0,1,1,1,1,0]))
-    print 'ref header created',ref_header.keys()
+    print('ref header created',ref_header.keys())
     with h5py.File(snapshot,'r') as snap:
         with h5py.File(build_snapshot,'w') as build_snap:
             try:
@@ -26,8 +26,8 @@ def makeHeader(snapshot,build_snapshot):
             numpart = np.array([ngas,0,0,0,nstar,0])
             build_snap['Header'].attrs['NumPart_ThisFile']=numpart
             build_snap['Header'].attrs['NumPart_Total']=numpart
-            print build_snap['Header'].attrs['NumPart_ThisFile']
-            print build_snap['Header'].attrs['NumPart_Total']
+            print(build_snap['Header'].attrs['NumPart_ThisFile'])
+            print( build_snap['Header'].attrs['NumPart_Total'])
             
             for key in snap['Header'].attrs:
                 try:
@@ -40,7 +40,7 @@ def makeHeader(snapshot,build_snapshot):
                     if bool_check:
                         setHeaderValue(build_snap,key,ref_val)
                     else:
-                        print key,'disagreed, setting manually'
+                        print( key,'disagreed, setting manually')
                         if key in ['Flag_IC_Info','MassTable','Time',
                             'HubbleParam']:
                             setHeaderValue(build_snap,key,ref_val)
@@ -53,30 +53,30 @@ def makeHeader(snapshot,build_snapshot):
                             setHeaderValue(build_snap,key,np.zeros(5))
                         else:
 
-                            print '-----'
-                            print "Didn't set",key
-                            print 'snap',snap_val
-                            print 'ref',ref_val
-                            print '-----'
+                            print('-----')
+                            print("Didn't set",key)
+                            print('snap',snap_val)
+                            print('ref',ref_val)
+                            print('-----')
                 except:
-                    print key,'failed raised an uncaught error'
-                    print 'snap',getHeaderValue(snap,key)
-                    print 'ref',ref_header[key]
+                    print(key,'failed raised an uncaught error')
+                    print('snap',getHeaderValue(snap,key))
+                    print('ref',ref_header[key])
                     raise
                     pass
 
-            print
-            print 'Latte-ISO contents:'
-            print build_snap.keys()
-            print build_snap['Header'].attrs.keys()
+            print()
+            print('Latte-ISO contents:')
+            print(build_snap.keys())
+            print(build_snap['Header'].attrs.keys())
 
 def addGas(snapshot,build_snapshot):
     with h5py.File(snapshot,'r') as snap:    
-        print '\nLatte Gas contents:\n',snap['PartType0'].keys(),'\n'
+        print('\nLatte Gas contents:\n',snap['PartType0'].keys(),'\n')
         HubbleParam=snap['Header'].attrs['HubbleParam']
 
         with h5py.File(build_snapshot,'a') as build_snap:
-            print '\nmaking build snap...\n'
+            print('\nmaking build snap...\n')
             
             try:                 
                 for key in snap['PartType0'].keys():
@@ -85,7 +85,7 @@ def addGas(snapshot,build_snapshot):
                     elif key == 'Density':
                         build_snap['PartType0/%s'%key]=np.array(snap['PartType0/%s'%key])*HubbleParam**2.
                     else:
-                        print 'Copying:',key
+                        print('Copying:',key)
                         build_snap['PartType0/%s'%key]=np.array(snap['PartType0/%s'%key])
                 
                 #set FIRE-2 ID requirements to keep track of what split when
@@ -99,18 +99,18 @@ def addGas(snapshot,build_snapshot):
             except:
                 raise
 
-                print 'Latte-ISO Contents:'
-                print build_snap.keys()
-                print build_snap['PartType0'].keys()
+                print('Latte-ISO Contents:')
+                print(build_snap.keys())
+                print(build_snap['PartType0'].keys())
     return ngas
 
 def addStars(snapshot,build_snapshot):
     with h5py.File(snapshot,'r') as snap:    
-        print '\nLatte Star contents:\n',snap['PartType4'].keys(),'\n'
+        print('\nLatte Star contents:\n',snap['PartType4'].keys(),'\n')
         HubbleParam=snap['Header'].attrs['HubbleParam']
 
         with h5py.File(build_snapshot,'a') as build_snap:
-            print '\nmaking build snap...\n'
+            print('\nmaking build snap...\n')
             
             try:                 
                 for key in snap['PartType4'].keys():
@@ -128,7 +128,7 @@ def addStars(snapshot,build_snapshot):
                         #*before* the start of the simulation
                         build_snap['PartType4/StellarFormationTime']=-ages
                     else:
-                        print 'Copying:',key
+                        print('Copying:',key)
                         build_snap['PartType4/%s'%key]=np.array(snap['PartType4/%s'%key])
                         
                 #set FIRE2 ids, which didn't exist before
@@ -142,9 +142,9 @@ def addStars(snapshot,build_snapshot):
             except:
                 raise
 
-                print 'Latte-ISO Contents:'
-                print build_snap.keys()
-                print build_snap['PartType4'].keys()
+                print('Latte-ISO Contents:')
+                print(build_snap.keys())
+                print(build_snap['PartType4'].keys())
     return nstars
 
 def translateSnap(snapnum,multisnap=0):
@@ -163,7 +163,7 @@ def translateSnap(snapnum,multisnap=0):
     with h5py.File(build_snapshot,'a') as build_snap:
         numpart = np.array([ngas,ndm,0,0,nstar])
         build_snap['Header'].attrs['NumPart_ThisFile']=numpart  
-        print build_snap['Header'].attrs['NumPart_ThisFile']
+        print(build_snap['Header'].attrs['NumPart_ThisFile'])
          
     return numpart
 
@@ -175,7 +175,7 @@ def setNumpartTotal(snapnum,numpart_total,multisnap=0):
         
     with h5py.File(build_snapshot,'a') as build_snap:
         build_snap['Header'].attrs['NumPart_Total']=numpart_total
-        print build_snap['Header'].attrs['NumPart_Total']
+        print(build_snap['Header'].attrs['NumPart_Total'])
 
 
 #numpart_total=np.array([0,0,0,0,0])
@@ -289,13 +289,13 @@ def openSnapshot(
 
     for i,fname in enumerate(sorted(fnames)):
 	## let the user know what snapshot file we're trying to open
-	print fname
+	print(fname)
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
                 fillHeader(new_dictionary,handle)
                 if new_dictionary['HubbleParam']!=1 and not cosmological:
-                    print 'This is a cosmological snapshot... converting to physical units'
+                    print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
                 if not header_only:
 		    ## decide if the coordinates are in double precision, by default they are not
@@ -396,7 +396,7 @@ def read_chimes(filename, chimes_species):
     try: 
         chimes_index = chimes_dict[chimes_species] 
     except KeyError: 
-        print "Error: species %s is not recognised in the CHIMES abundance array. Aborting." % (chimes_species, ) 
+        print("Error: species %s is not recognised in the CHIMES abundance array. Aborting." % (chimes_species, ) )
         return 
 
     output_array = h5file["PartType0/ChimesAbundances"][:, chimes_index] 
