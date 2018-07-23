@@ -4,9 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
-from distinct_colours import get_distinct
-
 try:
+    from distinct_colours import get_distinct
     from cycler import cycler
     colors = get_distinct(5)
     plt.rc('axes', prop_cycle=(cycler('color', colors) ))
