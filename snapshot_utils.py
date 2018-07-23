@@ -1,5 +1,4 @@
 import h5py,sys,os
-from readsnap import readsnap
 import numpy as np
 from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs
@@ -238,31 +237,31 @@ def openSnapshot(
     chimes_keys = []):
     """
     A straightforward function that concatenates snapshots by particle type and stores
-	it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
-	flexible enough to be memory efficient, as well, if you'd like using the 
-	`keys_to_extract` argument, just pass a list of snapshot keys you want to 
-	keep and the rest will be ignored. You can have it automagically detect
-	whether the snapshot lives in a snapdir or not (and is blind to your
-	naming scheme, as long as it includes "_%03d"%snapnum-- which might get
-	confused if you've got snapshots 100 and 1000, say) or you can just pass
-	the list of filenames you want explicitly using the `fnames` argument.
+    it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
+    flexible enough to be memory efficient, as well, if you'd like using the 
+    `keys_to_extract` argument, just pass a list of snapshot keys you want to 
+    keep and the rest will be ignored. You can have it automagically detect
+    whether the snapshot lives in a snapdir or not (and is blind to your
+    naming scheme, as long as it includes "_%03d"%snapnum-- which might get
+    confused if you've got snapshots 100 and 1000, say) or you can just pass
+    the list of filenames you want explicitly using the `fnames` argument.
     Input:
-	snapdir - output directory that .hdf5 or snapdir/.hdf5 files live in
-	snapnum - the snapshot number
-	ptype - the particle type
-	cosmological=False - flag for whether the snapshot is in comoving units,
-	    if HubbleParam in the Header != 1 then it is assumed to be cosmological
-	    and your choice is **OVERWRITTEN**, there's a friendly print statement
-	    telling you when this happens, so I accept no liability for bugs this 
-	    might induce...
-	header_only=False - flag for retrieving the header information only
-	keys_to_extract=None - list of snapshot keys to put in the final dictionary
-	    along with the header keys. If None, extracts all of them!
-	fnames=None - list of (full) filepaths to open, if None goes and looks for the files
-	    inside snapdir.
-	chimes_keys=[] - List of chemical abundances to extract from the snapshot, see 
-	    `chimes_dict` below. If you put a key that matches `chimes_dict`'s into 
-	    keys_to_extract it will be removed and automatically added to chimes_keys.
+    snapdir - output directory that .hdf5 or snapdir/.hdf5 files live in
+    snapnum - the snapshot number
+    ptype - the particle type
+    cosmological=False - flag for whether the snapshot is in comoving units,
+        if HubbleParam in the Header != 1 then it is assumed to be cosmological
+        and your choice is **OVERWRITTEN**, there's a friendly print statement
+        telling you when this happens, so I accept no liability for bugs this 
+        might induce...
+    header_only=False - flag for retrieving the header information only
+    keys_to_extract=None - list of snapshot keys to put in the final dictionary
+        along with the header keys. If None, extracts all of them!
+    fnames=None - list of (full) filepaths to open, if None goes and looks for the files
+        inside snapdir.
+    chimes_keys=[] - List of chemical abundances to extract from the snapshot, see 
+        `chimes_dict` below. If you put a key that matches `chimes_dict`'s into 
+        keys_to_extract it will be removed and automatically added to chimes_keys.
     """
 
     ## get filenames of the snapshot in question
@@ -270,13 +269,17 @@ def openSnapshot(
 
     ## split off chimes keys, if necessary
     if keys_to_extract is not None:
-	popped = 0
-	for i,key in enumerate(keys_to_extract):
-	    ## if the key was put into keys_to_extract instead of chimes_key
-	    ##	which is a uSER ERROR(!!)
-	    if key in chimes_dict:
-		## transfer the key to the chimes_keys, WHERE IT BELONGS
-		chimes_keys+=[keys_to_extract.pop(i-popped)]
+        popped = 0
+    for i,key in enumerate(keys_to_extract):
+        ## if the key was put into keys_to_extract instead of chimes_key
+        ##  which is a uSER ERROR(!!)
+        if key in chimes_dict or 'Abundance' in key:
+        ## transfer the key to the chimes_keys, WHERE IT BELONGS
+            ckey = keys_to_extract.pop(i-popped)
+            if 'Abundance' in ckey:
+                ckey = ckey[:-len('Abundance')]
+            chimes_keys+=[ckey]
+            popped+=1
     
     new_dictionary = {}
 
@@ -284,15 +287,18 @@ def openSnapshot(
     new_dictionary['fnames']=fnames
     
     ## need these keys to calculate the temperature
-    ##	create this list IFF I want temperature but NOT these keys in the dictionary
+    ##  create this list IFF I want temperature but NOT these keys in the dictionary
     temperature_keys = [
-	'InternalEnergy',
-	'Metallicity',
-	'ElectronAbundance']*((keys_to_extract is not None) and ('Temperature' in keys_to_extract))
+    'InternalEnergy',
+    'Metallicity',
+    'ElectronAbundance',
+    'ChimesMu']*((keys_to_extract is not None) and ('Temperature' in keys_to_extract))
+    age_keys = ['StellarFormationTime']*((keys_to_extract is not None) and ('AgeGyr' in keys_to_extract))
+
 
     for i,fname in enumerate(sorted(fnames)):
-	## let the user know what snapshot file we're trying to open
-	print(fname)
+    ## let the user know what snapshot file we're trying to open
+        print(fname)
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
@@ -301,70 +307,81 @@ def openSnapshot(
                     print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
                 if not header_only:
-		    ## decide if the coordinates are in double precision, by default they are not
-		    if 'Flag_DoublePrecision' in new_dictionary and new_dictionary['Flag_DoublePrecision']:
-			coord_dtype = np.float64
-		    else:
-			coord_dtype = np.float32
+                    ## decide if the coordinates are in double precision, by default they are not
+                    if 'Flag_DoublePrecision' in new_dictionary and new_dictionary['Flag_DoublePrecision']:
+                        coord_dtype = np.float64
+                    else:
+                        coord_dtype = np.float32
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
-                        if keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys:
+                        if (keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys or pkey in age_keys):
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-			    ## handle potentially double precision coordinates
-			    if pkey == 'Coordinates':
-				value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
-			    else:
-				value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
-
+                            ## handle potentially double precision coordinates
+                            if pkey == 'Coordinates':
+                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
+                            else:
+                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
                             new_dictionary[pkey] = value
 
-		if ( (ptype == 0) and 
-		     ('ChimesAbundances' in handle['PartType0'].keys())):
-		    for chimes_species in chimes_keys:
-			chimes_index = chimes_dict[chimes_species] 
-			new_dictionary[chimes_species+'Abundance']=np.array(
-			    handle['PartType0/ChimesAbundances'][:,chimes_index])
+                if ( (ptype == 0) and ('ChimesAbundances' in handle['PartType0'].keys())):
+                    for chimes_species in chimes_keys:
+                        chimes_index = chimes_dict[chimes_species] 
+                        new_dictionary[chimes_species+'Abundance']=np.array(handle['PartType0/ChimesAbundances'][:,chimes_index])
             else:
                 if not header_only:
                     ## append particle array for each file
                     for pkey in handle['PartType%d'%ptype].keys():
-                        if keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys:
+                        if (keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys or pkey in age_keys):
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
-			    ## handle potentially double precision coordinates
-			    if pkey == 'Coordinates':
-				value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
-			    else:
-				value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
+                            ## handle potentially double precision coordinates
+                            if pkey == 'Coordinates':
+                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
+                            else:
+                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
                             new_dictionary[pkey] = np.append(new_dictionary[pkey],value,axis=0) 
 
     ## get temperatures if this is a gas particle dataset
     if ( (ptype == 0) and 
-	 (not header_only) and 
+     (not header_only) and 
          (keys_to_extract is None or 'Temperature' in keys_to_extract)):
 
-        new_dictionary['Temperature']=getTemperature(
-            new_dictionary['InternalEnergy'],
-            new_dictionary['Metallicity'][:,1],
-            new_dictionary['ElectronAbundance'])
+        if 'ChimesMu' in new_dictionary:
+            new_dictionary['Temperature']=getTemperature(
+                new_dictionary['InternalEnergy'],
+                mu = new_dictionary['ChimesMu'])
+        else:
+            new_dictionary['Temperature']=getTemperature(
+                new_dictionary['InternalEnergy'],
+                new_dictionary['Metallicity'][:,1],
+                new_dictionary['ElectronAbundance'])
 
-	## remove the keys in temperature keys that are not in keys_to_extract, if it is not None
-	##  in case we wanted the metallicity and the temperature, but not the electron abundance 
-	##  and internal energy, for instance
-	subtract_set = set(temperature_keys) if keys_to_extract is None else set(keys_to_extract)
-	for key in (set(temperature_keys) - subtract_set):
-	    new_dictionary.pop(key)
+        ## remove the keys in temperature keys that are not in keys_to_extract, if it is not None
+        ##  in case we wanted the metallicity and the temperature, but not the electron abundance 
+        ##  and internal energy, for instance
+        subtract_set = set(temperature_keys) if keys_to_extract is None else set(keys_to_extract)
+        for key in (set(temperature_keys) - subtract_set):
+            try:
+                new_dictionary.pop(key)
+            except KeyError:
+                ## well it wasn't in there anyway!
+                pass
     
     ## get stellar ages if this is a star particle dataset
     if ( (ptype == 4) and 
-	 ('StellarFormationTime' in new_dictionary.keys()) and
-	 (keys_to_extract is None or 'AgeGyr' in keys_to_extract) ): 
+     ('StellarFormationTime' in new_dictionary.keys()) and
+     (keys_to_extract is None or 'AgeGyr' in keys_to_extract) ): 
         if cosmological:
             ## cosmological galaxy -> SFT is in scale factor, need to convert to age
             new_dictionary['AgeGyr']=getAgesGyrs(new_dictionary)
         else:
             ## isolated galaxy -> SFT is in Gyr, just need the age then
             new_dictionary['AgeGyr']=(new_dictionary['Time']-new_dictionary['StellarFormationTime'])/0.978 #Gyr
+
+        ## remove the keys in temperature keys that are not in keys_to_extract, if it is not None
+        subtract_set = set(age_keys) if keys_to_extract is None else set(keys_to_extract)
+        for key in (set(age_keys) - subtract_set):
+            new_dictionary.pop(key)
     
     return new_dictionary
 

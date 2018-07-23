@@ -40,17 +40,30 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     return dict1
 
 ## physics helper functions
-def getTemperature(U_code,helium_mass_fraction,ElectronAbundance):
+## physics helper functions
+def getTemperature(
+    U_code,
+    helium_mass_fraction=None,
+    ElectronAbundance=None,
+    mu = None):
     """U_code = snapdict['InternalEnergy']
-        helium_mass_fraction = snapdict['Metallicity'][:,1]
-        ElectronAbundance= snapdict['ElectronAbundance']"""
+    helium_mass_fraction = snapdict['Metallicity'][:,1]
+    ElectronAbundance= snapdict['ElectronAbundance']"""
     U_cgs = U_code*1e10
     gamma=5/3.
     kB=1.38e-16 #erg /K
     m_proton=1.67e-24 # g
-    y_helium = helium_mass_fraction / (4*(1-helium_mass_fraction))
-
-    mu = (1.0 + 4*y_helium) / (1+y_helium+ElectronAbundance) 
+    if mu is None:
+        ## not provided from chimes, hopefully you sent me helium_mass_fraction and
+        ##  electron abundance!
+        try: 
+            assert helium_mass_fraction is not None
+            assert ElectronAbundance is not None
+        except AssertionError:
+            raise ValueError(
+                "You need to either provide mu or send helium mass fractions and electron abundances to calculate it!")
+        y_helium = helium_mass_fraction / (4*(1-helium_mass_fraction))
+        mu = (1.0 + 4*y_helium) / (1+y_helium+ElectronAbundance) 
     mean_molecular_weight=mu*m_proton
     return mean_molecular_weight * (gamma-1) * U_cgs / kB
 
