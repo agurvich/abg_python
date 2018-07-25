@@ -412,7 +412,7 @@ def slackifyAxes(ax,width=8,height=6):
     
 def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
             subtitle=None,supertitle=None,off_legend=0,axesKeys={'scatterpoints':1,
-            'numpoints':1},loc=0,fontsize=16,slackify=0,width=8,height=6,
+            'numpoints':1},loc=0,subfontsize=14,fontsize=16,slackify=0,width=8,height=6,
             xlow=None,xhigh=None,ylow=None,yhigh=None,font_color='k',font_weight='regular'):
     """Convenience function for adjusting axes and axis labels
     Input:
@@ -460,12 +460,12 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
     if supertitle:
         ax.text(.01,.96,supertitle,transform=ax.transAxes,
             verticalalignment='center',horizontalalignment='left',
-            color = font_color,weight=font_weight)
+            color = font_color,weight=font_weight,fontsize=subfontsize)
 
     if subtitle:
         ax.text(.01,.04,subtitle,transform=ax.transAxes,
             verticalalignment='center',horizontalalignment='left',
-            color=font_color,weight=font_weight)
+            color=font_color,weight=font_weight,fontsize=subfontsize)
     if slackify:
         slackifyAxes(ax,width,height)
 
