@@ -18,7 +18,10 @@ def get_fnames(snapdir,snapnum):
 
 def fillHeader(dictionary,handle):
     for hkey in handle['Header'].attrs.keys():
-        dictionary[hkey] = handle['Header'].attrs[hkey]
+        if hkey == 'NumPart_ThisFile':
+            dictionary[hkey] = [handle['Header'].attrs[hkey]]
+        else:
+            dictionary[hkey] = handle['Header'].attrs[hkey]
 
 def get_unit_conversion(new_dictionary,pkey,cosmological):
     unit_fact = 1
@@ -41,7 +44,8 @@ def openSnapshot(
     cosmological=0,header_only=0,
     keys_to_extract = None,
     fnames = None,
-    chimes_keys = []):
+    chimes_keys = [],
+    abg_subsnap = 0):
     """
     A straightforward function that concatenates snapshots by particle type and stores
     it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
@@ -69,6 +73,8 @@ def openSnapshot(
     chimes_keys=[] - List of chemical abundances to extract from the snapshot, see 
         `chimes_dict` below. If you put a key that matches `chimes_dict`'s into 
         keys_to_extract it will be removed and automatically added to chimes_keys.
+    abg_subsnap=0 - Boolean flag for whether this *was* a cosmological snapshot that
+        I excised the main halo from, using my main analysis pipeline
     """
 
     ## get filenames of the snapshot in question
@@ -110,9 +116,19 @@ def openSnapshot(
             if i == 0:
                 ## read header once
                 fillHeader(new_dictionary,handle)
-                if new_dictionary['HubbleParam']!=1 and not cosmological:
+
+                ## read subsnap extraction keys
+                if abg_subsnap and 'ABG_Header' in handle.keys():
+                    for key in handle['ABG_Header'].attrs.keys():
+                        new_dictionary[key] = handle['ABG_Header'].attrs[key]
+                    for key in handle['ABG_Header/PartType%d'%ptype].keys():
+                        new_dictionary[key]=handle['ABG_Header/PartType%d'%ptype][key]
+
+                ## determine if this snapshot is cosmological
+                if new_dictionary['HubbleParam']!=1 and not cosmological and not abg_subsnap:
                     print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
+
                 if not header_only:
                     ## decide if the coordinates are in double precision, by default they are not
                     if 'Flag_DoublePrecision' in new_dictionary and new_dictionary['Flag_DoublePrecision']:
@@ -122,7 +138,12 @@ def openSnapshot(
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
-                        if (keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys or pkey in age_keys):
+                        if (
+                            keys_to_extract is None or 
+                            pkey in keys_to_extract or 
+                            pkey in temperature_keys or 
+                            pkey in age_keys):
+
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
                             ## handle potentially double precision coordinates
                             if pkey == 'Coordinates':
@@ -134,8 +155,11 @@ def openSnapshot(
                 if ( (ptype == 0) and ('ChimesAbundances' in handle['PartType0'].keys())):
                     for chimes_species in chimes_keys:
                         chimes_index = chimes_dict[chimes_species] 
-                        new_dictionary[chimes_species+'Abundance']=np.array(handle['PartType0/ChimesAbundances'][:,chimes_index])
+                        new_dictionary[chimes_species+'Abundance']=np.array(
+                            handle['PartType0/ChimesAbundances'][:,chimes_index])
             else:
+                ## append NumPart_ThisFile to header info
+                new_dictionary['NumPart_ThisFile']+=[handle['Header'].attrs['NumPart_ThisFile']]
                 if not header_only:
                     ## append particle array for each file
                     for pkey in handle['PartType%d'%ptype].keys():

@@ -218,7 +218,7 @@ def diskFilterDictionary(
             dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
 
     ## dictionary to add to extracted snapshot
-    add_to_dict = {'scale_radius':radius}
+    add_to_dict = {'scale_radius':radius,'orient_stars':orient_stars,'rect_buffer':rect_buffer}
 
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':
