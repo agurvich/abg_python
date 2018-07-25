@@ -119,10 +119,10 @@ def openSnapshot(
 
                 ## read subsnap extraction keys
                 if abg_subsnap and 'ABG_Header' in handle.keys():
-                    for key in handle['ABG_Header'].attrs.keys():
-                        new_dictionary[key] = handle['ABG_Header'].attrs[key]
+                    for hkey in handle['ABG_Header'].attrs.keys():
+                        new_dictionary[hkey] = np.array(handle['ABG_Header'].attrs[hkey])
                     for key in handle['ABG_Header/PartType%d'%ptype].keys():
-                        new_dictionary[key]=handle['ABG_Header/PartType%d'%ptype][key]
+                        new_dictionary[key]=np.array(handle['ABG_Header/PartType%d'%ptype][key])
 
                 ## determine if this snapshot is cosmological
                 if new_dictionary['HubbleParam']!=1 and not cosmological and not abg_subsnap:
