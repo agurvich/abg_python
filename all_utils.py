@@ -1,17 +1,8 @@
 import numpy as np 
-import copy
-import random
+import h5py
+
 import os
 from scipy.optimize import leastsq as opt
-import h5py
-import pandas as pd
-try:
-    from memory_profiler import profile,memory_usage
-except:
-    print "Couldn't find memory profiler"
-
-from readsnap import readsnap
-
 from scipy.spatial.distance import cdist as cdist
 
 #GLOBAL VARIABLES   
@@ -217,11 +208,6 @@ def rotationMatrixZ(theta):
             [0,0,1]
         ])
 
-def distance(obj1,obj2):
-    """Returns the cartesian distance between two objects that have
-        x,y,z attributes"""
-    return ((obj1.x-obj2.x)**2+(obj1.y-obj2.y)**2+(obj1.z-obj2.z)**2)**0.5
-
 #list operations
 def substep(arr,N):
     my_arr = np.array([])
@@ -320,67 +306,6 @@ def suppressSTDOUT(fn,args,debug=1):
             print 'Warning! Unsupressing std.out...'
 
     return ret
-
-#histogram operations
-def adaptivelyGenerateBins(ys,hist,binedges):
-    """Takes a histogram and adds bins to selectively add sampling in order to reduce 
-        erroneous peaks. Helpful for smoothing a PDF. 
-        Input: 
-            ys - The original y values that were used to generate the histogram 
-                (the things that were binned) 
-            hist - The histogram of y values
-            binedges - the edges of the bins
-        Output: 
-            hist - The new histogram of y values 
-            binedges - The correpsonding bin edges 
-    """
-    avgbinvalue=np.mean(hist)
-    #no bin peaks above 4x the mean 
-    iters=0
-    maxiters=25
-    while max(hist) > avgbinvalue*3.0:
-        assert len(hist)==(len(binedges)-1)
-        badbini=np.argmax(hist)
-        print 'Adding a bin between %.2f and %.2f'%(binedges[badbini],
-            binedges[badbini+1])
-        binedges=(list(binedges[:badbini+1])+
-            [(binedges[badbini]+binedges[badbini+1])/2.]+list(binedges[badbini+1:]))
-        hist,binedges=np.histogram(ys,binedges)
-        avgbinvalue=np.mean(hist)
-        if iters > maxiters:
-            raise Exception('Too single valued!')
-    return hist,binedges
-
-def getBinMidsAndWidths(bin_edges):
-    """Returns two inline operations that I use often-- taking the width of each bin and 
-        finding their midpoint."""
-    return np.array(zip(*[((bin_edges[i+1]+bin_edges[i])/2.0,1.0*bin_edges[i+1]-bin_edges[i]) 
-        for i in xrange(len(bin_edges)-1)]))
-
-def sortHistogrammedObjects(llist,edges,key):
-    """Takes a list of objects and sorts them into bins defined by some
-        comparison function. Compares the output of key(llist[i]) to 
-        [,) bin edges
-        Input: 
-            llist - the list of objects to be sorted
-            edges - the bin edges to sort into 
-            key - a function that takes an object and returns a value to be compared
-                to bin edges 
-        Returns: 
-            sorted_list - a 2d list of objects organized by bins
-    """
-    sorted_list=[[] for i in xrange((len(edges)-1))]
-    for obj in llist:
-        comparison=key(obj)
-        #if less than right edge, it should be in that bin
-        #e.x. if less than 0th right edge, it should be in 0th bin
-        for j,edge in enumerate(edges[1:]): 
-            if comparison < edge: 
-                break
-        #print comparison,edge,j
-        sorted_list[j]+=[obj]
-    return sorted_list
-    
 
 #plotting functions
 def plotSideBySide(plt,rs,rcom,indices,weights=None):

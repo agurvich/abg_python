@@ -1,9 +1,12 @@
+"""
 import matplotlib
 matplotlib.use('Agg')
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
+"""
 try:
     from distinct_colours import get_distinct
     from cycler import cycler
@@ -11,6 +14,7 @@ try:
     plt.rc('axes', prop_cycle=(cycler('color', colors) ))
 except:
     print "Couldn't reset default colors"
+"""
 
 
 def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
