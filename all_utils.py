@@ -335,10 +335,16 @@ def slackifyAxes(ax,width=8,height=6):
     fig.set_size_inches(width,height)
     fig.set_facecolor('white')
     
-def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
-            subtitle=None,supertitle=None,off_legend=0,axesKeys={'scatterpoints':1,
-            'numpoints':1},loc=0,subfontsize=14,fontsize=16,slackify=0,width=8,height=6,
-            xlow=None,xhigh=None,ylow=None,yhigh=None,font_color='k',font_weight='regular'):
+def nameAxes(ax,title,xname,yname,logflag=(0,0),
+            subtitle=None,supertitle=None,
+            make_legend=0,off_legend=0,
+            loc=0,
+            slackify=0,width=8,height=6,
+            xlow=None,xhigh=None,
+            ylow=None,yhigh=None,
+            subfontsize=None,fontsize=None,
+            xfontsize=None,yfontsize=None,
+            font_color=None,font_weight='regular'):
     """Convenience function for adjusting axes and axis labels
     Input:
         ax - Axis to label, for single plot pass plt.gca(), for subplot pass 
@@ -355,8 +361,7 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
         off_legend - Offsets the legend such that it appears outside of the 
             plot. You MUST add the artist to the bbox_extra_artists list in
             savefig otherwise it WILL be cut off. 
-        axesKeys - Keys to pass to legend, look at matplotlib documentation for
-            options"""
+            """
 
     ## axes limits
     if xlow is not None:
@@ -369,12 +374,15 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
         ax.set_ylim(top=yhigh)
 
     if yname!=None:
-        if verty:
-            ax.set_ylabel(yname,fontsize=16)
+        if yfontsize is None:
+            ax.set_ylabel(yname)
         else:
-            ax.set_ylabel(yname,fontsize=fontsize)
+            ax.set_ylabel(yname,fontsize=yfontsize)
     if xname!=None:
-        ax.set_xlabel(xname,fontsize=fontsize)
+        if xfontsize is None:
+            ax.set_xlabel(xname)
+        else:
+            ax.set_xlabel(xname,fontsize=xfontsize)
     if logflag[0]:
         ax.set_xscale('log')
     if logflag[1] :
@@ -382,23 +390,30 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),make_legend=0,verty=0,
     if title!=None:
         ax.set_title(title)
 
+    subtextkwargs={}
+    if font_color is not None:
+        subtextkwargs['color']=font_color
+    if subfontsize is not None:
+        subtextkwargs['fontsize']=subfontsize
+
     if supertitle:
         ax.text(.01,.96,supertitle,transform=ax.transAxes,
             verticalalignment='center',horizontalalignment='left',
-            color = font_color,weight=font_weight,fontsize=subfontsize)
+            weight=font_weight,**subtextkwargs)
 
     if subtitle:
         ax.text(.01,.04,subtitle,transform=ax.transAxes,
             verticalalignment='center',horizontalalignment='left',
-            color=font_color,weight=font_weight,fontsize=subfontsize)
+            weight=font_weight,**subtextkwargs)
+
     if slackify:
         slackifyAxes(ax,width,height)
 
     if make_legend:
         if off_legend:
-            return ax.legend(bbox_to_anchor=(1.02,1),frameon=0,**axesKeys)
+            return ax.legend(bbox_to_anchor=(1.02,1),frameon=0)
         else:
-            ax.legend(loc=loc,fontsize=16,frameon=0,**axesKeys)
+            ax.legend(loc=loc+(supertitle is not None),frameon=0)
             return ax.get_legend_handles_labels()
 
 ###### DIRECTORY STUFF ######
