@@ -1,3 +1,5 @@
+## from builtin
+import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -12,6 +14,11 @@ except:
     print "Couldn't reset default colors"
 """
 
+## try and use my default matplotlib rcparams style file
+try:
+    plt.style.use('ABG_default')
+except:
+    pass
 
 def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
     tick_tuple=None):
