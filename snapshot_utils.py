@@ -45,7 +45,8 @@ def openSnapshot(
     keys_to_extract = None,
     fnames = None,
     chimes_keys = [],
-    abg_subsnap = 0):
+    abg_subsnap = 0,
+    loud = 0):
     """
     A straightforward function that concatenates snapshots by particle type and stores
     it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
@@ -111,7 +112,8 @@ def openSnapshot(
 
     for i,fname in enumerate(sorted(fnames)):
     ## let the user know what snapshot file we're trying to open
-        print(fname)
+        if loud:
+            print(fname)
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
