@@ -86,7 +86,7 @@ def fitGauss(xs,ys,yerrs=None):
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys)]
 
     ## define a gaussian with amplitude A, mean mu, and width sigma
-    fn = lambda (mu,sigma,A),x: A*np.exp(-(x-mu)**2./(2*sigma**2.))
+    fn = lambda pars,x: pars[2]*np.exp(-(x-pars[0])**2./(2*pars[1]**2.))
 
     pars = fitLeastSq(fn,p0,xs,ys,yerrs)
     return pars,lambda x: fn(pars,x)
@@ -96,7 +96,7 @@ def fitSkewGauss(xs,ys,yerrs=None):
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys),.5]
 
     ## define a gaussian with amplitude A, mean mu, and width sigma
-    fn = lambda (mu,sigma,A,skew),x: A*np.exp(-(x*skew-mu)**2./(2*sigma**2.))
+    fn = lambda pars,x: pars[2]*np.exp(-(x*pars[3]-pars[0])**2./(2*pars[1]**2.))
 
     pars = fitLeastSq(fn,p0,xs,ys,yerrs)
     return pars,lambda x: fn(pars,x)
@@ -267,7 +267,7 @@ def suppressSTDOUTToFile(fn,args,fname,mode='a+',debug=1):
     try:
         handle=StringIO.StringIO()
         if debug:
-            print 'Warning! Supressing std.out...'
+            print('Warning! Supressing std.out...')
         sys.stdout=handle
 
         ret=fn(**args)
@@ -277,7 +277,7 @@ def suppressSTDOUTToFile(fn,args,fname,mode='a+',debug=1):
     finally:
         sys.stdout=orgstdout
         if debug:
-            print 'Warning! Unsupressing std.out...'
+            print('Warning! Unsupressing std.out...')
 
     return ret
 
@@ -295,7 +295,7 @@ def suppressSTDOUT(fn,args,debug=1):
     try:
         handle=StringIO.StringIO()
         if debug:
-            print 'Warning! Supressing std.out...'
+            print('Warning! Supressing std.out...')
         sys.stdout=handle
 
         ret=fn(**args)
@@ -303,7 +303,7 @@ def suppressSTDOUT(fn,args,debug=1):
     finally:
         sys.stdout=orgstdout
         if debug:
-            print 'Warning! Unsupressing std.out...'
+            print('Warning! Unsupressing std.out...')
 
     return ret
 
@@ -420,19 +420,19 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
 def add_directory_tree(datadir):
     """This function probably already exists lmfao..."""
     if not os.path.isdir(datadir):
-	directories=datadir.split('/')
-	directories_to_make=[]
-	for i in xrange(len(directories)):
-	    trialdir='/'.join(directories[:-i])
-	    if os.path.isdir(trialdir):
-		i-=1
-		for j in xrange(i):
-		    toadd='/'.join(directories[:-j-1])
-		    directories_to_make+=[toadd]
-		break
-	directories_to_make+=[datadir]
-	for directory_to_make in directories_to_make:
-	    os.mkdir(directory_to_make)
+        directories=datadir.split('/')
+        directories_to_make=[]
+        for i in xrange(len(directories)):
+            trialdir='/'.join(directories[:-i])
+            if os.path.isdir(trialdir):
+                i-=1
+                break
+        for j in xrange(i):
+            toadd='/'.join(directories[:-j-1])
+            directories_to_make+=[toadd]
+        directories_to_make+=[datadir]
+        for directory_to_make in directories_to_make:
+            os.mkdir(directory_to_make)
 
 def getfinsnapnum(snapdir,getmin=0):
     if not getmin:
@@ -468,8 +468,8 @@ def extractMaxTime(snapdir):
     elif 'snapdir_%03d'%maxsnapnum in os.listdir(snapdir):
         h5path = "snapdir_%03d/snapshot_%03d.0.hdf5"%(maxsnapnum,maxsnapnum)
     else:
-        print "Couldn't find maxsnapnum in"
-        print os.listdir(snapdir)
+        print("Couldn't find maxsnapnum in")
+        print(os.listdir(snapdir))
         raise Exception("Couldn't find snapshot")
 
     with h5py.File(os.path.join(snapdir,h5path)) as handle:

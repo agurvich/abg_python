@@ -41,7 +41,7 @@ def load_AHF(
 
     path = os.path.join(snapdir,ahf_path,'halo_00000_smooth.dat')
     if not os.path.isfile(path):
-        print "Looking in Zach's halo directories for ahf halo"
+        print("Looking in Zach's halo directories for ahf halo")
         path = "/scratch/03057/zhafen/core/%s/halo/halo_00000_smooth.dat"%name
 
     names_to_read = ['snum','Xc','Yc','Zc','Rvir','v_esc']+extra_names_to_read

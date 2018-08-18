@@ -9,10 +9,10 @@ def get_fnames(snapdir,snapnum,snapdir_name=''):
         raise Exception("Too many files found for that snapnum!",fnames)
 
     try:
-	if os.path.isdir(fnames[0]):
-	    fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
+        if os.path.isdir(fnames[0]):
+            fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
     except IndexError:
-	raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
+        raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
     
     return fnames
 
