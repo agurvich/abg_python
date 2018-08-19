@@ -20,7 +20,11 @@ try:
 except:
     pass
 
-def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
+def addColorbar(
+    ax,cmap,
+    vmin,vmax,
+    label,logflag = 0,
+    fontsize=16,cmap_number=0,
     tick_tuple=None):
     if logflag:
         from matplotlib.colors import LogNorm as norm
@@ -46,11 +50,12 @@ def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
 
     ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
 
-    cb1 = matplotlib.colorbar.ColorbarBase(ax1, cmap=cmap,
-                                    extend='both',
-                                    extendfrac=0.05,
-                                    norm=norm(vmin=vmin,vmax=vmax),
-                                    orientation='vertical')
+    cb1 = matplotlib.colorbar.ColorbarBase(
+        ax1, cmap=cmap,
+        extend='both',
+        extendfrac=0.05,
+        norm=norm(vmin=vmin,vmax=vmax),
+        orientation='vertical')
 
 
     cb1.set_label(label,fontsize=fontsize)
