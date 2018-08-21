@@ -3,16 +3,16 @@ import numpy as np
 from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs
 
-def get_fnames(snapdir,snapnum):
-    fnames = [os.path.join(snapdir,fname) for fname in os.listdir(snapdir) if "_%03d"%snapnum in fname]
+def get_fnames(snapdir,snapnum,snapdir_name=''):
+    fnames = [os.path.join(snapdir,fname) for fname in os.listdir(snapdir) if "%s_%03d"%(snapdir_name,snapnum) in fname]
     if len(fnames) > 1:
         raise Exception("Too many files found for that snapnum!",fnames)
 
     try:
-	if os.path.isdir(fnames[0]):
-	    fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
+        if os.path.isdir(fnames[0]):
+            fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
     except IndexError:
-	raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
+        raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
     
     return fnames
 
@@ -46,6 +46,7 @@ def openSnapshot(
     fnames = None,
     chimes_keys = [],
     abg_subsnap = 0,
+    snapdir_name='',
     loud = 0):
     """
     A straightforward function that concatenates snapshots by particle type and stores
@@ -76,10 +77,11 @@ def openSnapshot(
         keys_to_extract it will be removed and automatically added to chimes_keys.
     abg_subsnap=0 - Boolean flag for whether this *was* a cosmological snapshot that
         I excised the main halo from, using my main analysis pipeline
+    snapdir_name='' - string that must be in snapdir, use to avoid group_
     """
 
     ## get filenames of the snapshot in question
-    fnames = get_fnames(snapdir,snapnum) if fnames is None else fnames
+    fnames = get_fnames(snapdir,snapnum,snapdir_name) if fnames is None else fnames
 
     ## split off chimes keys, if necessary
     if keys_to_extract is not None:
