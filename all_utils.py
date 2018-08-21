@@ -179,9 +179,24 @@ def fitExponential(xs,ys):
 
 
 #math functions
+def vectorsToRAAndDec(vectors):
+    xs,ys,zs = vectors.T
+    ## puts the meridian at x = 0
+    ra = np.arctan2(ys,xs)
+
+    ## puts the equator at z = 0
+    dec = np.arctan2(zs,(xs**2+ys**2))
+
+    return ra,dec
+
 def rotateVectorsZY(thetay,thetaz,vectors):
     rotatedCoords=rotateVectors(rotationMatrixZ(thetaz),vectors)
     rotatedCoords=rotateVectors(rotationMatrixY(thetay),rotatedCoords)
+    return rotatedCoords
+
+def unrotateVectorsZY(thetay,thetaz,vectors):
+    rotatedCoords=rotateVectors(rotationMatrixY(-thetay),vectors)
+    rotatedCoords=rotateVectors(rotationMatrixZ(-thetaz),rotatedCoords)
     return rotatedCoords
 
 def rotateVectors(rotationMatrix,vectors):
