@@ -201,7 +201,7 @@ def openSnapshot(
                 pass
     
     ## get stellar ages if this is a star particle dataset
-    if ( (ptype == 4) and 
+    if ( (ptype in [4] + [2,3]*(not cosmological)) and 
      ('StellarFormationTime' in new_dictionary.keys()) and
      (keys_to_extract is None or 'AgeGyr' in keys_to_extract) ): 
         if cosmological:
@@ -216,6 +216,10 @@ def openSnapshot(
         for key in (set(age_keys) - subtract_set):
             new_dictionary.pop(key)
     
+    ## it would be good to check if the number of particles read is the same as 
+    ##  the total number advertised in the snapshot... but can't guarantee any one
+    ##  key to check (or that any arrays were read at all!)
+    #assert new_dictionary['NumPart_Total'][ptype] == new_dictionary['Masses'].shape
     return new_dictionary
 
 ## pandas dataframe stuff
