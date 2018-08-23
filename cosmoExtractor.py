@@ -7,7 +7,7 @@ from abg_python.snapshot_utils import openSnapshot
 def makeOutputDir(snapdir):
     datadir=os.path.join(snapdir,'subsnaps')
     if 'subsnaps' not in os.listdir(snapdir):
-        print 'making directory subsnaps in %s' % snapdir
+        print('making directory subsnaps in %s' % snapdir)
         os.mkdir(datadir)
     return datadir
 
@@ -63,7 +63,7 @@ def getAngularMomentumSquared(vectors,masses,velocities):
 def getThetas(angMom):
     thetay = np.arctan2(np.sqrt(angMom[0]**2+angMom[1]**2),(angMom[2]))
     thetaz = np.arctan2(angMom[1],angMom[0])
-    #print "want to rotate by",thetay*180/np.pi,thetaz*180/np.pi
+    #print("want to rotate by",thetay*180/np.pi,thetaz*180/np.pi)
     return thetay,thetaz
 
 def iterativeCoM(coords,masses,n=4,r0=np.array([0,0,0])):
@@ -127,7 +127,7 @@ def extractDiskFromArrays(
         gindices= extractSphericalVolumeIndices(rs,scom,big_radius**2)
         spherical_galactocentric_radii = np.sum((rs[gindices]-scom)**2,axis=1)**0.5
         radius = np.sum(spherical_galactocentric_radii*masses[gindices])/np.sum(masses[gindices])
-        print "Determined radius to be:",radius
+        print("Determined radius to be:",radius)
 
     ## extract particles within radius cube
     #gindices = extractRectangularVolumeIndices(rs,scom,radius,height=radius) 
@@ -182,7 +182,7 @@ def diskFilterDictionary(
     if star_snap is None:
         orient_stars=0
     if 'overwritten' in snap:
-        print "This snapshot has already been rotated and offset!"
+        print("This snapshot has already been rotated and offset!")
         scom = np.zeros(3)
         thetay,thetaz = snap['thetay'],snap['thetaz']
         scom,vscom = snap['scom'],snap['vscom']

@@ -20,7 +20,11 @@ try:
 except:
     pass
 
-def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
+def addColorbar(
+    ax,cmap,
+    vmin,vmax,
+    label,logflag = 0,
+    fontsize=16,cmap_number=0,
     tick_tuple=None):
     if logflag:
         from matplotlib.colors import LogNorm as norm
@@ -46,11 +50,12 @@ def addColorbar(ax,cmap,vmin,vmax,label,logflag = 0,fontsize=16,cmap_number=0,
 
     ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
 
-    cb1 = matplotlib.colorbar.ColorbarBase(ax1, cmap=cmap,
-                                    extend='both',
-                                    extendfrac=0.05,
-                                    norm=norm(vmin=vmin,vmax=vmax),
-                                    orientation='vertical')
+    cb1 = matplotlib.colorbar.ColorbarBase(
+        ax1, cmap=cmap,
+        extend='both',
+        extendfrac=0.05,
+        norm=norm(vmin=vmin,vmax=vmax),
+        orientation='vertical')
 
 
     cb1.set_label(label,fontsize=fontsize)
@@ -101,7 +106,7 @@ def addSegmentedColorbar(ax,colors,vmin,vmax,label,logflag=0,fontsize=16,cmap_nu
     cb.ax.tick_params(labelsize=fontsize-2)
     return lambda x: cmap(norm(x))
 
-def plotMulticolorLine(ax,xs,ys,zs,cmap,n_interp=50):
+def plotMulticolorLine(ax,xs,ys,zs,cmap,n_interp=50,**kwargs):
     """
         takes x/y values and creates a line collection object
         of line segments between points in x/y colored by cmap(zs). 
@@ -115,7 +120,7 @@ def plotMulticolorLine(ax,xs,ys,zs,cmap,n_interp=50):
     points = np.array([xs, ys]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-    lc = LineCollection(segments, cmap=cmap,norm=plt.Normalize(0, 1))
+    lc = LineCollection(segments, cmap=cmap,norm=plt.Normalize(0, 1),**kwargs)
     lc.set_array(zs)
     lc.set_linewidth(3)
     ax.add_collection(lc)
@@ -161,7 +166,7 @@ def make_colormap(mycolors,ninterp=100):
 
     return my_cmap
 
-def plotMultiColorHist(ax,edges,h,vmin,vmax,ncolors = 4):
+def plotMultiColorHist(ax,edges,h,vmin,vmax,ncolors = 4, clabel =''):
 
     ## setup ticks and colors
     viridis = plt.get_cmap('viridis')
@@ -194,7 +199,7 @@ def plotMultiColorHist(ax,edges,h,vmin,vmax,ncolors = 4):
     color_mapper = addSegmentedColorbar(
         ax,colors,
         vmin,vmax,
-        'mass fraction',
+        clabel,
         logflag=1,
         tick_tuple=(ticks[1:-1],["%.2f"%tick for tick in ticks[1:-1]]))
 
