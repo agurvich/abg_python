@@ -60,11 +60,11 @@ def getTemperature(
 
 def get_IMass(age,mass):
     ## based off mass loss in gizmo plot, averaged over 68 stars
-    b = 0.62
-    a = -0.071
+    b = 0.587
+    a = -8.26e-2
     factors = b*age**a 
     factors[factors > 1]=1
-    factors[factors < 0.8]=0.8
+    factors[factors < 0.76]=0.76
     return mass/factors
 
 #fitting functions
@@ -453,7 +453,7 @@ def getfinsnapnum(snapdir,getmin=0):
     if not getmin:
         maxnum = 0
         for snap in os.listdir(snapdir):
-            if 'snapshot' in snap and 'hdf5' in snap:
+            if 'snapshot' in snap and 'hdf5' in snap and snap.index('snapshot')==0:
                 snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
                 if snapnum > maxnum:
                     maxnum=snapnum
@@ -479,7 +479,7 @@ def extractMaxTime(snapdir):
     """Extracts the time variable from the final snapshot"""
     maxsnapnum = getfinsnapnum(snapdir)
     if 'snapshot_%3d.hdf5'%maxsnapnum in os.listdir(snapdir):
-        h5path = 'snapshot_%3d.hdf5'
+        h5path = 'snapshot_%3d.hdf5'%maxsnapnum
     elif 'snapdir_%03d'%maxsnapnum in os.listdir(snapdir):
         h5path = "snapdir_%03d/snapshot_%03d.0.hdf5"%(maxsnapnum,maxsnapnum)
     else:
@@ -487,7 +487,7 @@ def extractMaxTime(snapdir):
         print(os.listdir(snapdir))
         raise Exception("Couldn't find snapshot")
 
-    with h5py.File(os.path.join(snapdir,h5path)) as handle:
+    with h5py.File(os.path.join(snapdir,h5path),'r') as handle:
         maxtime = handle['Header'].attrs['Time']
     return maxtime
 

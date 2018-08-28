@@ -1,5 +1,6 @@
 import h5py,sys,os
 import numpy as np
+import pandas as pd
 from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs
 
@@ -47,7 +48,8 @@ def openSnapshot(
     chimes_keys = [],
     abg_subsnap = 0,
     snapdir_name='',
-    loud = 0):
+    loud = 0,
+    no_header_keys = 0):
     """
     A straightforward function that concatenates snapshots by particle type and stores
     it all into a dictionary, inspired by Phil Hopkins' readsnap.py. It's
@@ -119,7 +121,12 @@ def openSnapshot(
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
-                fillHeader(new_dictionary,handle)
+                if not no_header_keys:
+                    fillHeader(new_dictionary,handle)
+                else:
+                    ## need them for the units, we'll pop them later
+                    for key in ['HubbleParam','Time','Redshift']:
+                        new_dictionary[key]=handle['Header'].attrs[key]
 
                 ## read subsnap extraction keys
                 if abg_subsnap and 'ABG_Header' in handle.keys():
@@ -129,7 +136,9 @@ def openSnapshot(
                         new_dictionary[key]=np.array(handle['ABG_Header/PartType%d'%ptype][key])
 
                 ## determine if this snapshot is cosmological
-                if new_dictionary['HubbleParam']!=1 and not cosmological and not abg_subsnap:
+                if ( new_dictionary['HubbleParam']!=1 and 
+                    not cosmological and 
+                    not abg_subsnap):
                     print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
@@ -222,27 +231,41 @@ def openSnapshot(
     ##  the total number advertised in the snapshot... but can't guarantee any one
     ##  key to check (or that any arrays were read at all!)
     #assert new_dictionary['NumPart_Total'][ptype] == new_dictionary['Masses'].shape
+    if no_header_keys:
+        ## needed them for the units, popping them now
+        for key in ['HubbleParam','Time','Redshift','fnames']:
+            new_dictionary.pop(key)
     return new_dictionary
 
 ## pandas dataframe stuff
-def readsnapToDF(snapdir,snapnum,parttype):
-    res = readsnap(snapdir,snapnum,parttype,cosmological='m12i' in snapdir)
+def openSnapshotToDF(snapdir,snapnum,parttype,**kwargs):
+    ## can't keep the header keys in there and add them to the dataframe
+    snap = openSnapshot(snapdir,snapnum,parttype,no_header_keys=1,**kwargs)
+
+    ## handle multidimensional array data, if it's been requested
+    if 'Coordinates' in snap:
+        coords = snap.pop('Coordinates')
+        snap['xs'],snap['ys'],snap['zs']=coords.T
+
+    if 'Velocities' in snap:
+        vels = snap.pop('Velocities')
+        snap['vxs'],snap['vys'],snap['vzs']=vels.T
+
+    if 'Metallicity' in snap:
+        metallicity = snap.pop('Metallicity')
+
+        ## flatten the various metallicity arrays
+        for i,zarray in enumerate(metallicity.T):
+            snap['met%d'%i]=zarray
     
-    ids = res.pop('id')
+    ## are the particle IDs in the snap? then index by them
+    if 'ParticleIDs' in snap:
+        ids = snap.pop('ParticleIDs')
+        snap_df = pd.DataFrame(snap,index=ids)
+    else:
+        print("You didn't ask for IDs, so I'm not indexing by them")
+        snap_df = pd.DataFrame(snap)
 
-    vels = res.pop('v')
-    coords = res.pop('p')
-
-    res['xs'],res['vxs'] = coords[:,0],vels[:,0]
-    res['ys'],res['vys'] = coords[:,1],vels[:,1]
-    res['zs'],res['vzs'] = coords[:,2],vels[:,2]
-
-
-    metallicity = res.pop('z')
-    for i,zarray in enumerate(metallicity.T):
-        res['met%d'%i]=zarray
-    
-    snap_df = pd.DataFrame(res,index=ids)
     return snap_df
 
 ## thanks Alex Richings!
