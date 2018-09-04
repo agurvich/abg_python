@@ -80,6 +80,9 @@ def openSnapshot(
     abg_subsnap=0 - Boolean flag for whether this *was* a cosmological snapshot that
         I excised the main halo from, using my main analysis pipeline
     snapdir_name='' - string that must be in snapdir, use to avoid group_
+    loud - flag for if you like being shouted at when you open a new file
+    no_header_keys - removes the header keys from the dictionary, but you shouldn't want this
+        unless you are passing the dictionary into a dataframe, see below
     """
 
     ## get filenames of the snapshot in question
@@ -235,6 +238,20 @@ def openSnapshot(
         ## needed them for the units, popping them now
         for key in ['HubbleParam','Time','Redshift','fnames']:
             new_dictionary.pop(key)
+
+    ## handle Time in header for cosmological/isolated galaxy
+    if 'Time' in new_dictionary:
+        if cosmological:
+            new_dictionary['TimeGyr'] = convertStellarAges(
+                new_dictionary['HubbleParam'],
+                new_dictionary['Omega0']
+                ,1e-12,
+                new_dictionary['Time'])
+            new_dictionary['ScaleFactor'] = new_dictionary['Time']
+        else:
+            new_dictionary['TimeGyr'] = new_dictionary['Time']/0.978
+            new_dictionary['ScaleFactor'] = 1
+
     return new_dictionary
 
 ## pandas dataframe stuff

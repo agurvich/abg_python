@@ -59,6 +59,7 @@ def getTemperature(
     return mean_molecular_weight * (gamma-1) * U_cgs / kB
 
 def get_IMass(age,mass):
+    ## age must be in Gyr
     ## based off mass loss in gizmo plot, averaged over 68 stars
     b = 0.587
     a = -8.26e-2
