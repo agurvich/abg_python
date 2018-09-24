@@ -2,7 +2,7 @@ import h5py,sys,os
 import numpy as np
 import pandas as pd
 from abg_python.all_utils import getTemperature
-from abg_python.cosmo_utils import getAgesGyrs
+from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
 
 def get_fnames(snapdir,snapnum,snapdir_name=''):
     fnames = [os.path.join(snapdir,fname) for fname in os.listdir(snapdir) if "%s_%03d"%(snapdir_name,snapnum) in fname]
