@@ -9,6 +9,7 @@ from scipy.spatial.distance import cdist as cdist
 
 # Code mass -> g , (code length)^-3 -> cm^-3 , g -> nH
 DENSITYFACT=2e43*(3.086e21)**-3/(1.67e-24)
+HYDROGENMASS = 1.67e-24  # g
 
 
 ## dictionary helper functions
@@ -530,6 +531,7 @@ def calculateSigma1D(vels,masses):
     return (np.sum(v2_avg-v_avg_2)/3)**0.5
 
 def denToff_time(den):
+    """den must be in g/cc"""
     Gcgs = 6.67e-8 # cm^3 /g /s^2
     ff_time = (
         3*np.pi/(32*Gcgs) /
