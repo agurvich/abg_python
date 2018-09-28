@@ -530,13 +530,19 @@ def calculateSigma1D(vels,masses):
     v2_avg = (np.sum(vels**2*masses[:,None],axis=0)/np.sum(masses))
     return (np.sum(v2_avg-v_avg_2)/3)**0.5
 
+def ff_timeToDen(ff_time):
+    """ff_time must be in yr"""
+    Gcgs = 6.67e-8 # cm^3 /g /s^2
+    den = 3*np.pi/(32*Gcgs)/(ff_time * 3.15e7)**2 # g/cc
+    return den 
+
 def denToff_time(den):
     """den must be in g/cc"""
     Gcgs = 6.67e-8 # cm^3 /g /s^2
     ff_time = (
         3*np.pi/(32*Gcgs) /
         den  # g/cc
-        )**0.5 #s
+        )**0.5 # s
 
     ff_time /=3.15e7 # yr
     return ff_time

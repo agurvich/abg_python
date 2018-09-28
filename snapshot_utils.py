@@ -117,6 +117,15 @@ def openSnapshot(
     age_keys = ['StellarFormationTime']*((keys_to_extract is not None) and ('AgeGyr' in keys_to_extract))
 
 
+    popped = 0
+    for i in range(len(fnames)):
+        fname =  fnames[i-popped]
+        if fname[-5:] != '.hdf5':
+            ## this is some weird broken file, idk, like 
+            ##  .snapshot_296.1.hdf5.VsOrnF which I encountered once
+            fnames.pop(i)
+            popped+=1
+
     for i,fname in enumerate(sorted(fnames)):
     ## let the user know what snapshot file we're trying to open
         if loud:
