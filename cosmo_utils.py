@@ -35,16 +35,21 @@ def load_AHF(
     current_redshift,
     hubble = 0.702,
     ahf_path=None,
-    extra_names_to_read = ['Rstar0.5']):
+    extra_names_to_read = ['Rstar0.5'],
+    fname = 'halo_00000_smooth.dat'):
 
     ahf_path = '../halo/ahf/' if ahf_path is None else ahf_path
 
-    path = os.path.join(snapdir,ahf_path,'halo_00000_smooth.dat')
+    path = os.path.join(snapdir,ahf_path,fname)
+
+    if 'anglesd' in snapdir:
+        path = os.path.join(snapdir,'AHF',fname)
+
     if not os.path.isfile(path):
         print("Looking in Zach's halo directories for ahf halo")
         path = "/scratch/03057/zhafen/core/%s/halo/halo_00000_smooth.dat"%name
 
-    names_to_read = ['snum','Xc','Yc','Zc','Rvir','v_esc']+extra_names_to_read
+    names_to_read = ['snum','Xc','Yc','Zc','Rvir']+extra_names_to_read
 
     names = list(np.genfromtxt(path,skip_header=0,max_rows = 1,dtype=str))
     cols = []
@@ -68,9 +73,8 @@ def load_AHF(
 
     ## comoving kpc to pkpc
     rvir = output[:,4][index][0]/hubble*(1/(1+current_redshift))
-    vesc = output[:,5][index][0]
 
-    return_val = [scom, rvir, vesc]
+    return_val = [scom, rvir]
     if 'Rstar0.5' in names_to_read:
         rstar_half = output[:,names_to_read.index('Rstar0.5')][index][0]/hubble*(1/(1+current_redshift))
         return_val+=[rstar_half]
