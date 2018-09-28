@@ -120,7 +120,7 @@ def extractDiskFromArrays(
         scom = iterativeCoM(srs,smasses,r0=scom)#rs[np.argmax(rhos)])
 
     if radius is None:
-        raise Exception("Should be using 5rstarhalf!")
+        raise Exception("Should be using 3rstarhalf!")
         #mass_fact = np.sum(smasses)+np.sum(masses) 
         big_radius = 25  # if baryonic mass is > 10^10 solar masses then should use 25 kpc as outer radius
         sindices= extractSphericalVolumeIndices(srs,scom,big_radius**2)

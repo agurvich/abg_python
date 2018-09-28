@@ -5,7 +5,11 @@ from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
 
 def get_fnames(snapdir,snapnum,snapdir_name=''):
-    fnames = [os.path.join(snapdir,fname) for fname in os.listdir(snapdir) if "%s_%03d"%(snapdir_name,snapnum) in fname]
+    fnames = [
+        os.path.join(snapdir,fname) 
+        for fname in os.listdir(snapdir) if (
+            ("%s_%03d"%(snapdir_name,snapnum) in fname) and 
+            ('group' not in fname) )]
     if len(fnames) > 1:
         raise Exception("Too many files found for that snapnum!",fnames)
 
