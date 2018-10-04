@@ -1,6 +1,6 @@
 import h5py,sys,getopt,os
 import numpy as np
-from abg_python.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors
+from abg_python.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors,unrotateVectorsZY
 
 from abg_python.snapshot_utils import openSnapshot
 
@@ -115,6 +115,7 @@ def extractDiskFromArrays(
     """
     #scom = None
     if scom is None:
+        raise Exception("We should never do this!")
         ## find com using iterative shells
         scom = np.sum(smasses[:,None]*srs,axis=0)/np.sum(smasses)
         scom = iterativeCoM(srs,smasses,r0=scom)#rs[np.argmax(rhos)])
@@ -129,10 +130,6 @@ def extractDiskFromArrays(
         radius = np.sum(spherical_galactocentric_radii*masses[gindices])/np.sum(masses[gindices])
         print("Determined radius to be:",radius)
 
-    ## extract particles within radius cube
-    #gindices = extractRectangularVolumeIndices(rs,scom,radius,height=radius) 
-    #sindices = extractRectangularVolumeIndices(srs,scom,radius,height=radius)
-
     ## extract particles within radius sphere
     if srs is not None:
         sindices = extractSphericalVolumeIndices(srs,scom,radius**2)
@@ -144,11 +141,16 @@ def extractDiskFromArrays(
     if orient_stars:
         vscom,thetay,thetaz = orientDisk(smasses[sindices],svs[sindices],srs[sindices],scom)
     else:
+        try:
+            assert np.sum(gindices)>0
+        except AssertionError:
+            print(scom,radius)
+            raise ValueError("No gas particles to orient the disk on!")
         vscom,thetay,thetaz = orientDisk(masses[gindices],vs[gindices],rs[gindices],scom)
 
     return thetay,thetaz,scom,vscom,gindices,sindices,radius
 
-def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz):
+def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz,orient_stars):
 
     ## rotate the coordinates of the spherical extraction
     new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
@@ -160,9 +162,15 @@ def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz):
 
     ## store com information in case its relevant
     add_to_dict = {
-        'scom':scom,'vscom':vscom,
         'thetay':thetay,'thetaz':thetaz,
-        'overwritten':1}
+        'overwritten':1,
+        'orient_stars':orient_stars}
+
+    ## if the snap is already overwritten this info is in there
+    if 'scom' not in snap:
+        add_to_dict['scom']=scom
+    if 'vscom' not in snap:
+        add_to_dict['vscom']=vscom
 
     ## add relevant keys
     snap.update(add_to_dict)
@@ -174,51 +182,77 @@ def diskFilterDictionary(
     star_snap,snap,
     radius,cylinder='',
     scom=None,dark_snap=None,orient_stars=0,
-    rect_buffer=1.1,
-    overwrite_full_snaps_with_rotated_versions=False):
+    rect_buffer=1.1):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
     if star_snap is None:
         orient_stars=0
+        print("No star snap, can't orient on stars like you requested!")
+
+    reorient=1
     if 'overwritten' in snap:
-        print("This snapshot has already been rotated and offset!")
-        scom = np.zeros(3)
-        thetay,thetaz = snap['thetay'],snap['thetaz']
-        scom,vscom = snap['scom'],snap['vscom']
+        print("This snapshot has already been offset, I'll check if I need to rerotate!")
+        if orient_stars != snap['orient_stars']:
+            ## let's put it back the way we found it
+            thetay,thetaz = snap['thetay'],snap['thetaz']
+            for this_snap in ([snap] + 
+                [star_snap]*(star_snap is not None)+
+                [dark_snap]*(dark_snap is not None)):
+                this_snap['Coordinates'] = snap['scom'] + unrotateVectorsZY(
+                    thetay,thetaz,
+                    this_snap['Coordinates'])
 
-        gindices = extractSphericalVolumeIndices(snap['Coordinates'],np.zeros(3),radius**2)
-        sindices = extractSphericalVolumeIndices(star_snap['Coordinates'],np.zeros(3),radius**2)
-        if dark_snap is not None:
-            dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
+                this_snap['Velocities'] = snap['vscom'] + unrotateVectorsZY(
+                    thetay,thetaz,
+                    this_snap['Velocities'])
+        else:
+            ## just getting a sub-volume of the orientation we already have
+            reorient = 0
+            scom = vscom = np.zeros(3)
 
-    else:
+            ## get new indices to get gas particles around edge of boundaries that might
+            ##  need to be in-(ex-)cluded with the new orientation
+            gindices = extractSphericalVolumeIndices(snap['Coordinates'],np.zeros(3),radius**2)
+            if star_snap is not None:
+                sindices = extractSphericalVolumeIndices(star_snap['Coordinates'],np.zeros(3),radius**2)
+            if dark_snap is not None:
+                dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
+
+    if reorient:
+        print("Reorienting...",)
         thetay,thetaz,scom,vscom,gindices,sindices,radius=extractDiskFromSnapdict(
             star_snap,snap,radius,scom=scom,orient_stars=orient_stars)
+        print("Done.")
     
+        ## overwrites the coordinates in the snapshot
         snap = offsetRotateSnapshot(
             snap,
             scom,vscom,
-            thetay,thetaz)
+            thetay,thetaz,
+            orient_stars)
 
+        ## overwrites the coordinates in the snapshot
         if star_snap is not None:
             star_snap = offsetRotateSnapshot(
                 star_snap,
                 scom,vscom,
-                thetay,thetaz)
+                thetay,thetaz,
+                orient_stars)
             
         if dark_snap is not None:
             ## rotate position/velocity vectors
             dark_snap = offsetRotateSnapshot(
                 dark_snap,
                 scom,vscom,
-                thetay,thetaz)
+                thetay,thetaz,
+                orient_stars)
 
             ## extract spherical volume
             dindices = extractSphericalVolumeIndices(dark_snap['Coordinates'],np.zeros(3),radius**2)
 
     ## dictionary to add to extracted snapshot
-    add_to_dict = {'scale_radius':radius,'orient_stars':orient_stars,'rect_buffer':rect_buffer}
+    add_to_dict = {'scale_radius':radius,'rect_buffer':rect_buffer}
 
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':

@@ -66,6 +66,7 @@ def load_AHF(
     index = output[:,0]==snapnum
     if np.sum(index)==0:
         ## snapnum is not in this halo file
+        print(output[:,0])
         raise IOError
     ## psnapumably in comoving kpc/h 
     scom = np.array([xs[index],ys[index],zs[index]])/hubble*(1/(1+current_redshift))
