@@ -352,6 +352,28 @@ def slackifyAxes(ax,width=8,height=6):
     fig.set_size_inches(width,height)
     fig.set_facecolor('white')
     
+
+import matplotlib.ticker
+def my_log_formatter(x,y):
+    """inspired by the nightmare mess that Jonathan Stern
+        sent me after being offended by my ugly log axes"""
+    if x in [1e-2,1e-1,1,10,100]:
+        return r"$%g$"%x
+    else:
+        return matplotlib.ticker.LogFormatterMathtext()(x)
+
+my_log_ticker = matplotlib.ticker.FuncFormatter(my_log_formatter)
+
+def addSecondAxis(ax,new_tick_labels,new_tick_locations=None,mirror='y'):
+    if mirror == 'y':
+        ax1 = ax.twiny()
+    elif mirror == 'x':
+        ax1 = ax.twinx()
+    
+    ax1.set_xticks(ax.get_xticks() if new_tick_locations is None else new_tick_locations)
+    ax1.set_xticklabels(new_tick_labels)
+    return ax1
+    
 def nameAxes(ax,title,xname,yname,logflag=(0,0),
             subtitle=None,supertitle=None,
             make_legend=0,off_legend=0,
@@ -402,8 +424,10 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
             ax.set_xlabel(xname,fontsize=xfontsize)
     if logflag[0]:
         ax.set_xscale('log')
+        ax.xaxis.set_major_formatter(my_log_ticker)
     if logflag[1] :
         ax.set_yscale('log',nonposy='clip')
+        ax.yaxis.set_major_formatter(my_log_ticker)
     if title!=None:
         ax.set_title(title)
 
