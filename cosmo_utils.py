@@ -46,6 +46,7 @@ def load_AHF(
         path = os.path.join(snapdir,'AHF',fname)
 
     if not os.path.isfile(path):
+        print("Couldn't find",path)
         print("Looking in Zach's halo directories for ahf halo")
         path = "/scratch/03057/zhafen/core/%s/halo/halo_00000_smooth.dat"%name
 
