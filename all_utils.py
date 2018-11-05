@@ -439,7 +439,7 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
 
     if supertitle:
         ax.text(.01,.96,supertitle,transform=ax.transAxes,
-            verticalalignment='center',horizontalalignment='left',
+            verticalalignment='top',horizontalalignment='left',
             weight=font_weight,**subtextkwargs)
 
     if subtitle:

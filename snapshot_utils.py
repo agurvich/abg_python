@@ -152,9 +152,7 @@ def openSnapshot(
                         new_dictionary[key]=np.array(handle['ABG_Header/PartType%d'%ptype][key])
 
                 ## determine if this snapshot is cosmological
-                if ( new_dictionary['HubbleParam']!=1 and 
-                    not cosmological and 
-                    not abg_subsnap):
+                if ( new_dictionary['HubbleParam']!=1 and not cosmological):
                     print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
