@@ -374,6 +374,40 @@ def addSecondAxis(ax,new_tick_labels,new_tick_locations=None,mirror='y'):
     ax1.set_xticklabels(new_tick_labels)
     return ax1
     
+
+def bufferAxesLabels(axs,nrows,ncols):
+    """Changes the vertical/horizontal alignment of the first & last ytick/xtick 
+    such that adjacent panels don't have overlapping labels. For some ridiculous
+    reason if you are using a log scale the first and last ticks are denoted by -2 and 1 
+    instead of -1 and 0 (and really why are they reversed in the first place??)
+    Input:
+        axs - flattened axis array
+        nrows - number of rows
+        ncols - number of columns"""
+    ## handle the y axis labels first
+    if nrows > 1:
+        for ax in axs:
+            yticks = ax.get_yticklabels()
+            yscale = ax.get_yscale()=='log'
+            ## if we're in the first row don't need to mess with the top tick
+            if ax not in axs[:ncols]:
+                yticks[-1 - yscale].set_verticalalignment('top')
+            ## if we're in the last row we don't need to mess with the bottom tick
+            if ax not in axs[-ncols:]:
+                yticks[yscale].set_verticalalignment('bottom')
+                
+    ## handle the x axis labels next
+    if ncols > 1:
+        for ax in axs:
+            xticks = ax.get_xticklabels()
+            xscale = ax.get_xscale()=='log'
+            ## if we're in the left most column we don't need to change the first tick
+            if ax not in axs[::ncols]:
+                xticks[xscale].set_horizontalalignment('left')
+            ## if we're in the right most column we don't need to change the last tick
+            if ax not in axs[-1::-ncols]:
+                xticks[-1-xscale].set_horizontalalignment('right')
+
 def nameAxes(ax,title,xname,yname,logflag=(0,0),
             subtitle=None,supertitle=None,
             make_legend=0,off_legend=0,
