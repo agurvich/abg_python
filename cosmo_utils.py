@@ -36,7 +36,9 @@ def load_AHF(
     hubble = 0.702,
     ahf_path=None,
     extra_names_to_read = ['Rstar0.5'],
-    fname = 'halo_00000_smooth.dat'):
+    fname = None):
+    if fname is None:
+        fname = 'halo_00000_smooth.dat'
 
     ahf_path = '../halo/ahf/' if ahf_path is None else ahf_path
 
@@ -46,9 +48,7 @@ def load_AHF(
         path = os.path.join(snapdir,'AHF',fname)
 
     if not os.path.isfile(path):
-        print("Couldn't find",path)
-        print("Looking in Zach's halo directories for ahf halo")
-        path = "/scratch/03057/zhafen/core/%s/halo/halo_00000_smooth.dat"%name
+        raise IOError("path %s does not exist"%path)
 
     names_to_read = ['snum','Xc','Yc','Zc','Rvir']+extra_names_to_read
 
