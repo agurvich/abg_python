@@ -187,7 +187,7 @@ def diskFilterDictionary(
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
     ## make sure someone didn't pass no stars but ask us to orient the disk about the stars
-    if star_snap is None:
+    if star_snap is None and orient_stars:
         orient_stars=0
         print("No star snap, can't orient on stars like you requested!")
 

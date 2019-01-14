@@ -36,9 +36,10 @@ def load_AHF(
     hubble = 0.702,
     ahf_path=None,
     extra_names_to_read = ['Rstar0.5'],
-    fname = 'halo_00000_smooth.dat'):
+    fname = None):
 
     ahf_path = '../halo/ahf/' if ahf_path is None else ahf_path
+    fname = 'halo_00000_smooth.dat' if fname is None else fname
 
     path = os.path.join(snapdir,ahf_path,fname)
 

@@ -263,6 +263,9 @@ def openSnapshot(
             new_dictionary['TimeGyr'] = new_dictionary['Time']/0.978
             new_dictionary['ScaleFactor'] = 1
 
+    ## save whether dictionary is cosmological 
+    new_dictionary['cosmological'] = cosmological
+
     return new_dictionary
 
 ## pandas dataframe stuff

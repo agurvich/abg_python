@@ -491,7 +491,7 @@ def getfinsnapnum(snapdir,getmin=0):
     else:
         minnum=1e8
         for snap in os.listdir(snapdir):
-            if 'snapshot' in snap:
+            if 'snapshot' in snap and 'hdf5' in snap:
                 snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
                 if snapnum < minnum:
                     minnum=snapnum
