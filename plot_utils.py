@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
+from abg_python.all_utils import my_log_formatter
+
 """
 try:
     from distinct_colours import get_distinct
@@ -30,12 +32,12 @@ def addColorbar(
     if logflag:
         from matplotlib.colors import LogNorm as norm
         ticks = np.linspace(np.log10(vmin),np.log10(vmax),5,endpoint=True)
-        tick_labels= [r"$10^{%.1f}$"%tick for tick in ticks]
         ticks = 10**ticks
+        tick_labels= [my_log_formatter(tick,None) for tick in ticks]
     else:
         from matplotlib.colors import Normalize as norm
         ticks = np.linspace(vmin,vmax,5,endpoint=True)
-        tick_labels= ticks
+        tick_labels= ["%.2f" % tick for tick in ticks]
     
     if tick_tuple is not None:
         ticks,tick_labels = tick_tuple
