@@ -357,3 +357,33 @@ chimes_dict = {"elec": 0,
                "CH": 145,"CH2": 146,"CH3p": 147,"CO": 148,
                "CHp": 149,"CH2p": 150,"OHp": 151,"H2Op": 152,
                "H3Op": 153,"COp": 154,"HOCp": 155,"O2p": 156}
+
+
+"""
+Not really useful as a result of 
+https://github.com/h5py/h5py/issues/293
+where indexing with h5py is really slow
+
+def openIndexCache():
+    snapdicts = [{},{},{}]
+    for p_i, ptype in enumerate([0]):
+        compiled_snapdict = snapdicts[p_i]
+        with h5py.File(outpath,'r') as sub_handle:
+            heavy_data_path = sub_handle['Header'].attrs['HeavyDataPath']
+            for key in sub_handle.keys():
+                if key == 'Header':
+                    continue
+                with h5py.File(os.path.join(heavy_data_path,key+'.hdf5'),'r') as handle:
+                    indices = sub_handle[key]['ThisSnapMask_PartType%d'%ptype].value
+                    particle_group = handle['PartType%d'%ptype]
+                    for pkey in particle_group.keys():
+                        dataset = particle_group[pkey]
+                        raise Exception("check for dataset shape")
+                        if pkey not in compiled_snapdict:
+                            compiled_snapdict[pkey] = particle_group[pkey][indices]
+                        else:
+                            compiled_snapdict[pkey] = np.append(
+                                compiled_snapdict[pkey],
+                                particle_group[pkey][indices].value)
+                            
+"""
