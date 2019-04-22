@@ -387,26 +387,34 @@ def bufferAxesLabels(axs,nrows,ncols):
     ## handle the y axis labels first
     if nrows > 1:
         for ax in axs:
-            yticks = ax.get_yticklabels()
-            yscale = ax.get_yscale()=='log'
-            ## if we're in the first row don't need to mess with the top tick
-            if ax not in axs[:ncols]:
-                yticks[-1 - yscale].set_verticalalignment('top')
-            ## if we're in the last row we don't need to mess with the bottom tick
-            if ax not in axs[-ncols:]:
-                yticks[yscale].set_verticalalignment('bottom')
+            try:
+                yticks = ax.get_yticklabels()
+                yscale = ax.get_yscale()=='log'
+                ## if we're in the first row don't need to mess with the top tick
+                if ax not in axs[:ncols]:
+                    yticks[-1 - yscale].set_verticalalignment('top')
+                ## if we're in the last row we don't need to mess with the bottom tick
+                if ax not in axs[-ncols:]:
+                    if len(yticks)>0:
+                        yticks[yscale].set_verticalalignment('bottom')
+            except IndexError as e:
+                pass ## this can fail if share_y = True
                 
     ## handle the x axis labels next
     if ncols > 1:
         for ax in axs:
-            xticks = ax.get_xticklabels()
-            xscale = ax.get_xscale()=='log'
-            ## if we're in the left most column we don't need to change the first tick
-            if ax not in axs[::ncols]:
-                xticks[xscale].set_horizontalalignment('left')
-            ## if we're in the right most column we don't need to change the last tick
-            if ax not in axs[-1::-ncols]:
-                xticks[-1-xscale].set_horizontalalignment('right')
+            try:
+                xticks = ax.get_xticklabels()
+                xscale = ax.get_xscale()=='log'
+                ## if we're in the left most column we don't need to change the first tick
+                if ax not in axs[::ncols]:
+                    xticks[xscale].set_horizontalalignment('left')
+                ## if we're in the right most column we don't need to change the last tick
+                if ax not in axs[-1::-ncols]:
+                    if len(xticks)>0:
+                        xticks[-1-xscale].set_horizontalalignment('right')
+            except IndexError:
+                pass ## this can fail if share_x = True
 
 def nameAxes(ax,title,xname,yname,logflag=(0,0),
             subtitle=None,supertitle=None,
