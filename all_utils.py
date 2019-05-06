@@ -375,7 +375,13 @@ def addSecondAxis(ax,new_tick_labels,new_tick_locations=None,mirror='y'):
     return ax1
     
 
-def bufferAxesLabels(axs,nrows,ncols):
+def bufferAxesLabels(
+    axs,
+    nrows,ncols,
+    ylabels = False,
+    xlabels = False,
+    share_ylabel = None,
+    share_xlabel = None):
     """Changes the vertical/horizontal alignment of the first & last ytick/xtick 
     such that adjacent panels don't have overlapping labels. For some ridiculous
     reason if you are using a log scale the first and last ticks are denoted by -2 and 1 
@@ -383,38 +389,71 @@ def bufferAxesLabels(axs,nrows,ncols):
     Input:
         axs - flattened axis array
         nrows - number of rows
-        ncols - number of columns"""
-    ## handle the y axis labels first
-    if nrows > 1:
-        for ax in axs:
+        ncols - number of columns
+        ylabels - flag to turn off ylabels
+        xlabels - flag to turn off xlabels """
+    axss = axs.reshape(nrows,ncols)
+
+    ## for each column that isn't the first
+    for col_i in range(ncols):
+        this_col = axss[:,col_i]
+        for ax in this_col:
+            if ylabels and (col_i+1) >= ylabels:
+                ax.set_ylabel('')
+            try:
+                xticks = ax.get_xticklabels()
+                if len(xticks) == 0:
+                    continue
+                xscale = ax.get_xscale()=='log'
+                ##  change the first tick
+                if col_i != 0:
+                    xticks[xscale].set_horizontalalignment('left')
+                ## if we're in the right most 
+                ##  column we don't need to change the last tick
+                if col_i != (ncols-1):
+                    xticks[-1-xscale].set_horizontalalignment('right')
+            except IndexError:
+                pass ## this can fail if share_x = True
+
+    for row_i in range(nrows):
+        axs = axss[row_i,:]
+        for col_i,ax in enumerate(axs):
+            if xlabels:
+                ax.set_xlabel('')
             try:
                 yticks = ax.get_yticklabels()
                 yscale = ax.get_yscale()=='log'
-                ## if we're in the first row don't need to mess with the top tick
-                if ax not in axs[:ncols]:
-                    yticks[-1 - yscale].set_verticalalignment('top')
-                ## if we're in the last row we don't need to mess with the bottom tick
-                if ax not in axs[-ncols:]:
-                    if len(yticks)>0:
-                        yticks[yscale].set_verticalalignment('bottom')
+                ## if we're in the first row don't 
+                if len(yticks) == 0:
+                    continue
+                ##  need to mess with the top tick
+                if row_i != 0:
+                    ## NOTE wtf?? why is the top tick at 0???
+                    ##  if th ebottom tick is at 1??????
+                    if yscale:
+                        yticks[0].set_verticalalignment('top')
+                    else:
+                        yticks[-2].set_verticalalignment('top')
+                ## if we're in the last row we 
+                ##  don't need to mess with the bottom tick
+                if row_i != (nrows-1):
+                    yticks[yscale].set_verticalalignment('bottom')
             except IndexError as e:
                 pass ## this can fail if share_y = True
-                
-    ## handle the x axis labels next
-    if ncols > 1:
-        for ax in axs:
-            try:
-                xticks = ax.get_xticklabels()
-                xscale = ax.get_xscale()=='log'
-                ## if we're in the left most column we don't need to change the first tick
-                if ax not in axs[::ncols]:
-                    xticks[xscale].set_horizontalalignment('left')
-                ## if we're in the right most column we don't need to change the last tick
-                if ax not in axs[-1::-ncols]:
-                    if len(xticks)>0:
-                        xticks[-1-xscale].set_horizontalalignment('right')
-            except IndexError:
-                pass ## this can fail if share_x = True
+    
+    fig = axs[0].get_figure()
+    if share_ylabel is not None:
+        fig.text(
+            0.075,0.5,
+            share_ylabel,
+            rotation=90,va='center',ha='center',fontsize=16)
+
+    if share_xlabel is not None:
+        fig.text(
+            0.5,0.075,
+            share_xlabel,
+            va='center',ha='center',fontsize=16)
+
 
 def nameAxes(ax,title,xname,yname,logflag=(0,0),
             subtitle=None,supertitle=None,
