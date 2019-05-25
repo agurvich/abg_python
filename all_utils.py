@@ -381,7 +381,8 @@ def bufferAxesLabels(
     ylabels = False,
     xlabels = False,
     share_ylabel = None,
-    share_xlabel = None):
+    share_xlabel = None,
+    label_offset = 0.075):
     """Changes the vertical/horizontal alignment of the first & last ytick/xtick 
     such that adjacent panels don't have overlapping labels. For some ridiculous
     reason if you are using a log scale the first and last ticks are denoted by -2 and 1 
@@ -444,13 +445,13 @@ def bufferAxesLabels(
     fig = axs[0].get_figure()
     if share_ylabel is not None:
         fig.text(
-            0.075,0.5,
+            label_offset,0.5,
             share_ylabel,
             rotation=90,va='center',ha='center',fontsize=16)
 
     if share_xlabel is not None:
         fig.text(
-            0.5,0.075,
+            0.5,label_offset,
             share_xlabel,
             va='center',ha='center',fontsize=16)
 
@@ -652,3 +653,96 @@ def denToff_time(den):
     ff_time /=3.15e7 # yr
     return ff_time
 
+
+## from https://gist.github.com/benmaier/31f5fa109cf8fae077bde3d2d68a3883
+def add_curve_label(
+    ax,
+    curve_x,
+    curve_y,
+    label,
+    label_pos_abs=None,
+    label_pos_rel=None,
+    bbox_pad=1.0,
+    **kwargs):
+    """
+    Add a label to a curve according to the curve's slope
+    on the displayed figure.
+    Parameters
+    ----------
+    ax : matplotlib.Axes
+        The ax object where to put the label on. Use
+        `pyplot.gca()` to get the current focal axes.
+    curve_x : numpy.ndarray
+        The curve's x-data.
+    curve_y : numpy.ndarray
+        The curve's y-data.
+    label : str
+        The label.
+    label_pos_abs : float, default : None
+        The absolute x-position at which to pose the label.
+        Must be smaller than `curve_x`'s last element.
+        If None, `label_pos_rel` must be given.
+    label_pos_rel : float, default : None
+        The relative x-position at which to pose the label.
+        Must be 0 <= label_pos_rel < 1.
+        If None, `label_pos_abs` must be given.
+    bbox_pad : float, default : 1.0
+        Padding of the bounding box around the label.
+    **kwargs
+        Will be passed to pyplot.text.
+    """
+    if label_pos_abs is None and label_pos_rel is not None:
+
+        # get xmin and xmax in display coordinates
+        xmin = ax.transData.transform(
+            np.array( [ curve_x[1],  curve_y[1]  ] ))[0]
+        xmax = ax.transData.transform(
+            np.array( [ curve_x[-1], curve_y[-1] ] ))[0]
+
+        # compute label x-position in display coordinates according to
+        # demanded relative label position
+        new_display_x = xmin + label_pos_rel * (xmax - xmin)
+
+        # convert back to data coordinates and save absolute position
+        new_data_x = ax.transData.inverted().transform(np.array([new_display_x,1.0]))
+        label_pos_abs = new_data_x[0]
+
+    elif label_pos_abs is None and label_pos_rel is None:
+        raise ValueError('Please provide either `label_pos_abs` or `label_pos_rel`.')
+    elif label_pos_abs is not None and label_pos_rel is not None:
+        raise ValueError('Please provide either `label_pos_abs` or `label_pos_rel`, not both.')
+
+    # find ndx in data for demanded label position
+    ndx = np.where(curve_x < label_pos_abs)[0][-1]
+
+
+    # convert data at this point to display coordinates
+    x0, y0 = ax.transData.transform( np.array( [ curve_x[ndx], curve_y[ndx] ] ))
+    x1, y1 = ax.transData.transform( np.array( [ curve_x[ndx+1], curve_y[ndx+1] ] ))
+
+    # compute slope and angle at this point in display coordinates
+    dx = x1 - x0
+    dy = y1 - y0
+    angle = np.arctan2(dy,dx) / np.pi * 180
+
+    # convert back to data coordinates
+    x0 = label_pos_abs
+    y0 = np.interp(x0, curve_x, curve_y)
+    # define bounding box for label
+    bbox = dict(facecolor='w', alpha=1, edgecolor='none', pad=bbox_pad)
+
+    if not ('ha' in kwargs or 'horizontalalignment' in kwargs):
+        kwargs['ha'] = 'center'
+
+    if not ('va' in kwargs or 'verticalalignment' in kwargs):
+        kwargs['va'] = 'center'
+
+    # add label
+    ax.text(
+        x0,y0,
+        label,
+        rotation=angle,
+        rotation_mode='anchor',
+        #bbox=bbox,
+        transform=ax.transData,
+        **kwargs)
