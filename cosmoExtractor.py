@@ -99,19 +99,19 @@ def extractDiskFromSnapdict(star_snap,snap,radius,scom=None,orient_stars=0):
 
     return extractDiskFromArrays(
         srs,svs,smasses,
-        snap['Coordinates'],snap['Velocities'],snap['Masses'],snap['Density'],
+        snap['Coordinates'],snap['Velocities'],snap['Masses'],
         radius,scom=scom,orient_stars=orient_stars)
 
 def extractDiskFromArrays(
     srs,svs,smasses,
-    rs,vs,masses,rhos,
+    rs,vs,masses,
     radius,scom=None,orient_stars=0):
     """Takes arrays from a snapshot and returns the information required
         from extractDisk. Useful to separate so that external protocols can 
         call it (multiple snapshots, for instance)
         Input: 
             srs/svs/smasses - positions,velocities, and masses of star particles
-            rs/rhos - positions and densities of gas particles 
+            rs - positions and densities of gas particles 
             radius - radius to extract particles from
     """
     #scom = None
@@ -119,7 +119,7 @@ def extractDiskFromArrays(
         raise Exception("We should never do this!")
         ## find com using iterative shells
         scom = np.sum(smasses[:,None]*srs,axis=0)/np.sum(smasses)
-        scom = iterativeCoM(srs,smasses,r0=scom)#rs[np.argmax(rhos)])
+        scom = iterativeCoM(srs,smasses,r0=scom)
 
     if radius is None:
         raise Exception("Should be using 3rstarhalf!")

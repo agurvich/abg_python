@@ -499,11 +499,15 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
             ax.set_ylabel(yname)
         else:
             ax.set_ylabel(yname,fontsize=yfontsize)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label.set_fontsize(yfontsize)
     if xname!=None:
         if xfontsize is None:
             ax.set_xlabel(xname)
         else:
             ax.set_xlabel(xname,fontsize=xfontsize)
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(xfontsize)
     if logflag[0]:
         ax.set_xscale('log')
         ax.xaxis.set_major_formatter(my_log_ticker)
@@ -536,7 +540,9 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
         if off_legend:
             return ax.legend(bbox_to_anchor=(1.02,1),frameon=0)
         else:
-            ax.legend(loc=loc+(supertitle is not None),frameon=0)
+            ax.legend(
+                loc=loc+(supertitle is not None),
+                frameon=0,**subtextkwargs)
             return ax.get_legend_handles_labels()
 
 ###### DIRECTORY STUFF ######
