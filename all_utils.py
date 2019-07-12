@@ -5,11 +5,15 @@ import os
 from scipy.optimize import leastsq as opt
 from scipy.spatial.distance import cdist as cdist
 
+from matplotlib.ticker import NullFormatter
+
 #GLOBAL VARIABLES   
 
 # Code mass -> g , (code length)^-3 -> cm^-3 , g -> nH
 DENSITYFACT=2e43*(3.086e21)**-3/(1.67e-24)
 HYDROGENMASS = 1.67e-24  # g
+cm_per_kpc = 3.08e21 # cm/kpc
+Gcgs = 6.674e-8 #cm3/(g s^2)
 
 
 ## dictionary helper functions
@@ -83,6 +87,38 @@ def fitAXb(xs,ys,yerrs):
     [y0],[a]=(M.I*X).A
     return a,y0
 
+def fitVoigt(xs,ys,yerrs=None):
+    p0 = [np.sum(xs*ys)/np.sum(ys),
+        (np.max(xs)-np.min(xs))/4.,
+        (np.max(xs)-np.min(xs))/4.,
+        np.max(ys)]
+
+    ## define a gaussian with amplitude A, mean mu, and width sigma
+    lorentz_fn = lambda pars,x: (pars[3]*
+        pars[2]/(
+        (x-pars[0])**2 + pars[2]**2) )
+
+    gauss_fn = lambda pars,x: pars[3]/np.sqrt(
+        2*np.pi*pars[1]**2
+        )*np.exp(-(x-pars[0])**2./(2*pars[1]**2.))
+
+    fn = lambda pars,x: lorentz_fn(pars,x)*gauss_fn(pars,x)
+
+
+    pars = fitLeastSq(fn,p0,xs,ys,yerrs)
+    return pars,lambda x: fn(pars,x)
+
+
+def fitLorentzian(xs,ys,yerrs=None):
+    p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys)]
+
+    ## define a gaussian with amplitude A, mean mu, and width sigma
+    fn = lambda pars,x: pars[2]*(np.pi*pars[1])**-1*(pars[1]**2/(
+        (x-pars[0])**2 + pars[1]**2) )
+
+    pars = fitLeastSq(fn,p0,xs,ys,yerrs)
+    return pars,lambda x: fn(pars,x)
+    
 def fitGauss(xs,ys,yerrs=None):
     ## initial parameter estimate
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys)]
@@ -359,6 +395,8 @@ def my_log_formatter(x,y):
         sent me after being offended by my ugly log axes"""
     if x in [1e-2,1e-1,1,10,100]:
         return r"$%g$"%x
+    elif 1e-2 < x < 100 and np.isclose(0,(x*100)%1):
+        return r"$%g$"%x
     else:
         return matplotlib.ticker.LogFormatterMathtext()(x)
 
@@ -411,8 +449,8 @@ def bufferAxesLabels(
                     xticks[xscale].set_horizontalalignment('left')
                 ## if we're in the right most 
                 ##  column we don't need to change the last tick
-                if col_i != (ncols-1):
-                    xticks[-1-xscale].set_horizontalalignment('right')
+                #if col_i != (ncols-1):
+                xticks[-1-xscale].set_horizontalalignment('right')
             except IndexError:
                 pass ## this can fail if share_x = True
 
@@ -432,7 +470,7 @@ def bufferAxesLabels(
                     ## NOTE wtf?? why is the top tick at 0???
                     ##  if th ebottom tick is at 1??????
                     if yscale:
-                        yticks[0].set_verticalalignment('top')
+                        yticks[-2].set_verticalalignment('top')
                     else:
                         yticks[-2].set_verticalalignment('top')
                 ## if we're in the last row we 
@@ -465,7 +503,8 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
             ylow=None,yhigh=None,
             subfontsize=None,fontsize=None,
             xfontsize=None,yfontsize=None,
-            font_color=None,font_weight='regular'):
+            font_color=None,font_weight='regular',
+            legendkwargs=None):
     """Convenience function for adjusting axes and axis labels
     Input:
         ax - Axis to label, for single plot pass plt.gca(), for subplot pass 
@@ -483,6 +522,8 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
             plot. You MUST add the artist to the bbox_extra_artists list in
             savefig otherwise it WILL be cut off. 
             """
+
+    legendkwargs = {} if legendkwargs is None else legendkwargs
 
     ## axes limits
     if xlow is not None:
@@ -511,9 +552,13 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
     if logflag[0]:
         ax.set_xscale('log')
         ax.xaxis.set_major_formatter(my_log_ticker)
+        #ax.xaxis.set_minor_formatter(my_log_ticker))
+        ax.xaxis.set_minor_formatter(NullFormatter())
     if logflag[1] :
         ax.set_yscale('log',nonposy='clip')
         ax.yaxis.set_major_formatter(my_log_ticker)
+        #ax.yaxis.set_minor_formatter(my_log_ticker))
+        ax.yaxis.set_minor_formatter(NullFormatter())
     if title!=None:
         ax.set_title(title)
 
@@ -536,13 +581,16 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
     if slackify:
         slackifyAxes(ax,width,height)
 
+    ## add the subtext kwargs to legendkwargs
+    legendkwargs.update(subtextkwargs)
+
     if make_legend:
         if off_legend:
-            return ax.legend(bbox_to_anchor=(1.02,1),frameon=0)
+            return ax.legend(bbox_to_anchor=(1.02,1),frameon=0,**legendkwargs)
         else:
             ax.legend(
                 loc=loc+(supertitle is not None),
-                frameon=0,**subtextkwargs)
+                frameon=0,**legendkwargs)
             return ax.get_legend_handles_labels()
 
 ###### DIRECTORY STUFF ######
