@@ -153,6 +153,13 @@ def extractDiskFromArrays(
 
 def offsetRotateSnapshot(snap,scom,vscom,thetay,thetaz,orient_stars):
 
+    if 'overwritten' in snap and snap['overwritten']:
+        if (snap['thetay'] == thetay and 
+            snap['thetaz'] == thetaz and
+            np.all(snap['scom'] == scom) and
+            np.all(snap['vscom'] == vscom)):
+            print("Already offset this snapshot.")
+            return snap
     ## rotate the coordinates of the spherical extraction
     new_rs = rotateVectorsZY(thetay,thetaz,snap['Coordinates']-scom)
     new_vs = rotateVectorsZY(thetay,thetaz,snap['Velocities']-vscom)

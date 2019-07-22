@@ -92,6 +92,7 @@ def openSnapshot(
     ## get filenames of the snapshot in question
     fnames = get_fnames(snapdir,snapnum,snapdir_name) if fnames is None else fnames
 
+
     ## split off chimes keys, if necessary
     if keys_to_extract is not None:
         popped = 0
