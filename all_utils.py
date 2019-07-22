@@ -4,6 +4,7 @@ import h5py
 import os
 from scipy.optimize import leastsq as opt
 from scipy.spatial.distance import cdist as cdist
+from scipy.interpolate import interp1d
 
 from matplotlib.ticker import NullFormatter
 
@@ -35,7 +36,6 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
         del dict0
     return dict1
 
-## physics helper functions
 ## physics helper functions
 def getTemperature(
     U_code,
@@ -72,6 +72,16 @@ def get_IMass(age,mass):
     factors[factors > 1]=1
     factors[factors < 0.76]=0.76
     return mass/factors
+
+def calculateKappa(vcs,rs):
+    """calculate the epicyclic frequency"""
+
+    dvcdr = (vcs[1:] - vcs[:-1])/(rs[1:]-rs[:-1])
+    mid_rs = (rs[1:]+rs[:-1])/2.
+    mid_vcs = (vcs[1:]+vcs[:-1])/2.
+    kappas = np.sqrt(4*mid_vcs**2/mid_rs**2+mid_rs**2*dvcdr)
+    kappa_fn = interp1d(mid_rs,kappas,fill_value="extrapolate",kind='linear')
+    return kappa_fn(rs)
 
 #fitting functions
 def fitAXb(xs,ys,yerrs):
@@ -361,8 +371,13 @@ def suppressSTDOUT(fn,args,debug=1):
     return ret
 
 #plotting functions
-def plotSideBySide(plt,rs,rcom,indices,weights=None):
-    fig,[ax1,ax2]=plt.subplots(1,2)
+def plotSideBySide(plt,rs,rcom,indices,weights=None,axs=None):
+    if axs is None:
+        fig,[ax1,ax2]=plt.subplots(1,2)
+    else:
+        fig = axs[0].get_figure()
+        ax1,ax2=axs
+    print(axs,ax1,ax2)
     xs,ys,zs = (rs[indices]-rcom).T
     twoDHist(plt,ax1,xs,ys,bins=200,weights=weights)
     twoDHist(plt,ax2,xs,zs,bins=200,weights=weights)
