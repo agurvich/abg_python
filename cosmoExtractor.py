@@ -268,15 +268,15 @@ def diskFilterDictionary(
             cylinder = findContainedScaleHeight(snap['Coordinates'][:,2][gindices],snap['Masses'][gindices])
         gindices = extractRectangularVolumeIndices(
             snap['Coordinates'],
-            np.zeros(3),radius*rect_buffer,cylinder) 
+            np.zeros(3),radius*rect_buffer,20)#radius*rect_buffer) 
         if star_snap is not None:
             sindices = extractRectangularVolumeIndices(
                 star_snap['Coordinates'],
-                np.zeros(3),radius*rect_buffer,cylinder)
+                np.zeros(3),radius*rect_buffer,20)#radius*rect_buffer)
         if dark_snap is not None:
             dindices = extractRectangularVolumeIndices(
                 dark_snap['Coordinates'],
-                np.zeros(3),radius*rect_buffer,cylinder)
+                np.zeros(3),radius*rect_buffer,20)#radius*rect_buffer)
 
         ## add the scale height to the snapshot
         add_to_dict.update({'scale_height':cylinder})
@@ -301,14 +301,18 @@ def diskFilterDictionary(
         my_snap = new_snap
         key_add = ""
 
-    angMom = getAngularMomentum(my_snap['Coordinates'],
-        my_snap['Masses']*1e10,my_snap['Velocities'])# msun - kpc - km/s units of L
+    angMom = getAngularMomentum(
+        my_snap['Coordinates'],
+        my_snap['Masses']*1e10,
+        my_snap['Velocities'])# msun - kpc - km/s units of L
         ## post-rotation, lz == ltot by definition, lx, ly = 0 
     lz = angMom[2]
 
         ## add up ltot as sum(|l_i|), doesn't cancel counter-rotating stuff
-    ltot = getAngularMomentumSquared(my_snap['Coordinates'],
-        my_snap['Masses']*1e10,my_snap['Velocities'])**0.5 # msun - kpc - km/s units of L
+    ltot = getAngularMomentumSquared(
+        my_snap['Coordinates'],
+        my_snap['Masses']*1e10,
+        my_snap['Velocities'])**0.5 # msun - kpc - km/s units of L
 
     my_snap[key_add+'lz']=lz
     my_snap[key_add+'ltot']=ltot
