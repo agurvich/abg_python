@@ -261,6 +261,7 @@ def diskFilterDictionary(
         'scale_radius':radius,
         'rect_buffer':rect_buffer}
 
+
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':
         if cylinder is None:
@@ -278,6 +279,12 @@ def diskFilterDictionary(
 
         ## add the scale height to the snapshot
         add_to_dict.update({'scale_height':cylinder})
+    else:
+        for i,this_snap in enumerate(snaps):
+            indicess[i] = extractSphericalVolumeIndices(
+                this_snap['Coordinates'],
+                np.zeros(3),radius**2)#radius*rect_buffer) 
+            print(indicess[i].sum())
 
     sub_snaps = []
     ## create the volume filtered dictionaries, snapshots are already rotated/offset
@@ -289,11 +296,13 @@ def diskFilterDictionary(
     ##  we actually aligned the galaxy with respect to, for consistency
     if orient_stars:
         ## calculate stars "diskiness," alias new_star_snap
-        my_snap = sub_snaps[1]
+        my_snap = snaps[1]
+        my_sub_snap = sub_snaps[1]
         key_add = "star_"
         orient_indices = orient_sindices
     else:
-        my_snap = sub_snaps[0] 
+        my_snap = snaps[0]
+        my_sub_snap = sub_snaps[0]
         key_add = ""
         orient_indices = orient_gindices
 
@@ -310,8 +319,8 @@ def diskFilterDictionary(
         my_snap['Masses'][orient_indices]*1e10,
         my_snap['Velocities'][orient_indices])**0.5 # msun - kpc - km/s units of L
 
-    my_snap[key_add+'lz']=lz
-    my_snap[key_add+'ltot']=ltot
+    my_sub_snap[key_add+'lz']=lz
+    my_sub_snap[key_add+'ltot']=ltot
 
     ## figure out what we're returning
     ## the extracted snapshots, obviously

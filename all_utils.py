@@ -509,17 +509,19 @@ def bufferAxesLabels(
             va='center',ha='center',fontsize=16)
 
 
-def nameAxes(ax,title,xname,yname,logflag=(0,0),
-            subtitle=None,supertitle=None,
-            make_legend=0,off_legend=0,
-            loc=0,
-            slackify=0,width=8,height=6,
-            xlow=None,xhigh=None,
-            ylow=None,yhigh=None,
-            subfontsize=None,fontsize=None,
-            xfontsize=None,yfontsize=None,
-            font_color=None,font_weight='regular',
-            legendkwargs=None):
+def nameAxes(
+    ax,title,xname,yname,logflag=(0,0),
+    subtitle=None,supertitle=None,
+    make_legend=0,off_legend=0,
+    loc=0,
+    slackify=0,width=8,height=6,
+    xlow=None,xhigh=None,
+    ylow=None,yhigh=None,
+    subfontsize=None,fontsize=None,
+    xfontsize=None,yfontsize=None,
+    font_color=None,font_weight='regular',
+    legendkwargs=None,
+    swap_annotate_side=False):
     """Convenience function for adjusting axes and axis labels
     Input:
         ax - Axis to label, for single plot pass plt.gca(), for subplot pass 
@@ -583,14 +585,22 @@ def nameAxes(ax,title,xname,yname,logflag=(0,0),
     if subfontsize is not None:
         subtextkwargs['fontsize']=subfontsize
 
+    if swap_annotate_side:
+        x_pos = 1-0.01
+        halign = 'right'
+    else:
+        x_pos = 0.01
+        halign = 'left'
     if supertitle:
-        ax.text(.01,.96,supertitle,transform=ax.transAxes,
-            verticalalignment='top',horizontalalignment='left',
+        ax.text(x_pos,.96,supertitle,transform=ax.transAxes,
+            verticalalignment='top',
+            horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        ax.text(.01,.04,subtitle,transform=ax.transAxes,
-            verticalalignment='center',horizontalalignment='left',
+        ax.text(x_pos,.04,subtitle,transform=ax.transAxes,
+            verticalalignment='center',
+            horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if slackify:
