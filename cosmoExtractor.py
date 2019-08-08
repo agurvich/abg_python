@@ -261,7 +261,6 @@ def diskFilterDictionary(
         'scale_radius':radius,
         'rect_buffer':rect_buffer}
 
-
     #overwrite gindices/sindices/dindices to get a square instead of a disk
     if cylinder != '':
         if cylinder is None:
@@ -284,7 +283,6 @@ def diskFilterDictionary(
             indicess[i] = extractSphericalVolumeIndices(
                 this_snap['Coordinates'],
                 np.zeros(3),radius**2)#radius*rect_buffer) 
-            print(indicess[i].sum())
 
     sub_snaps = []
     ## create the volume filtered dictionaries, snapshots are already rotated/offset

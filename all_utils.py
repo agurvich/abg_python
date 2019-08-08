@@ -382,6 +382,7 @@ def plotSideBySide(plt,rs,rcom,indices,weights=None,axs=None):
     twoDHist(plt,ax1,xs,ys,bins=200,weights=weights)
     twoDHist(plt,ax2,xs,zs,bins=200,weights=weights)
     fig.set_size_inches(12,6)
+    fig.set_facecolor('white')
     nameAxes(ax1,None,'x (kpc)','y (kpc)')
     nameAxes(ax2,None,'x (kpc)','z (kpc)')
     return fig,ax1,ax2
