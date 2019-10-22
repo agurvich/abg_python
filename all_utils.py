@@ -42,10 +42,10 @@ def getTemperature(
     helium_mass_fraction=None,
     ElectronAbundance=None,
     mu = None):
-    """U_code = snapdict['InternalEnergy']
+    """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
     helium_mass_fraction = snapdict['Metallicity'][:,1]
     ElectronAbundance= snapdict['ElectronAbundance']"""
-    U_cgs = U_code*1e10
+    U_cgs = U_code*1e10 ## to convert from (km/s)^2 -> (cm/s)^2
     gamma=5/3.
     kB=1.38e-16 #erg /K
     m_proton=1.67e-24 # g
@@ -58,7 +58,7 @@ def getTemperature(
         except AssertionError:
             raise ValueError(
                 "You need to either provide mu or send helium mass fractions and electron abundances to calculate it!")
-        y_helium = helium_mass_fraction / (4*(1-helium_mass_fraction))
+        y_helium = helium_mass_fraction / (4*(1-helium_mass_fraction)) ## is this really Y -> Y/4X
         mu = (1.0 + 4*y_helium) / (1+y_helium+ElectronAbundance) 
     mean_molecular_weight=mu*m_proton
     return mean_molecular_weight * (gamma-1) * U_cgs / kB
