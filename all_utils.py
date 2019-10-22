@@ -614,8 +614,11 @@ def nameAxes(
         if off_legend:
             return ax.legend(bbox_to_anchor=(1.02,1),frameon=0,**legendkwargs)
         else:
+            loc = loc+(supertitle is not None)
+            if 'loc' in legendkwargs:
+                loc = legendkwargs.pop('loc')
             ax.legend(
-                loc=loc+(supertitle is not None),
+                loc=loc,
                 frameon=0,**legendkwargs)
             return ax.get_legend_handles_labels()
 

@@ -46,9 +46,6 @@ def load_AHF(
 
     path = os.path.join(snapdir,ahf_path,fname)
 
-    if 'anglesd' in snapdir:
-        path = os.path.join(snapdir,'AHF',fname)
-
     if not os.path.isfile(path):
         raise IOError("path %s does not exist"%path)
 
@@ -70,7 +67,8 @@ def load_AHF(
     if np.sum(index)==0:
         ## snapnum is not in this halo file
         print(min(output[:,0]),'is the first snapshot in the halo file')
-        raise IOError("This snapshot isn't in the AHF halo file")
+        print(output[:,0],'snapnums available')
+        raise IOError("%d snapshot isn't in the AHF halo file"%snapnum)
     ## psnapumably in comoving kpc/h 
     scom = np.array([xs[index],ys[index],zs[index]])/hubble*(1/(1+current_redshift))
     scom = scom.reshape(3,)
