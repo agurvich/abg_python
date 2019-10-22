@@ -4,6 +4,7 @@ matplotlib.use("Agg")
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 
 from abg_python.all_utils import my_log_formatter
 
@@ -22,6 +23,52 @@ try:
     plt.style.use('ABG_default')
 except:
     pass
+
+
+def add_to_legend(
+    ax,
+    label='',
+    shape='line',
+    loc=0,
+    **kwargs):
+
+    ## read what's currently on the axis legend
+    legend = ax.get_legend()
+    if legend is not None:
+        lines = legend.get_lines()
+        labels = [text.get_text() for text in legend.get_texts()]
+    else:
+        lines,labels=[],[]
+
+    ## make the new line
+    if shape == 'line':
+        line = Line2D(
+        [0],[0],
+        **kwargs)
+    else:
+        raise NotImplementedError
+
+    if label not in labels:
+        lines.append(line)
+        labels.append(label)
+
+    ax.legend(lines,labels,loc=loc)
+
+    return ax
+
+def plotCircle(
+    ax,
+    x,y,
+    radius,
+    fill=False,
+    lw=3,
+    **kwargs):
+    """kwargs you might like are: 
+        ls
+        color
+    """
+    return ax.add_artist(
+        plt.Circle((x,y),radius,fill=fill,lw=lw,**kwargs))
 
 def addColorbar(
     ax,cmap,
