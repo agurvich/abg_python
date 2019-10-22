@@ -852,3 +852,18 @@ def get_size(obj, seen=None):
     elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
         size += sum([get_size(i, seen) for i in obj])
     return size
+
+def plot_percentile_contours(ax,X,Y,h,percentiles,cmap=None):
+    """ from 
+https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-lines-of-a-probability-distribution"""
+    cmap = 'viridis' if cmap is None else cmap
+
+    h= h/h.sum()
+    n = 1000
+    t = np.linspace(0, h.max(), n,endpoint=True)
+    integral = ((h >= t[:, None, None]) * h).sum(axis=(1,2))
+
+    f = interp1d(integral, t)
+    t_contours = f(np.array(percentiles))
+    contours = ax.contour(X,Y,h.T,cmap=cmap,levels = t_contours)
+    return contours.levels
