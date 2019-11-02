@@ -30,7 +30,9 @@ def add_to_legend(
     label='',
     shape='line',
     loc=0,
+    legend_kwargs=None,
     **kwargs):
+
 
     ## read what's currently on the axis legend
     legend = ax.get_legend()
@@ -39,6 +41,9 @@ def add_to_legend(
         labels = [text.get_text() for text in legend.get_texts()]
     else:
         lines,labels=[],[]
+
+    if legend_kwargs is None:
+        legend_kwargs = {}
 
     ## make the new line
     if shape == 'line':
@@ -52,7 +57,9 @@ def add_to_legend(
         lines.append(line)
         labels.append(label)
 
-    ax.legend(lines,labels,loc=loc)
+    if loc in legend_kwargs:
+        loc = legend_kwargs.pop('loc')
+    ax.legend(lines,labels,loc=loc,**legend_kwargs)
 
     return ax
 
@@ -195,7 +202,7 @@ def make_colormap(mycolors,ninterp=100):
         to be aesthetically pleasing """ 
 
     thecolors = np.array([])
-    for i in xrange(len(mycolors)-1):
+    for i in range(len(mycolors)-1):
         rs = np.linspace(mycolors[i][0],mycolors[i+1][0],ninterp,endpoint=1)
         gs = np.linspace(mycolors[i][1],mycolors[i+1][1],ninterp,endpoint=1)
         bs = np.linspace(mycolors[i][2],mycolors[i+1][2],ninterp,endpoint=1)
@@ -204,12 +211,12 @@ def make_colormap(mycolors,ninterp=100):
     thecolors = thecolors.reshape(-1,4)
     indices = 1.0*np.arange(len(thecolors))/len(thecolors)
 
+
     def my_cmap(i):
         try:
             len(i)
             argmin = np.argmin((indices[:,None]-i)**2,axis=0)
         except:
-            raise
             argmin = np.argmin((indices-i)**2)
             
         return thecolors[argmin]
@@ -261,3 +268,16 @@ def get_cindex(y,ticks):
     except:
         cindex = -1
     return cindex
+
+def talkifyAxes(axs,lw=2,labelsize=24,ticklabelsize=16):
+    axs = np.array(axs).flatten() ## klugey way of accepting single or  multiple axes
+    for ax in axs:
+        for axis in ['top','bottom','left','right']:
+              ax.spines[axis].set_linewidth(lw)
+        ax.xaxis.label.set_size(labelsize)
+        ax.yaxis.label.set_size(labelsize)
+        if ax.is_first_col():
+            ax.yaxis.set_ticklabels(ax.yaxis.get_ticklabels(),fontsize=ticklabelsize)
+        if ax.is_last_row():
+            ax.xaxis.set_ticklabels(ax.xaxis.get_ticklabels(),fontsize=ticklabelsize)
+

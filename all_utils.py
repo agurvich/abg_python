@@ -8,6 +8,7 @@ from scipy.spatial.distance import cdist as cdist
 from scipy.interpolate import interp1d
 
 from matplotlib.ticker import NullFormatter
+from numba import jit
 
 #GLOBAL VARIABLES   
 
@@ -38,6 +39,17 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     return dict1
 
 ## physics helper functions
+def getSpeedOfSound(U_code):
+    """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
+        mu = mean molecular weight in this context
+        c_s = sqrt(gamma kB T / mu)
+
+        n kB T = (gamma - 1) U rho
+        (gamma -1 ) U = kB T/mu = c_s^2/gamma
+        c_s = sqrt(5/3 * 2/3 * U)
+        """
+    return np.sqrt(10/9.*U_code)
+
 def getTemperature(
     U_code,
     helium_mass_fraction=None,
@@ -853,10 +865,9 @@ def get_size(obj, seen=None):
         size += sum([get_size(i, seen) for i in obj])
     return size
 
-def plot_percentile_contours(ax,X,Y,h,percentiles,cmap=None):
+def plot_percentile_contours(ax,X,Y,h,percentiles,cmap='viridis',**contour_kwargs):
     """ from 
 https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-lines-of-a-probability-distribution"""
-    cmap = 'viridis' if cmap is None else cmap
 
     h= h/h.sum()
     n = 1000
@@ -864,6 +875,39 @@ https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-
     integral = ((h >= t[:, None, None]) * h).sum(axis=(1,2))
 
     f = interp1d(integral, t)
-    t_contours = f(np.array(percentiles))
-    contours = ax.contour(X,Y,h.T,cmap=cmap,levels = t_contours)
-    return contours.levels
+    try:
+        t_contours = f(np.array(percentiles))
+        contours = ax.contour(X,Y,h.T,cmap=cmap,levels = t_contours,**contour_kwargs)
+        return contours.levels
+    except ValueError:
+        print(percentiles,"not possible with given h, try smaller bins?")
+        return []
+
+
+@jit(nopython=True)
+def get_cylindrical_velocities(vels,coords):
+    this_coords_xy = coords[:,:2]
+    this_radii_xy = np.sqrt(
+        np.array([
+            np.linalg.norm(this_coords_xy[pi,:]) for
+            pi in range(len(this_coords_xy))])**2)
+
+    rhats = np.zeros((len(this_coords_xy),2))
+    rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
+    rhats[:,1] = this_coords_xy[:,1]/this_radii_xy
+
+    vrs = np.sum(rhats*vels[:,:2],axis=1)
+    #vrs = np.zeros(len(this_coords))
+    #for pi in range(len(this_coords)):
+        #vrs[pi] = np.sum(this_coords[pi,:2]/np.sum
+
+    vzs = vels[:,2]
+
+    vphis = np.sqrt(
+        np.array([
+            np.linalg.norm(vels[i,:]) for
+            i in range(len(vels))
+        ])**2 -
+        vrs**2 -
+        vzs**2)
+    return vrs,vphis,vzs
