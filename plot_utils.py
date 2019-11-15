@@ -81,7 +81,7 @@ def addColorbar(
     ax,cmap,
     vmin,vmax,
     label,logflag = 0,
-    fontsize=16,cmap_number=0,
+    fontsize=8,cmap_number=0,
     tick_tuple=None):
     if logflag:
         from matplotlib.colors import LogNorm as norm

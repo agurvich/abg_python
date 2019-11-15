@@ -460,6 +460,7 @@ def bufferAxesLabels(
         ncols - number of columns
         ylabels - flag to turn off ylabels
         xlabels - flag to turn off xlabels """
+    axs = np.array(axs)
     axss = axs.reshape(nrows,ncols)
 
     ## for each column that isn't the first
@@ -529,9 +530,10 @@ def nameAxes(
     make_legend=0,off_legend=0,
     loc=0,
     slackify=0,width=8,height=6,
+    yrotation=90,
     xlow=None,xhigh=None,
     ylow=None,yhigh=None,
-    subfontsize=None,fontsize=None,
+    subfontsize=7,fontsize=None,
     xfontsize=None,yfontsize=None,
     font_color=None,font_weight='regular',
     legendkwargs=None,
@@ -568,11 +570,12 @@ def nameAxes(
 
     if yname!=None:
         if yfontsize is None:
-            ax.set_ylabel(yname)
+            ax.set_ylabel(yname,rotation=yrotation)
         else:
-            ax.set_ylabel(yname,fontsize=yfontsize)
-            for tick in ax.yaxis.get_major_ticks():
-                tick.label.set_fontsize(yfontsize)
+            ax.set_ylabel(yname,fontsize=yfontsize,rotation=yrotation)
+            #for tick in ax.yaxis.get_major_ticks():
+                #tick.label.set_fontsize(yfontsize)
+
     if xname!=None:
         if xfontsize is None:
             ax.set_xlabel(xname)
@@ -874,6 +877,13 @@ https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-
     t = np.linspace(0, h.max(), n,endpoint=True)
     integral = ((h >= t[:, None, None]) * h).sum(axis=(1,2))
 
+    ## contour levels must be "increasing" (so percentiles must be decreasing)
+    ##  e.g. [0.9, 0.5, 0.1]
+    percentiles.sort()
+    percentiles = percentiles[::-1]
+    if 'linestyles' not in contour_kwargs:
+        linestyles=['-','-.','--',':'][::-1]
+        contour_kwargs['linestyles'] = linestyles[-len(percentiles):]
     f = interp1d(integral, t)
     try:
         t_contours = f(np.array(percentiles))
