@@ -31,11 +31,16 @@ def add_to_legend(
     shape='line',
     loc=0,
     legend_kwargs=None,
+    make_new_legend=False,
     **kwargs):
 
-
-    ## read what's currently on the axis legend
     legend = ax.get_legend()
+    ## add the current legend to the tracked artists
+    ##  and then pretend we weren't passed one
+    if make_new_legend and legend is not None:
+        ax.add_artist(legend)
+        legend=None
+
     if legend is not None:
         lines = legend.get_lines()
         labels = [text.get_text() for text in legend.get_texts()]

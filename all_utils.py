@@ -88,7 +88,7 @@ def get_IMass(age,mass):
 
 def calculateKappa(vcs,rs):
     """calculate the epicyclic frequency"""
-
+    
     dvcdr = (vcs[1:] - vcs[:-1])/(rs[1:]-rs[:-1])
     mid_rs = (rs[1:]+rs[:-1])/2.
     mid_vcs = (vcs[1:]+vcs[:-1])/2.
