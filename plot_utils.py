@@ -87,7 +87,8 @@ def addColorbar(
     vmin,vmax,
     label,logflag = 0,
     fontsize=8,cmap_number=0,
-    tick_tuple=None):
+    tick_tuple=None,
+    horizontal = False):
     if logflag:
         from matplotlib.colors import LogNorm as norm
         ticks = np.linspace(np.log10(vmin),np.log10(vmax),5,endpoint=True)
@@ -108,23 +109,26 @@ def addColorbar(
 
     cur_height = cur_size[1]
     cur_width = cur_size[0]
-    offset = 0.00 + cmap_number*(25/cur_width+50/cur_width)
+    offset = 0.05 + cmap_number*(25/cur_width+50/cur_width)
 
-    ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
+    if not horizontal:
+        ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
+    else:
+        ax1 = fig.add_axes([0.3, -.05 - offset,0.4, 50./cur_height])
 
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax1, cmap=cmap,
         extend='both',
         extendfrac=0.05,
         norm=norm(vmin=vmin,vmax=vmax),
-        orientation='vertical')
+        orientation='vertical' if not horizontal else 'horizontal')
 
 
     cb1.set_label(label,fontsize=fontsize)
 
     cb1.set_ticks(ticks)
     cb1.set_ticklabels(tick_labels)
-    cb1.ax.tick_params(labelsize=fontsize-2)
+    cb1.ax.tick_params(labelsize=fontsize)
     return cb1,ax1
 
 
