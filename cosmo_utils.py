@@ -35,8 +35,11 @@ def load_AHF(
     current_redshift,
     hubble = 0.702,
     ahf_path=None,
-    extra_names_to_read = ['Rstar0.5'],
+    extra_names_to_read = None,
     fname = None):
+
+    if extra_names_to_read is None:
+        extra_names_to_read = ['Rstar0.5']
 
     if fname is None:
         fname = 'halo_00000_smooth.dat'
@@ -56,6 +59,9 @@ def load_AHF(
 
     for name in names_to_read:
         cols+=[names.index(name)]
+
+    if -1 in cols:
+        raise IOError("%s is not in ahf file, available names are:"%cols[cols.index(-1)],names)
 
     output = np.genfromtxt(
         path,delimiter='\t',usecols=cols,skip_header=1)
@@ -80,4 +86,12 @@ def load_AHF(
     if 'Rstar0.5' in names_to_read:
         rstar_half = output[:,names_to_read.index('Rstar0.5')][index][0]/hubble*(1/(1+current_redshift))
         return_val+=[rstar_half]
+        if 'Rstar0.5' in extra_names_to_read:
+            extra_names_to_read.pop(extra_names_to_read.index('Rstar0.5'))
+
+    if len(extra_names_to_read):
+        for this_name in extra_names_to_read:
+            return_val = np.append(return_val,[ output[:,names_to_read.index(this_name)][index][0]],axis=0)
+        print("last %d do not have unit conversions"%len(extra_names_to_read))
+
     return return_val
