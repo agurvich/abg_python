@@ -86,6 +86,47 @@ def get_IMass(age,mass):
     factors[factors < 0.76]=0.76
     return mass/factors
 
+def getBolometricLuminosity(ageGyrs,masses):
+    ## convert to Myr
+    ageMyrs = ageGyrs*1000 
+
+    ## initialize luminosity array
+    lums = np.zeros(ageMyrs.size)
+    lums[ageMyrs<3.5] = 1136.59 ## Lsun/Msun
+
+    x = np.log10(ageMyrs[ageMyrs>=3.5]/3.5)
+    lums[ageMyrs>=3.5] = 1500*np.exp(-4.145*x + 0.691*x**2 - 0.0576*x**3) ## Lsun/Msun
+    ##  3.83e33 erg/s / 2e33 g =  1.915 cm^2 /s^2
+    lums *= 1.915 ## erg/s / g = cm^2/s^2 
+
+    return lums*masses ## erg/s code_mass/g, typically, or erg/s if masses is in g
+
+def getLuminosityBands(ageGyrs,masses):
+    """
+    Then the bolometric Ψbol = 1136.59 for tMyr < 3.5, and 
+    Ψbol = 1500 exp[−4.145x+0.691x2 −0.0576x3] 
+    with x ≡ log10(tMyr/3.5) for tMyr > 3.5. 
+    For the bands used in our radiation hydrodynamics, we have the following 
+    intrinsic (before attenuation) bolometric corrections. 
+
+    In the mid/far IR, ΨIR = 0. 
+
+    In optical/NIR, Ψopt = fopt Ψbol with fopt = 0.09 for tMyr < 2.5; 
+    fOpt = 0.09(1 + [(tMyr − 2.5)/4]2) for 2.5 < tMyr < 6; 
+    fOpt = 1 − 0.841/(1 + [(tMyr − 6)/300]) for tMyr > 6. 
+
+    For the photo-electric FUV band ΨFUV = 271[1+(tMyr/3.4)2] for tMyr < 3.4; 
+    ΨFUV = 572(tMyr/3.4)−1.5 for tMyr > 3.4. 
+    
+    For the ionizing band Ψion = 500 for tMyr < 3.5; 
+    Ψion = 60(tMyr/3.5)−3.6 + 470(tMyr/3.5)0.045−1.82 ln tMyr
+    for 3.5 < tMyr < 25; Ψion = 0 for tMyr > 25. 
+    
+    The remaining UV luminosity, Ψbol − (ΨIR +Ψopt + ΨFUV + Ψion) 
+    is assigned to the NUV band ΨNUV.
+    """
+    bolo_lums = getBolometricLuminosity(ageGyrs,masses)
+
 def calculateKappa(vcs,rs):
     """calculate the epicyclic frequency"""
     
@@ -294,6 +335,16 @@ def substep(arr,N):
     my_arr = np.append(my_arr,rx)
     return my_arr
 
+def manyFilter(bool_fn,*args):
+    """filters an arbitrary number of arrays in 
+        corresponding tuples by bool_fn"""
+    mask = np.ones(args[0].size)
+
+    for arg in args:
+        mask = np.logical_and(bool_fn(arg),mask)
+
+    return [arg[mask] for arg in args]
+
 def pairFilter(xs,ys,bool_fn):
     """filters both x and y corresponding pairs by
         bool_fn"""
@@ -463,11 +514,16 @@ def bufferAxesLabels(
     axs = np.array(axs)
     axss = axs.reshape(nrows,ncols)
 
+    if ylabels:
+        for i,ax in enumerate(axs.flatten()):
+            if i != nrows//2:
+                ax.set_ylabel(ax.get_ylabel(),color=ax.get_facecolor())
+
     ## for each column that isn't the first
     for col_i in range(ncols):
         this_col = axss[:,col_i]
         for ax in this_col:
-            if ylabels and (col_i+1) >= ylabels:
+            if ylabels and not ax.is_first_col():
                 ax.set_ylabel('')
             try:
                 xticks = ax.get_xticklabels()
@@ -475,42 +531,34 @@ def bufferAxesLabels(
                     continue
                 xscale = ax.get_xscale()=='log'
                 ##  change the first tick
-                if col_i != 0:
+                if not ax.is_first_col():
                     xticks[xscale].set_horizontalalignment('left')
                 ## if we're in the right most 
                 ##  column we don't need to change the last tick
                 #if col_i != (ncols-1):
-                xticks[-1-xscale].set_horizontalalignment('right')
+                xticks[-1].set_horizontalalignment('right')
             except IndexError:
                 pass ## this can fail if share_x = True
 
-    for row_i in range(nrows):
-        axs = axss[row_i,:]
-        for col_i,ax in enumerate(axs):
-            if xlabels:
-                ax.set_xlabel('')
-            try:
-                yticks = ax.get_yticklabels()
-                yscale = ax.get_yscale()=='log'
-                ## if we're in the first row don't 
-                if len(yticks) == 0:
-                    continue
-                ##  need to mess with the top tick
-                if row_i != 0:
-                    ## NOTE wtf?? why is the top tick at 0???
-                    ##  if th ebottom tick is at 1??????
-                    if yscale:
-                        yticks[-2].set_verticalalignment('top')
-                    else:
-                        yticks[-2].set_verticalalignment('top')
-                ## if we're in the last row we 
-                ##  don't need to mess with the bottom tick
-                if row_i != (nrows-1):
-                    yticks[yscale].set_verticalalignment('bottom')
-            except IndexError as e:
-                pass ## this can fail if share_y = True
+    for ax in axss.flatten():
+        if xlabels:
+            ax.set_xlabel('')
+        try:
+            yticks = ax.get_yticklabels()
+            ## if we're in the first row don't 
+            if len(yticks) == 0:
+                continue
+            ##  need to mess with the top tick
+            if not ax.is_first_row():
+                yticks[-1].set_verticalalignment('top')
+            ## if we're in the last row we 
+            ##  don't need to mess with the bottom tick
+            if not ax.is_last_row():
+                yticks[0].set_verticalalignment('bottom')
+        except IndexError as e:
+            pass ## this can fail if share_y = True
     
-    fig = axs[0].get_figure()
+    fig = axs.flatten()[0].get_figure()
     if share_ylabel is not None:
         fig.text(
             label_offset,0.5,
@@ -537,7 +585,8 @@ def nameAxes(
     xfontsize=None,yfontsize=None,
     font_color=None,font_weight='regular',
     legendkwargs=None,
-    swap_annotate_side=False):
+    swap_annotate_side=False,
+    subtextkwargs = None):
     """Convenience function for adjusting axes and axis labels
     Input:
         ax - Axis to label, for single plot pass plt.gca(), for subplot pass 
@@ -596,7 +645,7 @@ def nameAxes(
     if title!=None:
         ax.set_title(title)
 
-    subtextkwargs={}
+    subtextkwargs={} if subtextkwargs is None else subtextkwargs
     if font_color is not None:
         subtextkwargs['color']=font_color
     if subfontsize is not None:
