@@ -17,6 +17,7 @@ def get_fnames(snapdir,snapnum,snapdir_name=''):
         if os.path.isdir(fnames[0]):
             fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
     except IndexError:
+        print(snapdir,snapnum,snapdir_name)
         raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
     
     return fnames
@@ -90,8 +91,10 @@ def openSnapshot(
     """
 
     ## get filenames of the snapshot in question
-    fnames = get_fnames(snapdir,snapnum,snapdir_name) if fnames is None else fnames
-
+    try:
+        fnames = get_fnames(snapdir,snapnum,snapdir_name) if fnames is None else fnames
+    except IOError:
+        fnames = get_fnames(snapdir,snapnum,'') if fnames is None else fnames
 
     ## split off chimes keys, if necessary
     if keys_to_extract is not None:
