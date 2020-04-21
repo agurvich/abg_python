@@ -41,9 +41,6 @@ def load_AHF(
     if extra_names_to_read is None:
         extra_names_to_read = ['Rstar0.5']
 
-    if fname is None:
-        fname = 'halo_00000_smooth.dat'
-
     ahf_path = '../halo/ahf/' if ahf_path is None else ahf_path
     fname = 'halo_00000_smooth.dat' if fname is None else fname
 
@@ -54,44 +51,74 @@ def load_AHF(
 
     names_to_read = ['snum','Xc','Yc','Zc','Rvir']+extra_names_to_read
 
-    names = list(np.genfromtxt(path,skip_header=0,max_rows = 1,dtype=str))
+    names = list(np.genfromtxt(path,skip_header=0,max_rows = 1,dtype=str,comments='@'))
+    ## ahf will sometimes "helpfully" put the 1-indexed index in the column header
+    if '(' in names[0]: 
+        names = [name[:name.index('(')] for name in names]
+        
+    ## this isn't a smooth halo tracing file produced by Zach,
+    ##  this is a single snapshot, generic, AHF file
+
+    ## determine if we have a smoothed halo history or just a single snapshot file
+    ##  remove 'snum' from the names to read from the halo file if it's just a single
+    ##  snapshot.
+    if 'snum' not in names:
+        names_to_read.pop(0)
+
     cols = []
-
     for name in names_to_read:
-        cols+=[names.index(name)]
+        if name not in names_to_read:
+            raise ValueError(
+                "%s is not in ahf file, available names are:"%name,
+                names)
+        else:
+            cols+=[names.index(name)]
 
-    if -1 in cols:
-        raise IOError("%s is not in ahf file, available names are:"%cols[cols.index(-1)],names)
+    if 'snum' not in names_to_read:
+        row = np.genfromtxt(
+            path,
+            skip_header=0,
+            max_rows = 2,
+            usecols=cols,
+            comments='@')[1]
+    else:
+        output = np.genfromtxt(
+            path,
+            delimiter='\t',
+            usecols=cols,
+            skip_header=1)
 
-    output = np.genfromtxt(
-        path,delimiter='\t',usecols=cols,skip_header=1)
+        index = output[:,0]==snapnum
 
-    ## unpack rows of output
-    xs,ys,zs = output[:,1:4].T
+        ## if there is no row that matches snapnum
+        if np.sum(index)==0:
+            ## snapnum is not in this halo file
+            print(min(output[:,0]),'is the first snapshot in the halo file')
+            print(output[:,0],'snapnums available')
+            raise IOError("%d snapshot isn't in the AHF halo file"%snapnum)
+        row = output[index][0]
 
-    index = output[:,0]==snapnum
-    if np.sum(index)==0:
-        ## snapnum is not in this halo file
-        print(min(output[:,0]),'is the first snapshot in the halo file')
-        print(output[:,0],'snapnums available')
-        raise IOError("%d snapshot isn't in the AHF halo file"%snapnum)
-    ## psnapumably in comoving kpc/h 
-    scom = np.array([xs[index],ys[index],zs[index]])/hubble*(1/(1+current_redshift))
+    ## presumably in comoving kpc/h 
+    scom = np.array([
+        row[names_to_read.index('Xc')],
+        row[names_to_read.index('Yc')],
+        row[names_to_read.index('Zc')],
+        ])/hubble*(1/(1+current_redshift))
     scom = scom.reshape(3,)
 
     ## comoving kpc to pkpc
-    rvir = output[:,4][index][0]/hubble*(1/(1+current_redshift))
+    length_unit_fact = 1/hubble*(1/(1+current_redshift))
 
+    rvir = row[names_to_read.index('Rvir')]*length_unit_fact
     return_val = [scom, rvir]
-    if 'Rstar0.5' in names_to_read:
-        rstar_half = output[:,names_to_read.index('Rstar0.5')][index][0]/hubble*(1/(1+current_redshift))
-        return_val+=[rstar_half]
-        if 'Rstar0.5' in extra_names_to_read:
-            extra_names_to_read.pop(extra_names_to_read.index('Rstar0.5'))
 
-    if len(extra_names_to_read):
-        for this_name in extra_names_to_read:
-            return_val = np.append(return_val,[ output[:,names_to_read.index(this_name)][index][0]],axis=0)
-        print("last %d do not have unit conversions"%len(extra_names_to_read))
+    ## for everything that comes after Rvir
+    for name in names_to_read[names_to_read.index('Rvir')+1:]:
+        if name == 'Rstar0.5': 
+            unit_fact = length_unit_fact
+        else:
+            unit_fact = 1
+            print(name,'does not have units')
+        return_val = np.append(return_val,row[names_to_read.index(name)]*unit_fact)
 
     return return_val
