@@ -3,6 +3,8 @@ import sys
 import numpy as np 
 import h5py
 import os
+import copy
+
 from scipy.optimize import leastsq as opt
 from scipy.spatial.distance import cdist as cdist
 from scipy.interpolate import interp1d
@@ -150,6 +152,68 @@ def fitAXb(xs,ys,yerrs):
         ])
     [y0],[a]=(M.I*X).A
     return a,y0
+
+def fit_running_AXb(time_edges,boxcar_width,xs,ys,yerrs):
+    """fits a trendline using f(x) ~ y in bins 
+    of t that are boxcar_width wide"""
+    
+    xs,ys = pairReplace(xs,ys,np.nan,np.isinf)
+    if yerrs==None:
+        yerrs=np.ones(len(xs))
+    weights=yerrs**-2.
+    
+    boxcar_xs,sum_weights = boxcar_average(
+        time_edges,
+        weights,
+        boxcar_width,
+        average=False)
+    
+    boxcar_xs,sum_xs_weights = boxcar_average(
+        time_edges,
+        xs*weights,
+        boxcar_width,
+        average=False)
+    
+    boxcar_xs,sum_xs2_weights = boxcar_average(
+        time_edges,
+        xs*xs*weights,
+        boxcar_width,
+        average=False)
+    
+    boxcar_xs,sum_ys_weights = boxcar_average(
+        time_edges,
+        ys*weights,
+        boxcar_width,
+        average=False)
+    
+    boxcar_xs,sum_ys_xs_weights = boxcar_average(
+        time_edges,
+        ys*xs*weights,
+        boxcar_width,
+        average=False)
+    
+
+    X = np.zeros((sum_ys_weights.size,2))
+    X[:,0] = sum_ys_weights
+    X[:,1] = sum_ys_xs_weights
+    
+    M = np.zeros((sum_weights.size,2,2))
+    M[:,0,0] = sum_weights
+    M[:,0,1] = sum_xs_weights
+    M[:,1,0] = sum_xs_weights
+    M[:,1,1] = sum_xs2_weights
+    
+    
+    #print("X=",X[4399])
+    #print("M=",M[4399])
+    invs = np.linalg.inv(M)
+    #print("M.I = ",invs[4399])
+    
+    ### https://stackoverflow.com/questions/46213851/python-multiplying-a-list-of-vectors-by-a-list-of-matrices-as-a-single-matrix-o
+    ##  only god knows why this works
+    pars = np.einsum('ij,ikj->ik',X,invs)
+    fit_bs, fit_as = pars.T
+    return fit_as,fit_bs
 
 def fitVoigt(xs,ys,yerrs=None):
     p0 = [np.sum(xs*ys)/np.sum(ys),
@@ -345,6 +409,20 @@ def manyFilter(bool_fn,*args):
 
     return [arg[mask] for arg in args]
 
+def pairReplace(xs,ys,value,bool_fn):
+    """filters both x and y corresponding pairs by
+        bool_fn"""
+
+    xs,ys = copy.copy(xs),copy.copy(ys)
+
+    xs[bool_fn(ys)] = value
+    ys[bool_fn(ys)] = value
+
+    xs[bool_fn(xs)] = value
+    ys[bool_fn(xs)] = value
+
+    return xs,ys
+
 def pairFilter(xs,ys,bool_fn):
     """filters both x and y corresponding pairs by
         bool_fn"""
@@ -372,6 +450,41 @@ def findArrayClosestIndices(xs,ys):
 def findIntersection(xs,ys,ys1):
     argmin = np.argmin((ys-ys1)**2)
     return xs[argmin],ys[argmin]
+
+def boxcar_average(
+    time_edges,
+    ys,boxcar_width,
+    loud=False,
+    average=True):
+    """
+    idea is that you subtract off previous window from each window
+    https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
+    def running_mean(x, N):
+        cumsum = numpy.cumsum(numpy.insert(x, 0, 0)) 
+        return (cumsum[N:] - cumsum[:-N]) / float(N)
+    potentially accrues floating point error for many points... (>1e5?)
+    there is another solution on that page that uses scipy instead 
+
+    from scipy.ndimage.filters import uniform_filter1d
+    uniform_filter1d(x, size=N) <--- requires one to explicitly deal 
+        with edges of window
+    """
+    dts = np.unique(time_edges[1:]-time_edges[:-1])
+    if not np.allclose(dts,dts[0]):
+        print(dts)
+        raise ValueError("ys must be uniformly spaced for this to work...")
+
+    ## number of points per boxcar is 
+    N = int(boxcar_width//dts[0] + ((boxcar_width%dts[0])/dts[0]>=0.5))
+    if loud:
+        print("boxcar'ing with %d points/car, dt: %.2e %.2e"%(N,dts[0],boxcar_width))
+    cumsum = np.nancumsum(np.insert(ys, 0, 0)) 
+    ## cumsum[N:] is the first window, then second window + extra first point,
+    ##  then third window + extra 2 first points, etc... 
+    ys = (cumsum[N:]-cumsum[:-N])
+    if average:
+        ys = ys/N
+    return time_edges[N:],ys
     
 #quality of life 
 def suppressSTDOUTToFile(fn,args,fname,mode='a+',debug=1):
@@ -527,12 +640,13 @@ def bufferAxesLabels(
                 ax.set_ylabel('')
             try:
                 xticks = ax.get_xticklabels()
+                xtick_strings = np.array([xtick.get_text() for xtick in xticks])
                 if len(xticks) == 0:
                     continue
-                xscale = ax.get_xscale()=='log'
+
                 ##  change the first tick
                 if not ax.is_first_col():
-                    xticks[xscale].set_horizontalalignment('left')
+                    xticks[0].set_horizontalalignment('left')
                 ## if we're in the right most 
                 ##  column we don't need to change the last tick
                 #if col_i != (ncols-1):
@@ -581,7 +695,7 @@ def nameAxes(
     yrotation=90,
     xlow=None,xhigh=None,
     ylow=None,yhigh=None,
-    subfontsize=7,fontsize=None,
+    subfontsize=11,fontsize=None,
     xfontsize=None,yfontsize=None,
     font_color=None,font_weight='regular',
     legendkwargs=None,
