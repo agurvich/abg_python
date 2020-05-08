@@ -19,10 +19,10 @@ except:
 """
 
 ## try and use my default matplotlib rcparams style file
-try:
-    plt.style.use('ABG_default')
-except:
-    pass
+#try:
+    #plt.style.use('ABG_default')
+#except:
+    #pass
 
 
 def add_to_legend(
