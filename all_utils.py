@@ -194,7 +194,7 @@ def fit_running_AXb(time_edges,boxcar_width,xs,ys,yerrs):
         ys*xs*weights,
         boxcar_width,
         average=False)
-    
+
 
     X = np.zeros((sum_ys_weights.size,2))
     X[:,0] = sum_ys_weights
@@ -205,12 +205,23 @@ def fit_running_AXb(time_edges,boxcar_width,xs,ys,yerrs):
     M[:,0,1] = sum_xs_weights
     M[:,1,0] = sum_xs_weights
     M[:,1,1] = sum_xs2_weights
-    
+
+    test_arr = sum_xs_weights==0
+    if np.any(test_arr):
+        inds = np.argwhere(test_arr)[:,0]
+        M[test_arr] = [[np.nan,np.nan],[np.nan,np.nan]]
     
     #print("X=",X[4399])
     #print("M=",M[4399])
-    invs = np.linalg.inv(M)
-    #print("M.I = ",invs[4399])
+    try:
+        invs = np.linalg.inv(M)
+    except:
+        ## one of the matrices was singular... 
+        ##  none should have 0 pivots so is 
+        ##  that just bad luck...? overflow error?
+        ##  who could say. regardless, this will do
+        ##  **something**
+        invs = np.linalg.inv(M)
     
     ### https://stackoverflow.com/questions/46213851/python-multiplying-a-list-of-vectors-by-a-list-of-matrices-as-a-single-matrix-o
     ##  only god knows why this works
@@ -700,7 +711,7 @@ def nameAxes(
     yrotation=90,
     xlow=None,xhigh=None,
     ylow=None,yhigh=None,
-    subfontsize=11,fontsize=None,
+    subfontsize=12,fontsize=None,
     xfontsize=None,yfontsize=None,
     font_color=None,font_weight='regular',
     legendkwargs=None,
