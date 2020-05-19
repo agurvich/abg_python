@@ -78,7 +78,7 @@ def getTemperature(
     mean_molecular_weight=mu*m_proton
     return mean_molecular_weight * (gamma-1) * U_cgs / kB
 
-def get_IMass(age,mass):
+def get_IMass(age,mass,apply_factor=False):
     ## age must be in Gyr
     ## based off mass loss in gizmo plot, averaged over 68 stars
     b = 0.587
@@ -86,7 +86,10 @@ def get_IMass(age,mass):
     factors = b*age**a 
     factors[factors > 1]=1
     factors[factors < 0.76]=0.76
-    return mass/factors
+    if not apply_factor:
+        return mass/factors
+    else:
+        return mass*factors
 
 def getBolometricLuminosity(ageGyrs,masses):
     ## convert to Myr
@@ -247,7 +250,7 @@ def fitLorentzian(xs,ys,yerrs=None):
     pars = fitLeastSq(fn,p0,xs,ys,yerrs)
     return pars,lambda x: fn(pars,x)
     
-def fitGauss(xs,ys,yerrs=None):
+def fitGauss(xs,ys,yerrs=None,format_str=None):
     ## initial parameter estimate
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys)]
 
@@ -255,6 +258,8 @@ def fitGauss(xs,ys,yerrs=None):
     fn = lambda pars,x: pars[2]*np.exp(-(x-pars[0])**2./(2*pars[1]**2.))
 
     pars = fitLeastSq(fn,p0,xs,ys,yerrs)
+    if format_str is None:
+        pass
     return pars,lambda x: fn(pars,x)
 
 def fitSkewGauss(xs,ys,yerrs=None):
