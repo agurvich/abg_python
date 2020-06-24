@@ -1,16 +1,22 @@
 ## from builtin
 import numpy as np 
 import h5py
+import os
 
 ## from abg_python
 from abg_python.snapshot_utils import openSnapshot,get_unit_conversion
 from abg_python.metadata_utils import metadata_cache,Metadata,MultiMetadata
+from abg_python.distinct_colours import get_distinct
+from abg_python.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
 
-import abg_python.all_utils
+import abg_python.all_utils as all_utils
 import abg_python.plot_utils 
-import abg_python.cosmoExtractor ## rotateVectorsZY,diskFilterDictionary,offsetRotateSnapshot
-import abg_python.cosmo_utils ## load_AHF,convertSnapSFTsToGyr,convertStellarAges,convertReadsnapTimeToGyr,approximateRedshiftFromGyr
-import abg_python.distinct_colours ## get_distinct,cm_plusmin,cm_linear
+
+import abg_python.cosmo_utils as cosmo_utils 
+
+## cosmo_utils.load_AHF,cosmo_utils.convertSnapSFTsToGyr,
+##cosmo_utils.convertStellarAges,cosmo_utils.convertReadsnapTimeToGyr,cosmo_utils.approximateRedshiftFromGyr
+
 
 
 ## mapping between particle type and what I called them
@@ -66,10 +72,9 @@ class Galaxy(object):
         name,
         snapdir,
         snapnum,
-        cosmological,
         plot_color = 0,
         datadir=None,
-        data_name = None
+        data_name = None,
         loud_metadata=1,
         multi_thread = 1,
         ahf_path = None,
@@ -77,10 +82,17 @@ class Galaxy(object):
         ):
 
         self.name = name
+
+        ## snapdir is sometimes None if an instance is 
+        ##  created just to access the metadata and cached
+        ##  methods
+        if snapdir is not None and snapdir[-1]==os.sep:
+            snapdir = snapdir[:-1]
+
         self.data_name = self.name if data_name is None else data_name
 
         ## append _md to the data_name for my own sanity
-        if 'metal_diffusion' in self.snapdir and '_md' not in self.data_name:
+        if '_md' not in self.data_name and 'metal_diffusion' in self.snapdir:
             self.data_name = self.data_name + '_md'
 
         ## name that should appear on plots
@@ -92,16 +104,9 @@ class Galaxy(object):
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
-        ## snapdir is sometimes None if an instance is 
-        ##  created just to access the metadata and cached
-        ##  methods
-        if snapdir is not None and snapdir[-1]==os.sep:
-            snapdir = snapdir[:-1]
-
         ## bind input
         self.snapdir = snapdir
         self.snapnum = snapnum
-        self.cosmological = cosmological
         self.multi_thread = multi_thread
 
         ## TODO??
@@ -117,8 +122,14 @@ class Galaxy(object):
         ## handle datadir creation
         if datadir is None:
             self.datadir = "/home/abg6257/projects/data/"
+        else:
+            self.datadir = datadir
 
-        if name not in datadir and name!='temp':
+        ## make top level datadir if it doesn't exist...
+        if not os.path.isdir(self.datadir):
+            os.mkdir(self.datadir)
+
+        if name not in self.datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.data_name)
 
         if not os.path.isdir(self.datadir):
@@ -170,14 +181,18 @@ class Galaxy(object):
                     0, ## dummy particle index, not used if header_only is True
                     header_only=1,
                     snapdir_name=self.snapdir_name,
-                    cosmological=self.cosmological)
+                    cosmological=True)
 
                 ## save the header to our catalog of simulation headers
                 ##  so that we can open the header in scenarios where
                 ##  snapnum is None, as above.
-                self.saveHeaderToCatalog()
+                try:
+                    self.saveHeaderToCatalog()
+                except ValueError:
+                    pass
 
-            except OSError:
+
+            except IOError:
                 print("Couldn't find snapshot",self.snapnum,"in",self.snapdir)
                 return 
 
@@ -190,7 +205,7 @@ class Galaxy(object):
             except:
                 print("Couldn't load or create snapshot times, opening the header.")
                 self.current_redshift = self.header['Redshift']
-                self.current_time_Gyr = convertReadsnapTimeToGyr(self.header)
+                self.current_time_Gyr = cosmo_utils.convertReadsnapTimeToGyr(self.header)
 
             ## attempt to read halo location and properties from AHF
             if ahf_fname is None:
@@ -219,7 +234,7 @@ class Galaxy(object):
 
                 ## okay no smooth halo file but there is a halo/ahf directory at least
                 if (os.path.isdir(ahf_path) and (
-                    not os.path.isfile(os.path.join(ahf_path,ahf_fname))):
+                    not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
 
                     ## let's scan through the files in the directory and try and 
                     ##  find an AHF halo file that corresponds to just this snapshot. 
@@ -244,7 +259,7 @@ class Galaxy(object):
             ## now that we've attempted to identify an AHF file lets open 
             ##  this puppy up
             try:
-                self.scom, self.rvir, self.rstar_half = load_AHF(
+                self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
                     self.snapdir,
                     self.snapnum,
                     self.current_redshift,
@@ -252,10 +267,10 @@ class Galaxy(object):
                     fname=ahf_fname,
                     hubble = self.header['HubbleParam'])
 
-            ## TODO make sure there's some proper error handling in load_AHF
+            ## TODO make sure there's some proper error handling in cosmo_utils.load_AHF
             ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves in our first extraction
             except ValueError:
-                self.scom, self.rvir = load_AHF(
+                self.scom, self.rvir = cosmo_utils.load_AHF(
                     self.snapdir,
                     self.snapnum,
                     self.current_redshift,
@@ -268,8 +283,9 @@ class Galaxy(object):
                 ## have we already calculated it and cached it?
                 for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
                     if hasattr(self.metadata,attr):
-                        print('using',attr,'for rstar_half')
+                        print('using cached',attr,'for rstar_half')
                         self.rstar_half = getattr(self.metadata,attr)
+                        break
 
                 ## I guess not
                 if self.rstar_half is None:
@@ -277,7 +293,7 @@ class Galaxy(object):
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
-        self.finsnap = getfinsnapnum(self.snapdir)
+        self.finsnap = all_utils.getfinsnapnum(self.snapdir)
 
     def createSnapshotTimes(self,snaptimes='snapshot_times'):
 
@@ -301,7 +317,7 @@ class Galaxy(object):
         ## if we didn't manage to find an existing snapshot times file
         ##  we'll try and make one ourself using the available snapshots
         ##  in the snapdir
-        finsnap = getfinsnapnum(self.snapdir)
+        finsnap = all_utils.getfinsnapnum(self.snapdir)
         print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
 
         snapnums = []
@@ -319,7 +335,7 @@ class Galaxy(object):
                     0, ## dummy particle index, ignored for header_only = True
                     header_only=True,
                     snapdir_name=self.snapdir_name,
-                    cosmological=self.cosmological)
+                    cosmological=True)
 
                 ## save each one to a list
                 snapnums += [snapnum]
@@ -341,11 +357,11 @@ class Galaxy(object):
             np.array([snapnums,sfs,zs,gyrs,dTs]).T,
             fmt = ['%d','%.6f','%.6f','%.6f','%.6f'])
 
-            (self.snapnums,
-                self.sfs,
-                self.zs,
-                self.gyrs,
-                self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
+        (self.snapnums,
+            self.sfs,
+            self.zs,
+            self.gyrs,
+            self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
 
     ## I keep a single hdf5 file that stores header information
     ##  for every simulation I have opened with a Galaxy class
@@ -371,7 +387,6 @@ class Galaxy(object):
         overwrite=0):
 
         master_datadir = os.path.split(self.datadir)[0]
-        print("Saving %s to %s"%(self.data_name,master_datadir))
 
         with h5py.File(os.path.join(master_datadir,catalog_name),'a') as handle:
             if self.data_name in handle.keys() and overwrite:
@@ -384,10 +399,15 @@ class Galaxy(object):
                 for key in self.header.keys():
                     ## only take the keys that are constant throughout the simulation
                     if key not in ['Time','Redshift','TimeGyr','ScaleFactor']:
-                        this_group[key] = self.header[key]
+                        val = self.header[key]
+                        if key == 'fname':
+                            val = [bar.encode() for bar in val]
+                            this_group[key] = val
             else:
-                raise IOError("This halo is already in the catalog") 
+                raise ValueError("This halo is already in the catalog") 
          
+        print("Saved header of %s to %s header table"%(self.data_name,master_datadir))
+
 #### use the parameters set in __init__ to find the main halo, rotate
 ####  coordinates to lie along gas/star angular momentum axis
 ####  and optionally output this new "sub-snapshot" to a cache file
@@ -486,21 +506,21 @@ class Galaxy(object):
                         None,None,
                         0, ## gas index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=self.cosmological,
+                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_star_snap = openSnapshot(
                         None,None,
                         4, ## star index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=self.cosmological,
+                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_dark_snap = openSnapshot(
                         None,None,
                         1, ## high-res DM index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=self.cosmological,
+                        cosmological=True,
                         abg_subsnap=1)
 
                     ## check if the extraction radius is what we want, to 5 decimal places
@@ -625,7 +645,7 @@ class Galaxy(object):
         self.star_snap = openSnapshot(
             self.snapdir,
             self.snapnum,4,
-            cosmological=self.cosmological,
+            cosmological=True,
             snapdir_name=self.snapdir_name,
             **kwargs)
 
@@ -634,7 +654,7 @@ class Galaxy(object):
         self.snap = openSnapshot(
             self.snapdir,
             self.snapnum,0,
-            cosmological=self.cosmological,
+            cosmological=True,
             snapdir_name=self.snapdir_name,
             **kwargs)
 
@@ -642,7 +662,7 @@ class Galaxy(object):
         print("Loading dark matter particles of",self)
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
-            cosmological=self.cosmological,
+            cosmological=True,
             snapdir_name=self.snapdir_name,
             **kwargs)
 
@@ -659,7 +679,7 @@ class Galaxy(object):
         h/=1.0*np.sum(h)
         cdf = np.cumsum(h)
 
-        return abg_python.all_utils.findIntersection(edges[1:],cdf,0.5)[0]
+        return all_utils.findIntersection(edges[1:],cdf,0.5)[0]
 
     ## load and save things to object
     def outputSubsnapshot(
@@ -706,7 +726,7 @@ class Galaxy(object):
                 extra_keyss+=[set(this_sub_snap.keys()) - set(pkeys) - set(header_keys)]
                 for pkey in pkeys:
                     ## divide by the unit fact, since we want it to be in the FIRE units
-                    unit_fact = get_unit_conversion(this_sub_snap,pkey,self.cosmological)
+                    unit_fact = get_unit_conversion(this_sub_snap,pkey,True)
                     pgroup[pkey] = this_sub_snap[pkey]/unit_fact
 
             ## handle a bunch of set operations that will find the stuff i added
@@ -827,6 +847,15 @@ class ManyGalaxy(Galaxy):
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
 
+        ## snapdir is sometimes None if an instance is 
+        ##  created just to access the metadata and cached
+        ##  methods
+        if snapdir is not None and snapdir[-1]==os.sep:
+            snapdir = snapdir[:-1]
+
+        ## bind input
+        self.snapdir = snapdir
+
         self.name = name
         self.data_name = self.name if data_name is None else data_name
 
@@ -843,30 +872,21 @@ class ManyGalaxy(Galaxy):
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
-        ## snapdir is sometimes None if an instance is 
-        ##  created just to access the metadata and cached
-        ##  methods
-        if snapdir is not None and snapdir[-1]==os.sep:
-            snapdir = snapdir[:-1]
-
-        ## bind input
-        self.snapdir = snapdir
-        self.snapnum = snapnum
-
         ## TODO??
         self.snapdir_name = 'snapdir' if (
             'angles' in self.snapdir or 
             '_md' in self.name 
             and 'm11' not in self.name) else ''
 
-        ## handle metadatadir creation
-        self.metadatadir = os.path.join(self.datadir,'metadata')
-        if not os.path.isdir(self.metadatadir):
-            os.mkdir(self.metadatadir)
-
         ## handle datadir creation
         if datadir is None:
             self.datadir = "/home/abg6257/projects/data/"
+        else:
+            self.datadir = datadir
+
+        ## make top level datadir if it doesn't exist...
+        if not os.path.isdir(self.datadir):
+            os.mkdir(self.datadir)
 
         if name not in datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.data_name)
@@ -874,11 +894,16 @@ class ManyGalaxy(Galaxy):
         if not os.path.isdir(self.datadir):
             os.mkdir(self.datadir)
 
+        ## handle metadatadir creation
+        self.metadatadir = os.path.join(self.datadir,'metadata')
+        if not os.path.isdir(self.metadatadir):
+            os.mkdir(self.metadatadir)
+
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
-            self.finsnap = getfinsnapnum(self.snapdir)
+            self.finsnap = all_utils.getfinsnapnum(self.snapdir)
             ## get the minimum snapnum
-            self.minsnap = getfinsnapnum(self.snapdir,True)
+            self.minsnap = all_utils.getfinsnapnum(self.snapdir,True)
         else:
             ## filler values
             self.finsnap=self.minsnap=None
