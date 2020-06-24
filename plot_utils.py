@@ -289,4 +289,3 @@ def talkifyAxes(axs,lw=2,labelsize=24,ticklabelsize=16):
             ax.yaxis.set_ticklabels(ax.yaxis.get_ticklabels(),fontsize=ticklabelsize)
         if ax.is_last_row():
             ax.xaxis.set_ticklabels(ax.xaxis.get_ticklabels(),fontsize=ticklabelsize)
-

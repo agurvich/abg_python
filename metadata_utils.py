@@ -207,7 +207,51 @@ class Metadata(object):
                     if self.loud_metadata:
                         print("This metadata doesn't have that group, or that group doesn't have that key.")
 
+## creates a collection of metadata instances that can be read as a chain
+class MultiMetadata(Metadata):
+    def __init__(self,snapnums,galaxies,metapath,loud_metadata=1):
+        self.loud_metadata = loud_metadata
+        if galaxies is not None:
+            self.snap_metadatas = [galaxy.metadata for galaxy in galaxies]
+        else:
+            self.snap_metadatas = [
+                Metadata(
+                    os.path.join(metapath,'meta_Galaxy_%03d.hdf5'%snapnum)
+                    ,loud_metadata=self.loud_metadata)
+                for snapnum in snapnums]
 
+    def __getattr__(self,attr):
+        llist = []
+        for gal_i, metadata in enumerate(self.snap_metadatas):
+            try:
+                llist += [ getattr(metadata,attr)]
+            except AttributeError:
+                #raise KeyError(
+                #    self.metapath[gal_i],"doesn't have",attr)
+                print(self.metapath[gal_i],"doesn't have",attr)
+        try:
+            """
+            ## it's a z-slab map of pixels
+            if np.shape(llist)[-1] == 51:
+                return np.array(llist) 
+            ## it's just a list
+            else:
+                return np.concatenate(llist,axis=0)
+            """
+            return np.array(llist)
+        except:
+            return llist
+
+    def __repr__(self):
+        return str(self.snap_metadatas)
+
+    def __getitem__(self,index):
+        return self.snap_metadatas[index]
+    
+    def inspect_metadata(self,index=0,*args):
+        return self[index].inspect_metadata(*args)
+
+## wrapper function that can be applied to memoize the output of functions
 def metadata_cache(
     group,keys,
     use_metadata=1,
