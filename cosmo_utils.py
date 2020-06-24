@@ -30,6 +30,13 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
     age *= 0.001*UnitTime_in_Megayears/HubbleParam
     return age
 
+def convertReadsnapTimeToGyr(snap):
+    cur_time = snap['Time']
+    HubbleParam = snap['HubbleParam']
+    Omega0 = snap['Omega0']
+    cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
+    return cur_time_gyr
+
 def load_AHF(
     snapdir,snapnum,
     current_redshift,
