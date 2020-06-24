@@ -289,7 +289,7 @@ class Galaxy(object):
 
                 ## I guess not
                 if self.rstar_half is None:
-                    print("No rstar 1/2 in halo file, will need to calculate it ourselves.")
+                    print("No rstar 1/2 in AHF or metadata files, we will need to calculate it ourselves.")
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
@@ -918,16 +918,11 @@ class ManyGalaxy(Galaxy):
         ## if i was given snapshots to open, let's create an object that opens the 
         ##  Galaxy instances
         if load_snapnums is not None:
-            self.galaxies = [self.loadAtSnapshot(snapnum) for snapnum in snapnums]
+            self.galaxies = [self.loadAtSnapshot(snapnum) for snapnum in load_snapnums]
             self.metadata = MultiMetadata(
                 load_snapnums,
                 self.galaxies,
                 os.path.join(self.datadir,'metadata'))
-
-            if name_append is not None:
-                self.name+=name_append
-                for galaxy in self.galaxies:
-                    galaxy.name +=name_append
 
             ## define convenient access patterns
             def __getattr__(self,attr):
