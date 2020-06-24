@@ -14,6 +14,7 @@ import numpy as np
 import os
 
 import multiprocessing
+import h5py
 
 import copy 
 
@@ -115,7 +116,7 @@ class Draw_helper(object):
         return ax
 
 class FIREstudio_helper(object):
-    def initialize(self):
+    def initialize_FIREstudio(self):
         ## guard import to avoid
         try:
             from firestudio.studios.gas_studio import GasStudio
