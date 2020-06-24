@@ -14,6 +14,8 @@ import abg_python.plot_utils
 
 import abg_python.cosmo_utils as cosmo_utils 
 
+from abg_python.movie_utils import Draw_helper,FIREstudio_helper
+
 ## cosmo_utils.load_AHF,cosmo_utils.convertSnapSFTsToGyr,
 ##cosmo_utils.convertStellarAges,cosmo_utils.convertReadsnapTimeToGyr,cosmo_utils.approximateRedshiftFromGyr
 
@@ -40,7 +42,9 @@ def halo_id(name):
         return 0 
 
 ## bread and butter galaxy class
-class Galaxy(object):
+class Galaxy(
+    Draw_helper,
+    FIREstudio_helper):
     #Base_KS,
     #Base_GMC,
     #Base_Movie,

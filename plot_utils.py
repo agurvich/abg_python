@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
-from abg_python.all_utils import my_log_formatter
-
 """
 try:
     from distinct_colours import get_distinct
