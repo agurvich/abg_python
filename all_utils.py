@@ -794,8 +794,8 @@ def nameAxes(
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        ax.text(x_pos,.04,subtitle,transform=ax.transAxes,
-            verticalalignment='center',
+        ax.text(x_pos,.01,subtitle,transform=ax.transAxes,
+            verticalalignment='bottom',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
