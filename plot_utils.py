@@ -289,3 +289,312 @@ def talkifyAxes(axs,lw=2,labelsize=24,ticklabelsize=16):
             ax.yaxis.set_ticklabels(ax.yaxis.get_ticklabels(),fontsize=ticklabelsize)
         if ax.is_last_row():
             ax.xaxis.set_ticklabels(ax.xaxis.get_ticklabels(),fontsize=ticklabelsize)
+
+def slackifyAxes(ax,width=8,height=6):
+    fig = ax.get_figure()
+    fig.set_size_inches(width,height)
+    fig.set_facecolor('white')
+    
+
+import matplotlib.ticker
+def my_log_formatter(x,y):
+    """inspired by the nightmare mess that Jonathan Stern
+        sent me after being offended by my ugly log axes"""
+    if x in [1e-2,1e-1,1,10,100]:
+        return r"$%g$"%x
+    elif 1e-2 < x < 100 and np.isclose(0,(x*100)%1):
+        return r"$%g$"%x
+    else:
+        return matplotlib.ticker.LogFormatterMathtext()(x)
+
+my_log_ticker = matplotlib.ticker.FuncFormatter(my_log_formatter)
+
+## from https://gist.github.com/benmaier/31f5fa109cf8fae077bde3d2d68a3883
+def add_curve_label(
+    ax,
+    curve_x,
+    curve_y,
+    label,
+    label_pos_abs=None,
+    label_pos_rel=None,
+    bbox_pad=1.0,
+    **kwargs):
+    """
+    Add a label to a curve according to the curve's slope
+    on the displayed figure.
+    Parameters
+    ----------
+    ax : matplotlib.Axes
+        The ax object where to put the label on. Use
+        `pyplot.gca()` to get the current focal axes.
+    curve_x : numpy.ndarray
+        The curve's x-data.
+    curve_y : numpy.ndarray
+        The curve's y-data.
+    label : str
+        The label.
+    label_pos_abs : float, default : None
+        The absolute x-position at which to pose the label.
+        Must be smaller than `curve_x`'s last element.
+        If None, `label_pos_rel` must be given.
+    label_pos_rel : float, default : None
+        The relative x-position at which to pose the label.
+        Must be 0 <= label_pos_rel < 1.
+        If None, `label_pos_abs` must be given.
+    bbox_pad : float, default : 1.0
+        Padding of the bounding box around the label.
+    **kwargs
+        Will be passed to pyplot.text.
+    """
+    if label_pos_abs is None and label_pos_rel is not None:
+
+        # get xmin and xmax in display coordinates
+        xmin = ax.transData.transform(
+            np.array( [ curve_x[1],  curve_y[1]  ] ))[0]
+        xmax = ax.transData.transform(
+            np.array( [ curve_x[-1], curve_y[-1] ] ))[0]
+
+        # compute label x-position in display coordinates according to
+        # demanded relative label position
+        new_display_x = xmin + label_pos_rel * (xmax - xmin)
+
+        # convert back to data coordinates and save absolute position
+        new_data_x = ax.transData.inverted().transform(np.array([new_display_x,1.0]))
+        label_pos_abs = new_data_x[0]
+
+    elif label_pos_abs is None and label_pos_rel is None:
+        raise ValueError('Please provide either `label_pos_abs` or `label_pos_rel`.')
+    elif label_pos_abs is not None and label_pos_rel is not None:
+        raise ValueError('Please provide either `label_pos_abs` or `label_pos_rel`, not both.')
+
+    # find ndx in data for demanded label position
+    ndx = np.where(curve_x < label_pos_abs)[0][-1]
+
+
+    # convert data at this point to display coordinates
+    x0, y0 = ax.transData.transform( np.array( [ curve_x[ndx], curve_y[ndx] ] ))
+    x1, y1 = ax.transData.transform( np.array( [ curve_x[ndx+1], curve_y[ndx+1] ] ))
+
+    # compute slope and angle at this point in display coordinates
+    dx = x1 - x0
+    dy = y1 - y0
+    angle = np.arctan2(dy,dx) / np.pi * 180
+
+    # convert back to data coordinates
+    x0 = label_pos_abs
+    y0 = np.interp(x0, curve_x, curve_y)
+    # define bounding box for label
+    bbox = dict(facecolor='w', alpha=1, edgecolor='none', pad=bbox_pad)
+
+    if not ('ha' in kwargs or 'horizontalalignment' in kwargs):
+        kwargs['ha'] = 'center'
+
+    if not ('va' in kwargs or 'verticalalignment' in kwargs):
+        kwargs['va'] = 'center'
+
+    # add label
+    ax.text(
+        x0,y0,
+        label,
+        rotation=angle,
+        rotation_mode='anchor',
+        #bbox=bbox,
+        transform=ax.transData,
+        **kwargs)
+
+
+def bufferAxesLabels(
+    axs,
+    nrows,ncols,
+    ylabels = False,
+    xlabels = False,
+    share_ylabel = None,
+    share_xlabel = None,
+    label_offset = 0.075):
+    """Changes the vertical/horizontal alignment of the first & last ytick/xtick 
+    such that adjacent panels don't have overlapping labels. For some ridiculous
+    reason if you are using a log scale the first and last ticks are denoted by -2 and 1 
+    instead of -1 and 0 (and really why are they reversed in the first place??)
+    Input:
+        axs - flattened axis array
+        nrows - number of rows
+        ncols - number of columns
+        ylabels - flag to turn off ylabels
+        xlabels - flag to turn off xlabels """
+    axs = np.array(axs)
+    axss = axs.reshape(nrows,ncols)
+
+    if ylabels:
+        for i,ax in enumerate(axs.flatten()):
+            if i != nrows//2:
+                ax.set_ylabel(ax.get_ylabel(),color=ax.get_facecolor())
+
+    ## for each column that isn't the first
+    for col_i in range(ncols):
+        this_col = axss[:,col_i]
+        for ax in this_col:
+            if ylabels and not ax.is_first_col():
+                ax.set_ylabel('')
+            try:
+                xticks = ax.get_xticklabels()
+                xtick_strings = np.array([xtick.get_text() for xtick in xticks])
+                if len(xticks) == 0:
+                    continue
+
+                ##  change the first tick
+                if not ax.is_first_col():
+                    xticks[0].set_horizontalalignment('left')
+                ## if we're in the right most 
+                ##  column we don't need to change the last tick
+                #if col_i != (ncols-1):
+                xticks[-1].set_horizontalalignment('right')
+            except IndexError:
+                pass ## this can fail if share_x = True
+
+    for ax in axss.flatten():
+        if xlabels:
+            ax.set_xlabel('')
+        try:
+            yticks = ax.get_yticklabels()
+            ## if we're in the first row don't 
+            if len(yticks) == 0:
+                continue
+            ##  need to mess with the top tick
+            if not ax.is_first_row():
+                yticks[-1].set_verticalalignment('top')
+            ## if we're in the last row we 
+            ##  don't need to mess with the bottom tick
+            if not ax.is_last_row():
+                yticks[0].set_verticalalignment('bottom')
+        except IndexError as e:
+            pass ## this can fail if share_y = True
+    
+    fig = axs.flatten()[0].get_figure()
+    if share_ylabel is not None:
+        fig.text(
+            label_offset,0.5,
+            share_ylabel,
+            rotation=90,va='center',ha='center',fontsize=16)
+
+    if share_xlabel is not None:
+        fig.text(
+            0.5,label_offset,
+            share_xlabel,
+            va='center',ha='center',fontsize=16)
+
+
+def nameAxes(
+    ax,title,xname,yname,logflag=(0,0),
+    subtitle=None,supertitle=None,
+    make_legend=0,off_legend=0,
+    loc=0,
+    slackify=0,width=8,height=6,
+    yrotation=90,
+    xlow=None,xhigh=None,
+    ylow=None,yhigh=None,
+    subfontsize=12,fontsize=None,
+    xfontsize=None,yfontsize=None,
+    font_color=None,font_weight='regular',
+    legendkwargs=None,
+    swap_annotate_side=False,
+    subtextkwargs = None):
+    """Convenience function for adjusting axes and axis labels
+    Input:
+        ax - Axis to label, for single plot pass plt.gca(), for subplot pass 
+            the subplot's axis.
+        title - The title of the plot.
+        xname - The xaxis label
+        yname - The yaxis label
+        logflag - Flags for log scaling the axes, (x,y) uses simple true/false
+        make_legend - A flag for making a legend using each line's label passed
+            from the plot(xs,ys,label=)
+        verty - A flag for changing the orientation of the yaxis label
+        subtitle - Puts a subtitle in the bottom left corner of the axis panel
+            if not None
+        off_legend - Offsets the legend such that it appears outside of the 
+            plot. You MUST add the artist to the bbox_extra_artists list in
+            savefig otherwise it WILL be cut off. 
+            """
+
+    legendkwargs = {} if legendkwargs is None else legendkwargs
+
+    ## axes limits
+    if xlow is not None:
+        ax.set_xlim(left=xlow)
+    if ylow is not None:
+        ax.set_ylim(bottom=ylow)
+    if xhigh is not None:
+        ax.set_xlim(right=xhigh)
+    if yhigh is not None:
+        ax.set_ylim(top=yhigh)
+
+    if yname!=None:
+        if yfontsize is None:
+            ax.set_ylabel(yname,rotation=yrotation)
+        else:
+            ax.set_ylabel(yname,fontsize=yfontsize,rotation=yrotation)
+            #for tick in ax.yaxis.get_major_ticks():
+                #tick.label.set_fontsize(yfontsize)
+
+    if xname!=None:
+        if xfontsize is None:
+            ax.set_xlabel(xname)
+        else:
+            ax.set_xlabel(xname,fontsize=xfontsize)
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(xfontsize)
+    if logflag[0]:
+        ax.set_xscale('log')
+        ax.xaxis.set_major_formatter(my_log_ticker)
+        #ax.xaxis.set_minor_formatter(my_log_ticker))
+        ax.xaxis.set_minor_formatter(NullFormatter())
+    if logflag[1] :
+        ax.set_yscale('log',nonposy='clip')
+        ax.yaxis.set_major_formatter(my_log_ticker)
+        #ax.yaxis.set_minor_formatter(my_log_ticker))
+        ax.yaxis.set_minor_formatter(NullFormatter())
+    if title!=None:
+        ax.set_title(title)
+
+    subtextkwargs={} if subtextkwargs is None else subtextkwargs
+    if font_color is not None:
+        subtextkwargs['color']=font_color
+    if subfontsize is not None:
+        subtextkwargs['fontsize']=subfontsize
+
+    if swap_annotate_side:
+        x_pos = 1-0.01
+        halign = 'right'
+    else:
+        x_pos = 0.01
+        halign = 'left'
+    if supertitle:
+        ax.text(x_pos,.96,supertitle,transform=ax.transAxes,
+            verticalalignment='top',
+            horizontalalignment=halign,
+            weight=font_weight,**subtextkwargs)
+
+    if subtitle:
+        ax.text(x_pos,.01,subtitle,transform=ax.transAxes,
+            verticalalignment='bottom',
+            horizontalalignment=halign,
+            weight=font_weight,**subtextkwargs)
+
+    if slackify:
+        slackifyAxes(ax,width,height)
+
+    ## add the subtext kwargs to legendkwargs
+    legendkwargs.update(subtextkwargs)
+
+    if make_legend:
+        if off_legend:
+            return ax.legend(bbox_to_anchor=(1.02,1),frameon=0,**legendkwargs)
+        else:
+            loc = loc+(supertitle is not None)
+            if 'loc' in legendkwargs:
+                loc = legendkwargs.pop('loc')
+            ax.legend(
+                loc=loc,
+                frameon=0,**legendkwargs)
+            return ax.get_legend_handles_labels()
+
