@@ -6,20 +6,15 @@ import os
 ## from abg_python
 from abg_python.snapshot_utils import openSnapshot,get_unit_conversion
 from abg_python.metadata_utils import metadata_cache,Metadata,MultiMetadata
-from abg_python.distinct_colours import get_distinct
 from abg_python.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
+from abg_python.plot_utils import add_to_legend
+from abg_python.distinct_colours import get_distinct
 
 import abg_python.all_utils as all_utils
-import abg_python.plot_utils 
-
 import abg_python.cosmo_utils as cosmo_utils 
 
 from abg_python.movie_utils import Draw_helper,FIREstudio_helper
-
-## cosmo_utils.load_AHF,cosmo_utils.convertSnapSFTsToGyr,
-##cosmo_utils.convertStellarAges,cosmo_utils.convertReadsnapTimeToGyr,cosmo_utils.approximateRedshiftFromGyr
-
-
+from abg_python.sfr_utils import SFR_helper
 
 ## mapping between particle type and what I called them
 sub_snap_dict = {
@@ -44,13 +39,11 @@ def halo_id(name):
 ## bread and butter galaxy class
 class Galaxy(
     Draw_helper,
-    FIREstudio_helper):
+    FIREstudio_helper,
+    SFR_helper):
     #Base_KS,
     #Base_GMC,
-    #Base_Movie,
-    #Base_GalacticWinds,
-    #Base_SNeClustering,
-    #Base_SFR):
+    ):
 
     def hasattr(self,attr):
         return attr in dir(self)
@@ -67,12 +60,13 @@ class Galaxy(
             
         kwargs['label'] = self.data_name
         kwargs['color'] = self.plot_color
-        abg_python.plot_utils.add_to_legend(*args,**kwargs)
+        add_to_legend(*args,**kwargs)
 
         return ax
 
     ## GALAXY
-    def __init__(self,
+    def __init__(
+        self,
         name,
         snapdir,
         snapnum,
@@ -831,6 +825,72 @@ class Galaxy(
 
                         ## save the indices
                         group['ThisSnapMask_PartType%d'%ptype] = this_file_indices 
+
+    def get_tex_galaxy_table_row(
+        self,
+        disk_scale_height=None,
+        disk_scale_radius=None,
+        SFH_tavg=0.6,
+        table=None,
+        ):
+        """disk_scale_height = None -> spherical mask
+            disk_scale_radius = None -> 5 rstar_half"""
+
+        ## initialize disk_scale_radius if necessary
+        disk_scale_radius = 5*self.rstar_half if disk_scale_radius is None else disk_scale_radius
+
+        ## intialize this row with the header for a table. can avoid this by passing table = ""
+        if table is None:
+            table = r"""## name & $M_\mathrm{halo}$ (M$_\odot$) \tnote{a} & $R_{*,1/2}$ (kpc) \tnote{b}& $M_*$ (M$_\odot$) \tnote{c} & $f_g$ \tnote{d} & $\langle SFR \rangle_\mathrm{600\,Myr}$ (M$_\odot$ yr$^{-1}$) \tnote{e}\\ \hline
+    """
+        ## open the particle data
+        self.extractMainHalo()
+
+        ## find the mask corresponding to the galactic disk
+        scoords = self.sub_star_snap['Coordinates']
+        coords = self.sub_snap['Coordinates']
+ 
+        masks = []
+        for this_coords in [coords,scoords]:
+            mask = np.sum(this_coords**2,axis=1)**0.5 < disk_scale_radius
+
+            if disk_scale_height is not None:
+                zmask = np.abs(this_coords[:,-1]) <= disk_scale_height
+                mask = np.logical_and(mask,zmask)
+
+            masks+=[mask]
+
+        ## apply mask to get only particles within the disk
+        disk_masses = self.sub_snap['Masses'][masks[0]]
+        disk_smasses = self.sub_star_snap['Masses'][masks[1]]
+        
+        mstar = disk_smasses.sum()
+        mgas = disk_masses.sum()
+        
+        ## load the star formation history to find recent SFR
+        self.get_SFH()
+        last_time = self.SFH_time_edges[-1]
+        avg_sfr = np.mean(self.sfrs[(last_time-self.SFH_time_edges[1:])<=SFH_tavg])
+        
+        print(self,end='\n----\n')
+        print('mh: %.1e'%(self.sub_dark_snap['Masses'].sum()*1e10))
+        print('rstarhalf: %.2f'%self.rstar_half)
+        print('m*: %.1e'%(mstar*1e10))
+        print('fg: %.2f'%(mgas/(mstar+mgas)))
+        print('sfr: %.2f'%avg_sfr)
+        print("----")
+
+        table+=r"%s & %.1e & %.1f & %.1e & %.2f & %.2f\\"%(
+            self.pretty_name,
+            self.sub_dark_snap['Masses'].sum()*1e10,
+            self.rstar_half,
+            (mstar*1e10),
+            (mgas/(mstar+mgas)),
+            avg_sfr
+        )
+        table+='\n'
+    table = table.replace('+','')
+    return table
     
 ###### MANY GALAXY FUNCTIONS
 class ManyGalaxy(Galaxy):
