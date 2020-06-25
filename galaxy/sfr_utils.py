@@ -12,9 +12,11 @@ from abg_python.cosmo_utils import approximateRedshiftFromGyr
 import abg_python.all_utils as all_utils
 
 from abg_python.galaxy.metadata_utils import metadata_cache
-from abg_python.galaxy.gal_utils import Galaxy
 
 class SFR_plotter(object):
+    """------- SFR_plotter
+    """
+    
     def addSFRToAx(
         self,
         ax=None,
@@ -95,9 +97,12 @@ class SFR_plotter(object):
         ## do we need to change the y-axis values at all?
         if renormed is not None:
             ## you want us to renormalize by the running average
-            smooth_sfr_xs,smooth_sfr_ys,smooth_sfr_f = self.(t_avg=t_avg)
-            ys = ys/smooth_sfr_f(xs)
-            ylabel = r'SFR/$\langle SFR \rangle_{%d\,\mathrm{Myr}}$'%(t_avg*1e3)
+            xs,long_ys = all_utils.boxcar_average(
+                self.SFH_time_edges,
+                self.SFRs,
+                renormed)
+            ys = ys/long_ys
+            ylabel = r'SFR/$\langle SFR \rangle_{%d\,\mathrm{Myr}}$'%(renormed*1e3)
         elif specific: 
             ## you want us to divide by the integrated SFR
             mass_subset_sum = [ys[0]]
@@ -183,12 +188,12 @@ class SFR_plotter(object):
     def plot_graySFRBand(
         self,
         ax=None,
-        window_size=0.3
+        window_size=0.3,
         want_redshift_xs=0,
         color=None,
         factor=3):
 
-        color = self.plot_color if color is None
+        color = self.plot_color if color is None else color
 
         try:
             self.get_SFH(DT=0.001,assert_cached=True)
@@ -216,6 +221,10 @@ class SFR_plotter(object):
         return ax
 
 class SFR_helper(SFR_plotter):
+    """------- SFR_helper
+    """
+
+    __doc__+="\n"+SFR_plotter.__doc__
 
     def get_sfr_string(self,DT):
         if DT > 0:
@@ -259,6 +268,7 @@ class SFR_helper(SFR_plotter):
                 print("Already opened the final snapshot!")
                 temp_fin_gal = self
             else:
+                from abg_python.galaxy.gal_utils import Galaxy
                 ## have to open a whole new galaxy object!!
                 temp_fin_gal = Galaxy(
                     self.name,
