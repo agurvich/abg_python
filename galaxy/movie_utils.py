@@ -19,6 +19,9 @@ import h5py
 import copy 
 
 class Draw_helper(object):
+    """------- Draw_helper 
+    """
+
     def drawGasGalaxy(
         self,
         thetax=None,thetay=None,thetaz=None,
@@ -116,6 +119,9 @@ class Draw_helper(object):
         return ax
 
 class FIREstudio_helper(object):
+    """------- FIREstudio_helper
+    """
+
     def initialize_FIREstudio(self):
         ## guard import to avoid
         try:

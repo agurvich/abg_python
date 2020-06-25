@@ -6,13 +6,14 @@ import os
 ## from abg_python
 from abg_python.snapshot_utils import openSnapshot,get_unit_conversion
 
-from abg_python.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
+
 from abg_python.plot_utils import add_to_legend
 from abg_python.distinct_colours import get_distinct
 
 import abg_python.all_utils as all_utils
 import abg_python.cosmo_utils as cosmo_utils 
 
+from abg_python.galaxy.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
 from abg_python.galaxy.movie_utils import Draw_helper,FIREstudio_helper
 from abg_python.galaxy.sfr_utils import SFR_helper
 from abg_python.galaxy.metadata_utils import metadata_cache,Metadata,MultiMetadata
@@ -42,9 +43,29 @@ class Galaxy(
     Draw_helper,
     FIREstudio_helper,
     SFR_helper):
-    #Base_KS,
-    #Base_GMC,
-    ):
+    """------- Galaxy
+        Input:
+            name - name of the simulation directory
+            snapdir - location that the snapshots live in, should end in "output"
+            snapnum - snapshot number
+            datadir = None - directory where any new files are saved to
+            data_name = None - name of the data directory, if different than name
+            plot_color = 0 - color this instance will use when plotting onto an axis
+            loud_metadata = 1 - whether the data cache will show optional print statements
+            multi_thread = 1 - number of threads this instance will use if multi-threading
+                is available
+            ahf_path = None - path to AHF halo files, defaults first to my halo directory
+                and snapdir/../halo/ahf if halo second.
+            ahf_fname = None - name of the AHF file, typically smooth_halo_00000.dat
+
+        Provided functions:
+
+    """ 
+
+    __doc__+= (
+        "\n"+Draw_helper.__doc__ + 
+        "\n"+FIREstudio_helper.__doc__ +
+        "\n"+SFR_helper.__doc__)
 
     def hasattr(self,attr):
         return attr in dir(self)
@@ -71,9 +92,9 @@ class Galaxy(
         name,
         snapdir,
         snapnum,
-        plot_color = 0,
         datadir=None,
         data_name = None,
+        plot_color = 0,
         loud_metadata=1,
         multi_thread = 1,
         ahf_path = None,
@@ -890,8 +911,9 @@ class Galaxy(
             avg_sfr
         )
         table+='\n'
-    table = table.replace('+','')
-    return table
+        table = table.replace('+','')
+
+        return table
     
 ###### MANY GALAXY FUNCTIONS
 class ManyGalaxy(Galaxy):
