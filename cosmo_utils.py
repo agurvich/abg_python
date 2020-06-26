@@ -75,10 +75,10 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
     age *= 0.001*UnitTime_in_Megayears/HubbleParam
     return age
 
-def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs,recurse_depth=1):
+def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs):
 
     ## many zs..., uniformly in log(1+z) from z=0 to z=15
-    zs = 10**np.linspace(0,np.log10(1000),1000*10**recurse_depth)-1
+    zs = 10**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
 
     ## standard FIRE cosmology...
     #HubbleParam = 0.7
