@@ -147,18 +147,18 @@ class Galaxy(
 
         ## make top level datadir if it doesn't exist...
         if not os.path.isdir(self.datadir):
-            os.mkdir(self.datadir)
+            os.makedirs(self.datadir)
 
         if name not in self.datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.data_name)
 
         if not os.path.isdir(self.datadir):
-            os.mkdir(self.datadir)
+            os.makedirs(self.datadir)
 
         ## handle metadatadir creation
         self.metadatadir = os.path.join(self.datadir,'metadata')
         if not os.path.isdir(self.metadatadir):
-            os.mkdir(self.metadatadir)
+            os.makedirs(self.metadatadir)
 
         ## are we just trying to open this simulation's constant header info?
         if self.snapnum is None:
@@ -713,7 +713,7 @@ class Galaxy(
         ## make the subsnap directory if necessary
         subsnapdir = os.path.join(self.datadir,'subsnaps')
         if not os.path.isdir(subsnapdir):
-            os.mkdir(subsnapdir)
+            os.makedirs(subsnapdir)
 
 
         ## get keys directly from the parent snapshot:
@@ -807,7 +807,7 @@ class Galaxy(
         ## make the subsnap directory if necessary
         subsnapdir = os.path.join(self.datadir,'subsnaps')
         if not os.path.isdir(subsnapdir):
-            os.mkdir(subsnapdir)
+            os.makedirs(subsnapdir)
 
         ## do we want to just produce a carbon copy of the subsnapshot or an
         ##  index cache?
@@ -973,18 +973,18 @@ class ManyGalaxy(Galaxy):
 
         ## make top level datadir if it doesn't exist...
         if not os.path.isdir(self.datadir):
-            os.mkdir(self.datadir)
+            os.makedirs(self.datadir)
 
         if name not in datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.data_name)
 
         if not os.path.isdir(self.datadir):
-            os.mkdir(self.datadir)
+            os.makedirs(self.datadir)
 
         ## handle metadatadir creation
         self.metadatadir = os.path.join(self.datadir,'metadata')
         if not os.path.isdir(self.metadatadir):
-            os.mkdir(self.metadatadir)
+            os.makedirs(self.metadatadir)
 
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
