@@ -435,7 +435,10 @@ def findArrayClosestIndices(xs,ys):
     try:
         assert len(xs) < len(ys)
     except:
-        raise Exception("Ys should be some large sample that Xs is subsampling!")
+        raise ValueError(
+            "Ys (%d)"%len(ys),
+            "should be some large sample that",
+            "Xs (%d) is subsampling!"%len(xs))
 
     dists = cdist(
         xs.reshape(-1,1),
@@ -449,12 +452,13 @@ def findIntersection(xs,ys,ys1):
     return xs[argmin],ys[argmin]
 
 def boxcar_average(
-    self,
     time_edges,
-    ys,boxcar_width,
+    ys,
+    boxcar_width,
     loud=False,
     average=True, ## vs. just counting non-nan entries in a window
     edges = True):
+
     """
     for lists with many nans need to first run w/ average=False, then 
     run with ys=np.ones and average=False
@@ -473,6 +477,9 @@ def boxcar_average(
         with edges of window
     """
 
+    ## apply a finite filter... no infinities allowed!
+    ys[np.logical_not(np.isfinite(ys))] = np.nan
+
     dts = np.unique(time_edges[1:]-time_edges[:-1])
     if not np.allclose(dts,dts[0]):
         print(dts)
@@ -484,8 +491,9 @@ def boxcar_average(
     ## number of points per boxcar is 
     N = int(boxcar_width//dts[0] + ((boxcar_width%dts[0])/dts[0]>=0.5))
     if loud:
-        print("boxcar'ing with %d points/car, dt: %.2e %.2e"%(N,dts[0],boxcar_width))
-    cumsum = np.nancumsum(np.insert(ys, 0, 0)) 
+        print("boxcar'ing with %d points/car, dt: %.2e window: %.2e"%(N,dts[0],boxcar_width))
+    cumsum = np.nancumsum(np.insert(ys, 0, 0).astype(np.float64)) 
+
     ## cumsum[N:] is the first window, then second window + extra first point,
     ##  then third window + extra 2 first points, etc... 
     ys = (cumsum[N:]-cumsum[:-N])
