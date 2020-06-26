@@ -71,7 +71,7 @@ class Galaxy(
         return attr in dir(self)
 
     def __repr__(self):
-        return "%s at %d" % (self.data_name,self.snapnum)# + self.__dict__.keys()
+        return "%s at %d" % (self.name,self.snapnum)# + self.__dict__.keys()
 
     ## convenience function to add this simulation to a legend
     ##  with its name and plot_color
@@ -894,7 +894,7 @@ class Galaxy(
         ## load the star formation history to find recent SFR
         self.get_SFH()
         last_time = self.SFH_time_edges[-1]
-        avg_sfr = np.mean(self.sfrs[(last_time-self.SFH_time_edges[1:])<=SFH_tavg])
+        avg_sfr = np.mean(self.SFRs[(last_time-self.SFH_time_edges[1:])<=SFH_tavg])
         
         print(self,end='\n----\n')
         print('mh: %.1e'%(self.sub_dark_snap['Masses'].sum()*1e10))
@@ -919,6 +919,8 @@ class Galaxy(
     
 ###### MANY GALAXY FUNCTIONS
 class ManyGalaxy(Galaxy):
+    """ """
+
     def __repr__(self):
         return "%s many-galaxy wrapper"%(self.name)
 
