@@ -5,7 +5,7 @@ import os
 import matplotlib.pyplot as plt
 
 ## from abg_python
-from abg_python.plot_utils import add_to_legend
+from abg_python.plot_utils import add_to_legend,nameAxes
 
 from abg_python.cosmo_utils import approximateRedshiftFromGyr
 
@@ -73,12 +73,12 @@ class SFR_plotter(object):
             renormed=None does not renormalize the SFH, renormed=DT will renormalize by the 
             DT running average. """
 
-        plot_color = self.plot_color if plot_color is None else plot_color
+        color = self.plot_color if color is None else color
 
         ## just load up the 1 Myr SFR, it's
-        if not hasattr(self,'SFH_dt') or self.SFH_dt!=0.001:
+        if not hasattr(self,'SFH_dt') or DT!=0.001:
             try:
-                self.get_(DT=0.001,assert_cached=True)
+                self.get_SFH(DT=0.001,assert_cached=True,loud=False)
             except AssertionError:
                 raise ValueError("Compute the SFH first using galaxy.get_SFH(DT=0.001)")
         
@@ -102,6 +102,7 @@ class SFR_plotter(object):
                 self.SFRs,
                 renormed)
             ys = ys/long_ys
+            xs = xs[1:]
             ylabel = r'SFR/$\langle SFR \rangle_{%d\,\mathrm{Myr}}$'%(renormed*1e3)
         elif specific: 
             ## you want us to divide by the integrated SFR
@@ -119,12 +120,9 @@ class SFR_plotter(object):
             xs = np.log10(approximateRedshiftFromGyr(
                 self.header['HubbleParam'],self.header['Omega0'],xs)+1)
 
-            if zticks is not None:
-                ax.set_xticks(np.log10(1+np.array(zticks)))
-                ax.set_xticklabels(zticks)
-            else:
-                ax.set_xticks(np.linspace(min(xs),max(xs),10))
-                ax.set_xticklabels(["%.3f"% (10**z-1) for z in np.linspace(min(xs),max(xs),10)])
+            ax.set_xticks(np.linspace(min(xs),np.log10(1+7),10))
+            ax.set_xticklabels(["%.3f"% (10**z-1) for z in np.linspace(min(xs),np.log10(1+7),10)])
+            ax.set_xlim(min(xs),np.log10(1+7))
 
             xlabel = 'z' 
         elif snapshot_xs:
@@ -135,15 +133,17 @@ class SFR_plotter(object):
 
         ## actually plot the damn thing
         ax.plot(xs,ys,lw=1,
-            color = plot_color)
+            color = color)
 
         ## sprinkles on top, plot overlays that might be useful
         if bursty:
             ## should we plot a vertical line at the bursty time?
-            bursty_index,bursty_time = self.get_bursty_regime()
-            ax.axvline(xs[bursty_index],c=plot_color,ls='--',alpha=0.65)
+            bursty_index,bursty_time,bursty_redshift,rel_scatters = self.get_bursty_regime(loud=False)
+            
+            ax.axvline(xs[bursty_index],c=color,ls='--',alpha=0.65)
 
         if plot_grayBand:
+            factor = 3
             ## should we plot a band showing the running average of the
             ##  the SFR +- a factor of sqrt(3)?
             if renormed:
@@ -153,18 +153,19 @@ class SFR_plotter(object):
                     np.ones(xs.size)*factor**0.5,
                     lw=0,
                     color='gray',
-                    alpha=0.15)
+                    alpha=0.25)
             else:
                 self.plot_graySFRBand(
                     ax,
                     want_redshift_xs=redshift_xs,
-                    color='gray')
+                    color='gray',
+                    factor=3)
     
 
         if near is not None:
             ## if near, plot the bead and crop the plot
             ## find the time on the SFH that is closest to the current time
-            cur_index,ti = findIntersection(
+            cur_index,ti = all_utils.findIntersection(
                 np.arange(self.SFRs.size),
                 self.SFH_time_edges[1:],
                 self.current_time_Gyr)
@@ -174,12 +175,15 @@ class SFR_plotter(object):
             ## done obliquely this way to account for possibility of redshift xs
             ##  but tbh shouldn't really be doing near for redshift xs so....
             ##  automatically handles if xl or xr is outside SFH_time_edges
+            foo = ((self.SFH_time_edges[1:]-near/2)-self.SFH_time_edges[1:])**2
+            print((self.SFH_time_edges[1:]-near/2)-self.SFH_time_edges[1:])
             xl = xs[np.argmin(
-                ((self.SFH_time_edges[1:]-near/2)-self.SFH_time_edges)**2)]
+                ((self.current_time_Gyr-near/2)-self.SFH_time_edges[1:])**2)]
             xr = xs[np.argmin(
-                ((self.SFH_time_edges[1:]+near/2)-self.SFH_time_edges)**2)]
+                ((self.current_time_Gyr+near/2)-self.SFH_time_edges[1:])**2)]
 
             ax.plot(xi,sfri,'ro',markeredgewidth=0,markersize=8)
+            print(xl,xr)
             ax.set_xlim(xl,xr)
 
         nameAxes(ax,None,xlabel,ylabel,logflag=(0,1),**axkwargs)
@@ -196,7 +200,7 @@ class SFR_plotter(object):
         color = self.plot_color if color is None else color
 
         try:
-            self.get_SFH(DT=0.001,assert_cached=True)
+            self.get_SFH(DT=0.001,assert_cached=True,loud=False)
         except AssertionError:
             raise ValueError("Compute the SFH first using galaxy.get_SFH(DT=0.001)")
 
@@ -211,12 +215,12 @@ class SFR_plotter(object):
 
             ## if we already divided by this function then we just want a constant window
             ax.fill_between(
-                xs,
-                ys/factor**0.5,
-                ys*factor**0.5,
+                xs[1:],
+                avg_long/factor**0.5,
+                avg_long*factor**0.5,
                 lw=0,
                 color=color,
-                alpha=0.15)
+                alpha=0.25)
 
         return ax
 
@@ -241,6 +245,7 @@ class SFR_helper(SFR_plotter):
         loud=True,
         DT = 0.001,
         **kwargs):
+        """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
 
         sfr_string = self.get_sfr_string(DT)
         ### begin wrapped
@@ -257,14 +262,14 @@ class SFR_helper(SFR_plotter):
         def compute_SFH(
             self,
             radial_thresh=None):
-            """radial_thresh = None -> spherical cut of 5*rstar_half"""
+            """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
             
             ## initialize the spherical radial threshold
             radial_thresh = 5*self.rstar_half if radial_thresh is None else radial_thresh
 
             finsnap = self.finsnap 
 
-            if finsnap != self.snapnum:
+            if finsnap == self.snapnum:
                 print("Already opened the final snapshot!")
                 temp_fin_gal = self
             else:
@@ -274,8 +279,7 @@ class SFR_helper(SFR_plotter):
                     self.name,
                     self.snapdir,
                     finsnap,
-                    cosmological=self.cosmological,
-                    datadir=self.datadir,
+                    datadir=os.path.dirname(self.datadir),
                     data_name=self.data_name,
                     ahf_path=self.ahf_path,
                     ahf_fname=self.ahf_fname)
@@ -288,7 +292,7 @@ class SFR_helper(SFR_plotter):
                 temp_fin_gal.extractMainHalo(free_mem=1,extract_DM=0)
 
             ## apply the radial mask
-            rmask = np.sum(star_snap['Coordinates']**2,axis=1)<radial_thresh**2
+            rmask = np.sum(self.sub_star_snap['Coordinates']**2,axis=1)<radial_thresh**2
             star_snap = all_utils.filterDictionary(self.sub_star_snap,rmask)
 
             ## get initial stellar masses if possible, otherwise estimate them by "undoing" the 
@@ -299,34 +303,38 @@ class SFR_helper(SFR_plotter):
 
             ## calculate the star formation history
             SFTs,timemax = temp_fin_gal.current_time_Gyr - star_snap['AgeGyr'],temp_fin_gal.current_time_Gyr
-            SFRs,time_edges = arch_method(
+            SFRs,SFH_time_edges = arch_method(
                 smasses,
                 SFTs,
                 timemax,
                 tmin=1e-16,
                 DT=DT)
 
+            assert SFH_time_edges[-1]/DT == temp_fin_gal.current_time_Gyr//DT
+
             ## calculate the stellar metallicity history-- which Katie Breivik once asked me for
             ##  /shrug
             metals = star_snap['Metallicity'][:,0] # mass fractions
-            metal_SFRs,time_edges = arch_method(smasses*metals,SFTs,timemax,tmin=tmin,DT=DT)
-            metal_History = metal_SFRs/SFRs # metal masses / total masses -> metal mass fraction in each bin
+            SFR_metals,SFH_time_edges = arch_method(smasses*metals,SFTs,timemax,tmin=1e-16,DT=DT)
+            SFR_metals = SFR_metals/SFRs # metal masses / total masses -> metal mass fraction in each bin
  
             ## free up temporary galaxy memory
             if temp_fin_gal is not self:
                 del temp_fin_gal
 
+            ## output the SFH and metallicity history to an external "catalog"
+            ##  file so it's easier to share (with say, Jonathan, for instance)
+            catpath = os.path.join(self.datadir,'sfrcat_%d_%s'%(self.finsnap,sfr_string))
+            if not os.path.isfile(catpath):
+                sfrcat = {'metals':self.SFR_metals,'sfrs':self.SFRs,'time_edges':self.SFH_time_edges}
+                print("outputting sfrcat to:",catpath,'radial_thresh:',radial_thresh)
+                np.savez(catpath,**sfrcat)
+
             return SFH_time_edges, SFRs, SFR_metals, DT
 
-        compute_SFH(self,**kwargs)
 
-        ## output the SFH and metallicity history to an external "catalog"
-        ##  file so it's easier to share (with say, Jonathan, for instance)
-        catpath = os.path.join(self.datadir,'sfrcat_%d_%s'%(finsnap,sfr_string))
-        if not os.path.isfile(catpath):
-            sfrcat = {'metals':metal_History,'sfrs':SFRs,'time_edges':time_edges}
-            print("outputting sfrcat to:",catpath,'radial_thresh:',radial_thresh)
-            np.savez(catpath,**sfrcat)
+
+        compute_SFH(self,**kwargs)
 
         return self.SFH_time_edges, self.SFRs, self.SFR_metals, self.SFH_dt
 
@@ -411,7 +419,7 @@ class SFR_helper(SFR_plotter):
         loud=True,
         **kwargs):
         """ thresh=0.5, ## dex of scatter
-            window=0.3, ## size of window to compute scatter within"""
+            window_size=0.3, ## size of window to compute scatter within"""
 
         ### begin wrapped
         @metadata_cache(
@@ -426,24 +434,28 @@ class SFR_helper(SFR_plotter):
             loud=loud)
         def compute_bursty_regime(
             self,
-            thresh=0.5, ## dex of scatter
-            window=0.3, ## size of window to compute scatter within
+            thresh=0.3, ## dex of scatter
+            window_size=0.3, ## size of window to compute scatter within
             ):
 
             ## ensure that we have the 1 Myr SFH loaded
             self.get_SFH(DT=0.001,loud=False)
 
+
+            adjusted_sfrs = self.SFRs + self.SFRs[self.SFRs>0].min()/10
+
             ## calculate the relative scatter as sigma/y
-            xs,avg_long = all_utils.boxcar_average(
+            xs,sfh_long = all_utils.boxcar_average(
                 self.SFH_time_edges,
-                np.log10(self.SFRs),
-                window_size)
+                np.log10(adjusted_sfrs),
+                window_size,
+                loud=True)
 
-            xs2,avg_long_2 = all_utils.boxcar_average(
+            xs2,sfh_long_2 = all_utils.boxcar_average(
                 self.SFH_time_edges,
-                np.log10(self.SFRs)**2,window_size)
+                np.log10(adjusted_sfrs)**2,window_size)
 
-            rel_scatters = (sfh_long_2-sfh_long**2)**0.5/sfh_long
+            rel_scatters = (sfh_long_2-sfh_long**2)**0.5/np.abs(sfh_long)
 
             ## have to reverse the rel_scatters to find the "last point of crossing" 
             ##  after which the rel_scatter doesn't cross the threshold. 
@@ -453,7 +465,7 @@ class SFR_helper(SFR_plotter):
             bursty_redshift = approximateRedshiftFromGyr(
                 self.header['HubbleParam'],
                 self.header['Omega0'],
-                xs[tindex])
+                np.array([xs[tindex]]))[0]
 
             return tindex, xs[tindex], bursty_redshift, rel_scatters
         
@@ -468,7 +480,7 @@ def arch_method(smasses,SFTs,timemax,tmin=None,DT=None):
     if tmin == None:
         tmin = np.min(SFTs)
 
-    edges = np.arange(tmin,timemax+DT,DT)
+    edges = np.arange(tmin,timemax,DT,dtype=np.float64)
 
     SFRs,time_edges = np.histogram(SFTs,weights=smasses/(DT*1e9),bins=edges) #solar masses/year, Myr
     assert (time_edges==edges).all()
