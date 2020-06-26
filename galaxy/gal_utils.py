@@ -101,6 +101,9 @@ class Galaxy(
         ahf_fname = None,
         ):
 
+        ## bind input
+        self.snapnum = snapnum
+        self.multi_thread = multi_thread
         self.name = name
 
         ## snapdir is sometimes None if an instance is 
@@ -108,12 +111,13 @@ class Galaxy(
         ##  methods
         if snapdir is not None and snapdir[-1]==os.sep:
             snapdir = snapdir[:-1]
+        self.snapdir = snapdir
 
         self.data_name = self.name if data_name is None else data_name
 
         ## append _md to the data_name for my own sanity
-        if '_md' not in self.data_name and 'metal_diffusion' in self.snapdir:
-            self.data_name = self.data_name + '_md'
+        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
@@ -123,11 +127,6 @@ class Galaxy(
             for strr in pretty_name] 
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
-
-        ## bind input
-        self.snapdir = snapdir
-        self.snapnum = snapnum
-        self.multi_thread = multi_thread
 
         ## TODO??
         self.snapdir_name = 'snapdir' if (
@@ -229,22 +228,25 @@ class Galaxy(
 
             ## attempt to read halo location and properties from AHF
             if ahf_fname is None:
-                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.name)
+                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.data_name)
 
             if ahf_path is None:
                 ## assumes we are on stampede2
                 ahf_path = "/work/04210/tg835099/stampede2/halo_files/%s/%s"
+                ## assumes we are on quest
+                ahf_path = "/projects/b1026/halo_files/%s/%s"
 
                 if 'metal_diffusion' in self.snapdir:
-                    ahf_path = ahf_path%('metal_diffusion',self.name)
-                elif 'HL000' in self.name:
-                    ahf_path = ahf_path%('xiangcheng',self.name)
+                    ahf_path = ahf_path%('metal_diffusion',self.data_name)
+                elif 'HL000' in self.data_name:
+                    ahf_path = ahf_path%('xiangcheng',self.data_name)
                 elif 'core' in self.snapdir:
-                    ahf_path = ahf_path%('core',self.name)
+                    ahf_path = ahf_path%('core',self.data_name)
                 else: ## set myself up for failure below
-                    ahf_path = ahf_path%('foo',self.name)
+                    ahf_path = ahf_path%('foo',self.data_name)
 
-            ## check if this first guess at the ahf_name and ahf_path
+
+            ## check if this first guess at the ahf_fname and ahf_path
             ##  is right
             if not os.path.isfile(os.path.join(ahf_path,ahf_fname)):
                 ## try looking in the simulation directory
@@ -269,8 +271,8 @@ class Galaxy(
                         fname = fnames[0]
                     else:
                         raise IOError("can't find a halo file (or found too many)",fnames)
-            else:
-                raise IOError("can't find a halo file with",ahf_path,'and',ahf_name)
+                else:
+                    raise IOError("can't find a halo file with",ahf_path,'and',ahf_fname)
                 
 
             self.ahf_path = ahf_path
@@ -947,8 +949,8 @@ class ManyGalaxy(Galaxy):
         self.data_name = self.name if data_name is None else data_name
 
         ## append _md to the data_name for my own sanity
-        if 'metal_diffusion' in self.snapdir and '_md' not in self.data_name:
-            self.data_name = self.data_name + '_md'
+        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
