@@ -597,3 +597,92 @@ def nameAxes(
                 frameon=0,**legendkwargs)
             return ax.get_legend_handles_labels()
 
+def plot_histogram_contour_log(
+    ax,
+    xs,ys,
+    xedges,yedges,
+    plot_histogram=True,
+    plot_points=False,
+    contour_kwargs=None):
+
+    ## initialize contour_kwargs, controls what contours are plotted, 
+    ##  their linestyles (as an array), and their color (mainly... I'm sure there 
+    ##  are other kwargs that can be passed to ax.contour)
+    if contour_kwargs is None:
+        contour_kwargs = {}
+
+    if 'colors' not in contour_kwargs and 'cmap' not in contour_kwargs:
+        contour_kwargs.update({'cmap':None,'colors':GLOBAL_linecolor})
+
+    if 'percentiles' not in contour_kwargs:
+        contour_kwargs['percentiles'] = [0.5,0.9]
+
+    ## initialize 2d histogram
+    dx,dy = xedges[1]-xedges[0],yedges[1]-yedges[0]
+    xs,ys = pairFilter(np.log10(xs),np.log10(ys),np.isfinite)
+
+    ## pad the edges with 1 more bin on each side
+    #xedges = np.concatenate([[xedges[0]-dx],xedges,[xedges[-1]+dx]])
+
+    ## make the 2d histogram
+    h,xedges,yedges = np.histogram2d(
+        xs,ys,
+        bins=[xedges,yedges])
+    X,Y = np.meshgrid((xedges[1:]+xedges[:-1])/2,(yedges[1:]+yedges[:-1])/2)
+
+    from palettable.colorbrewer.sequential import Oranges_3,Greens_3,Blues_3
+    from matplotlib.colors import LinearSegmentedColormap
+    new_cmap = LinearSegmentedColormap.from_list(1,[(1,1,1)]+Oranges_3.mpl_colors)
+
+    if plot_histogram:
+        ax.pcolor(
+            10**X,10**Y,
+            h.T,
+            lw=0,
+            alpha=1,
+            edgecolors='face',
+            snap=True,
+            cmap=new_cmap)
+
+    if plot_points:
+        ax.plot(10**xs,10**ys,'.',markeredgewidth=0,c='g')
+
+
+    return plot_percentile_contours(ax,10**X,10**Y,h,**contour_kwargs)
+
+def plot_percentile_contours(
+    ax,
+    X,Y,h,
+    percentiles,
+    cmap='viridis',
+    **contour_kwargs):
+    """ from 
+https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-lines-of-a-probability-distribution"""
+
+    h= h/h.sum()
+    n = 1000
+    t = np.linspace(0, h.max(), n,endpoint=True)
+    integral = ((h >= t[:, None, None]) * h).sum(axis=(1,2))
+
+    ## contour levels must be "increasing" (so percentiles must be decreasing)
+    ##  e.g. [0.9, 0.5, 0.1]
+    percentiles.sort()
+    percentiles = percentiles[::-1]
+
+    if 'linestyles' not in contour_kwargs:
+        linestyles=['-','-.','--',':'][::-1]
+        contour_kwargs['linestyles'] = linestyles[-len(percentiles):]
+
+    f = interp1d(integral, t)
+    try:
+        t_contours = f(np.array(percentiles))
+        contours = ax.contour(
+            X,Y,
+            h.T,
+            cmap=cmap,
+            levels=t_contours,
+            **contour_kwargs)
+        return contours.levels
+    except ValueError:
+        print(percentiles,"not possible with given h, try smaller bins?")
+        return []

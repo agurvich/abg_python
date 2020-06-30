@@ -743,29 +743,3 @@ def get_cylindrical_velocities(vels,coords):
         vrs**2 -
         vzs**2)
     return vrs,vphis,vzs
-
-## scientific plotting routines
-def plot_percentile_contours(ax,X,Y,h,percentiles,cmap='viridis',**contour_kwargs):
-    """ from 
-https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-lines-of-a-probability-distribution"""
-
-    h= h/h.sum()
-    n = 1000
-    t = np.linspace(0, h.max(), n,endpoint=True)
-    integral = ((h >= t[:, None, None]) * h).sum(axis=(1,2))
-
-    ## contour levels must be "increasing" (so percentiles must be decreasing)
-    ##  e.g. [0.9, 0.5, 0.1]
-    percentiles.sort()
-    percentiles = percentiles[::-1]
-    if 'linestyles' not in contour_kwargs:
-        linestyles=['-','-.','--',':'][::-1]
-        contour_kwargs['linestyles'] = linestyles[-len(percentiles):]
-    f = interp1d(integral, t)
-    try:
-        t_contours = f(np.array(percentiles))
-        contours = ax.contour(X,Y,h.T,cmap=cmap,levels = t_contours,**contour_kwargs)
-        return contours.levels
-    except ValueError:
-        print(percentiles,"not possible with given h, try smaller bins?")
-        return []
