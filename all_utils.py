@@ -4,6 +4,7 @@ import numpy as np
 import h5py
 import os
 import copy
+import inspect
 
 from scipy.optimize import leastsq as opt
 from scipy.spatial.distance import cdist as cdist
@@ -19,8 +20,32 @@ DENSITYFACT=2e43*(3.086e21)**-3/(1.67e-24)
 HYDROGENMASS = 1.67e-24  # g
 cm_per_kpc = 3.08e21 # cm/kpc
 Gcgs = 6.674e-8 #cm3/(g s^2)
+SOLAR_MASS_g = 1.989e33
 
 ## python helpers
+def filter_kwargs(func,kwargs):
+    good = {}
+    bad = {}
+
+    ## get the args that func takes
+    allowed_args = inspect.getargspec(func)[0]
+    for arg in kwargs.keys():
+        ## ignore self if we're inspecting a method
+        if arg == 'self':
+            continue
+
+        if arg in allowed_args:
+            good[arg] = kwargs[arg]
+        else:
+            bad[arg] = kwargs[arg]
+    return good,bad 
+
+def append_function_docstring(function_1,function_2):
+    function_1.__doc__+="\n--------\n %s:\n %s"%(
+        function_2.__name__,
+        function_2.__doc__)
+
+    
 def get_size(obj, seen=None):
     """Recursively finds size of objects
         https://goshippo.com/blog/measure-real-size-any-python-object/

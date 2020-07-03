@@ -5,6 +5,8 @@ import numpy as np
 
 import h5py
 
+from abg_python.all_utils import filter_kwargs
+
 class Metadata(object):
     """Read in metadata for a class and reference it 
         opaquely through the instance.metadata object without worrying 
@@ -266,6 +268,9 @@ def metadata_cache(
         def wrapper(
             *func_args,
             **func_kwargs) :
+
+            ## NOTE could put something that prints ignored_kwargs
+            func_kwargs,ignored_kwargs = filter_kwargs(func,func_kwargs)
 
             self = func_args[0]
             func_name = "%s%s%s"%(
