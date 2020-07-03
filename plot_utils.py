@@ -686,3 +686,64 @@ https://stackoverflow.com/questions/37890550/python-plotting-percentile-contour-
     except ValueError:
         print(percentiles,"not possible with given h, try smaller bins?")
         return []
+
+
+def plot_avg_and_percentiles(
+    ax,
+    xs,
+    yss,
+    average_function,
+    color,
+    label,
+    plot_avg=True,
+    plot_many=True,
+    linestyle='-'):
+
+    my_averages = average_function(
+        yss,
+        axis=0)
+
+    if plot_avg and ax is not None:
+        ## plot the average of the terms
+        ax.plot(
+            xs,
+            my_averages,
+            color=color,
+            label=label,
+            ls=linestyle)
+
+    ## plot the inter-quartile range of the terms
+    sigmas = plot_percentiles_shaded_region(
+        ax if plot_many else None,
+        xs,
+        yss,
+        color)
+
+    return my_averages,sigmas
+
+def plot_percentiles_shaded_region(ax,xs,yss,color,percentiles=None):
+    """plots a shaded region at percentiles of
+    a distribution of lines"""
+    
+    percentiles = [25,75] if percentiles is None else percentiles
+    bottom_qs,top_qs = np.nanpercentile(yss,percentiles,axis=0)
+    
+    if ax is not None:
+        ## pretty sure this is handling whether the axis face-color
+        ##  is black...
+        facecolor = ax.get_facecolor() 
+        if (facecolor[0] == facecolor[1] == facecolor[2]):
+           alpha = 0.45 
+        else:
+            alpha = 0.15
+            
+        ax.fill_between(
+            xs,
+            bottom_qs,
+            top_qs,
+            lw=0,
+            color=color,
+            alpha=alpha)
+
+    ## half-width of shaded region in log space
+    return (np.log10(top_qs/bottom_qs))/2.
