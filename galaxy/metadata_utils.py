@@ -12,10 +12,45 @@ class Metadata(object):
         opaquely through the instance.metadata object without worrying 
         about datagroup prefixes."""
          
-    def __init__(self,metapath,loud_metadata=1,upfront_load=False):
+    def __init__(
+        self,
+        metapath,
+        loud_metadata=1,
+        upfront_load=False,
+        groups_to_sub_load_with_index=None,
+        sub_load_low_indices=None,
+        sub_load_high_indices=None,
+        target_last_sizes=None):
+
+
         self.metapath = metapath
         self.loud_metadata = loud_metadata
         self.file_keys = []
+
+        if groups_to_sub_load_with_index is not None:
+            if (sub_load_low_indices is None or 
+                sub_load_high_indices is None or 
+                target_last_sizes is None or
+                len(sub_load_low_indices) != len(groups_to_sub_load_with_index) or
+                len(sub_load_high_indices) != len(groups_to_sub_load_with_index) or
+                len(target_last_sizes) != len(groups_to_sub_load_with_index)):
+
+                raise ValueError(
+                    "Pass in  valid sub_load_<low/high>_indices",
+                    groups_to_sub_load_with_index,
+                    sub_load_low_indices,
+                    sub_load_high_indces,
+                    target_last_sizes)
+
+            ## must be a list because we use the .index method
+            self.groups_to_sub_load_with_index = list(groups_to_sub_load_with_index)
+        else:
+            self.groups_to_sub_load_with_index = None
+            
+        self.sub_load_low_indices = sub_load_low_indices
+        self.sub_load_high_indices = sub_load_high_indices
+        self.target_last_sizes = target_last_sizes
+
         try:
             with h5py.File(metapath,'r') as handle:
                 ## handle groups
@@ -40,40 +75,59 @@ class Metadata(object):
     def hasattr(self,attr):
         return attr in dir(self) or attr in self.file_keys
 
-    def __getattr__(self,attr,loud=False):
+    def check_for_partial_match(self,attr):
+        dict_attrs_match = []
+        for key in self.__dict__.keys():
+            if attr in key:
+                dict_attrs_match+=[key]
+
+        file_attrs_match = []
+        for key in self.file_keys:
+            if attr in key:
+                file_attrs_match+=[key]
+
+        return dict_attrs_match,file_attrs_match
+
+    def __getattr__(self,attr,loud=False,**kwargs):
         try:
             if attr in self.__dict__.keys():
                 return self.__dict__[attr] 
             elif attr in self.file_keys:
-                self.lazy_load_from_file(attr)
+                self.lazy_load_from_file(attr,**kwargs)
                 return self.__dict__[attr] 
             else:
                  raise KeyError("%s isn't in the file or the live memory"%attr)
         except KeyError:
-            key_matches = []
-            for key in self.__dict__.keys():
-                if attr in key:
-                    key_matches+=[key]
-            
-            if len(key_matches)==0:
-                for key in self.file_keys:
-                    if attr in key:
-                        key_matches+=[key]
+            dict_keys,file_keys = self.check_for_partial_match(attr)
 
-            ## otherwise use a partial match
-            if len(key_matches)>1:
+            ## if we haven't loaded it, check the disk
+            if len(dict_keys)==0:
+                ## we have no matches
+                if len(file_keys) == 0:
+                    raise AttributeError("No unloaded or loaded metadata attrs matches %s!"%attr)
+                ## we have unloaded multiple partial matches
+                elif len(file_keys)>1:
+                    if loud:
+                        print(attr,file_keys)
+                    raise KeyError("Too many unloaded metadata attrs match that key, be more precise!",file_keys)
+                ## we have a single partial match
+                else:
+                    raise KeyError("Partial unloaded match %s"%file_keys[0],attr)
+
+            ## if we have loaded multiple partial matches
+            elif len(dict_keys)>1:
                 if loud:
-                    print(attr,key_matches)
-                raise KeyError("Too many metadata attrs match that key, be more precise!",key_matches)
-            elif len(key_matches)==0:
-                raise AttributeError("No metadata attrs matches %s!"%attr)
+                    print(attr,dict_keys)
+                raise KeyError("Too many loaded metadata attrs match that key, be more precise!",dict_keys)
+
+            ## we have a single partial match
             else:
-                raise KeyError("Partial match %s"%key_matches[0])
+                raise KeyError("Partial loaded match %s"%file_keys[0])
 
     def __repr__(self):
         return "Metadata object at %s" % (self.metapath)# + self.__dict__.keys()
 
-    def _save_to_metadata_object(self,group,key,value,overwrite=0):
+    def __save_to_metadata_object(self,group,key,value,overwrite=0):
         if group == 'header':
             key_to_save = key
         else:
@@ -86,7 +140,7 @@ class Metadata(object):
     def save_to_metadata(self,group,key,value,mode='a',overwrite=0):
         ## first determine if this should be saved as an attribute of
         ##  the currently open metadata object
-        self._save_to_metadata_object(group,key,value,overwrite)
+        self.__save_to_metadata_object(group,key,value,overwrite)
         with h5py.File(self.metapath,mode) as handle:
             if group == 'header':
                 if key not in handle.attrs.keys():
@@ -172,14 +226,20 @@ class Metadata(object):
                     ## is this the group this key lives in?
                     if key[:len(group)] == group:
                         ## load the key that was requested
-                        key = key[len(group)+1:]
-                        value = np.array(handle['%s/%s'%(group,key)])
-                        setattr(self,'%s_%s'%(group,key),value)
+
+                        sub_key = key[len(group)+1:]
+
+                        if sub_key not in handle[group].keys():
+                            ## degenerate group/key combo, keep looking!
+                            continue
+
+                        value = self.__load_from_open_handle(handle,group,sub_key)
+                        setattr(self,'%s_%s'%(group,sub_key),value)
                         if load_entire_group:
                             ## read the entire group to minimize re-opening the file.
                             for key in handle[group].keys():
                                 try:
-                                    value = np.array(handle['%s/%s'%(group,key)])
+                                    value = self.__load_from_open_handle(handle,group,key)
                                 except KeyError:
                                     print("--------------------------------------------------------")
                                     print("corrupt group/key combo")
@@ -193,6 +253,29 @@ class Metadata(object):
                                 setattr(self,'%s_%s'%(group,key),value)
         else:
             raise KeyError("%s isn't in the metadata file")
+
+    def __load_from_open_handle(self,handle,group,key):
+        pathh = '%s/%s'%(group,key)
+        shape = handle[pathh].shape
+        ## determine if we are trying to load a subset of the data
+        ##  for speed and memory purposes
+        if (self.groups_to_sub_load_with_index is not None and
+            group in self.groups_to_sub_load_with_index): 
+
+            ## what index is this group at so we can find matching
+            ##  sub load parameters
+            group_index = self.groups_to_sub_load_with_index.index(group)
+
+            ## does this array match the target we are trying to mask?
+            if shape[-1] == self.target_last_sizes[group_index]:
+                ## load only from [low:high]
+                low = self.sub_load_low_indices[group_index]
+                high = self.sub_load_high_indices[group_index]
+                return np.array(handle[pathh][...,low:high])
+            else:
+                return np.array(handle[pathh])
+        else:
+            return np.array(handle[pathh])
     
     def purge_metadata_key(self,group_name,key_name,force=0):
         if not force:
@@ -230,7 +313,7 @@ class MultiMetadata(Metadata):
             except AttributeError:
                 #raise KeyError(
                 #    self.metapath[gal_i],"doesn't have",attr)
-                print(self.metapath[gal_i],"doesn't have",attr)
+                raise AttributeError(self.metapath[gal_i],"doesn't have",attr)
         try:
             """
             ## it's a z-slab map of pixels
@@ -245,7 +328,7 @@ class MultiMetadata(Metadata):
             return llist
 
     def __repr__(self):
-        return str(self.snap_metadatas)
+        return repr(self.snap_metadatas)
 
     def __getitem__(self,index):
         return self.snap_metadatas[index]
@@ -260,6 +343,7 @@ def metadata_cache(
     save_meta=0,
     assert_cached=0,
     loud=1,
+    force_from_file=False,
     **kwargs):
 
     def decorator(func):
@@ -283,6 +367,8 @@ def metadata_cache(
                 assert use_metadata
                 for key in keys:
                     try:
+                        if force_from_file:
+                            raise AttributeError
                         value = getattr(self,key)
                     except AttributeError:
                         value = getattr(self.metadata,"%s_%s"%(group,key)) 

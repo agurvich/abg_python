@@ -51,7 +51,6 @@ class Galaxy(
             datadir = None - directory where any new files are saved to
             data_name = None - name of the data directory, if different than name
             plot_color = 0 - color this instance will use when plotting onto an axis
-            loud_metadata = 1 - whether the data cache will show optional print statements
             multi_thread = 1 - number of threads this instance will use if multi-threading
                 is available
             ahf_path = None - path to AHF halo files, defaults first to my halo directory
@@ -95,12 +94,11 @@ class Galaxy(
         datadir=None,
         data_name = None,
         plot_color = 0,
-        loud_metadata=1,
         multi_thread = 1,
         ahf_path = None,
         ahf_fname = None,
         save_header_to_table=True,
-        **ignored_kwargs ## allow garbage to be passed here, if it's convenient
+        **metadata_kwargs 
         ):
 
         ## bind input
@@ -192,7 +190,7 @@ class Galaxy(
                 'meta_Galaxy_%03d.hdf5'%self.snapnum)
             self.metadata = Metadata(
                 self.metapath,
-                loud_metadata=loud_metadata)
+                **metadata_kwargs)
 
             ## attempt to open the header in the hdf5 file
             try:
@@ -247,7 +245,6 @@ class Galaxy(
                     ahf_path = ahf_path%('core',self.data_name)
                 else: ## set myself up for failure below
                     ahf_path = ahf_path%('foo',self.data_name)
-
 
             ## check if this first guess at the ahf_fname and ahf_path
             ##  is right
@@ -333,9 +330,9 @@ class Galaxy(
 
             if os.path.isfile(pathh):
                 (self.snapnums,
-                    self.sfs,
-                    self.zs,
-                    self.gyrs,
+                    self.snap_sfs,
+                    self.snap_zs,
+                    self.snap_gyrs,
                     self.dTs) = np.genfromtxt(pathh,unpack=1)
                 return
         
@@ -383,9 +380,9 @@ class Galaxy(
             fmt = ['%d','%.6f','%.6f','%.6f','%.6f'])
 
         (self.snapnums,
-            self.sfs,
-            self.zs,
-            self.gyrs,
+            self.snap_scale_factors,
+            self.snap_zs,
+            self.snap_gyrs,
             self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
 
     ## I keep a single hdf5 file that stores header information
@@ -934,6 +931,7 @@ class ManyGalaxy(Galaxy):
         data_name=None,
         load_snapnums=None,
         population_kwargs=None,
+        name_append='',
         **galaxy_kwargs):
         """ a wrapper that will allow one to open multiple galaxies at the same time,
             most useful for creating and accessing MultiMetadata instances while 
@@ -949,7 +947,7 @@ class ManyGalaxy(Galaxy):
         ## bind input
         self.snapdir = snapdir
 
-        self.name = name
+        self.name = name+name_append
         self.data_name = self.name if data_name is None else data_name
 
         ## append _md to the data_name for my own sanity
@@ -1061,7 +1059,6 @@ class ManyGalaxy(Galaxy):
 
             Options are:
                 plot_color=0,
-                loud_metadata=1,
                 multi_thread=1,
                 ahf_path=None,
                 ahf_fname=None,
@@ -1075,6 +1072,6 @@ class ManyGalaxy(Galaxy):
             self.name,
             self.snapdir,
             snapnum,
-            datadir=self.datadir,
+            datadir=os.path.dirname(self.datadir),
             data_name=self.data_name,
             **new_kwargs)
