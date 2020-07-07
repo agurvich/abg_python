@@ -17,7 +17,6 @@ def get_fnames(snapdir,snapnum,snapdir_name=''):
         if os.path.isdir(fnames[0]):
             fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
     except IndexError:
-        print(snapdir,snapnum,snapdir_name)
         raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
     
     return fnames
