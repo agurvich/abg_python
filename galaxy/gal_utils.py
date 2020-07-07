@@ -237,7 +237,7 @@ class Galaxy(
                 ## assumes we are on stampede2
                 ahf_path = "/work/04210/tg835099/stampede2/halo_files/%s/%s"
                 ## assumes we are on quest
-                ahf_path = "/projects/b1026/halo_files/%s/%s"
+                #ahf_path = "/projects/b1026/halo_files/%s/%s"
 
                 if 'metal_diffusion' in self.snapdir:
                     ahf_path = ahf_path%('metal_diffusion',self.data_name)
@@ -333,9 +333,9 @@ class Galaxy(
 
             if os.path.isfile(pathh):
                 (self.snapnums,
-                    self.sfs,
-                    self.zs,
-                    self.gyrs,
+                    self.snap_sfs,
+                    self.snap_zs,
+                    self.snap_gyrs,
                     self.dTs) = np.genfromtxt(pathh,unpack=1)
                 return
         
@@ -383,9 +383,9 @@ class Galaxy(
             fmt = ['%d','%.6f','%.6f','%.6f','%.6f'])
 
         (self.snapnums,
-            self.sfs,
-            self.zs,
-            self.gyrs,
+            self.snap_scale_factors,
+            self.snap_zs,
+            self.snap_gyrs,
             self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
 
     ## I keep a single hdf5 file that stores header information
