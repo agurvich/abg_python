@@ -1,16 +1,8 @@
-from __future__ import print_function
 import sys,getopt,os
 import numpy as np
+
 from abg_python.all_utils import filterDictionary,rotationMatrixZ,rotationMatrixY,rotateVectors,unrotateVectorsZY
-
 from abg_python.snapshot_utils import openSnapshot
-
-def makeOutputDir(snapdir):
-    datadir=os.path.join(snapdir,'subsnaps')
-    if 'subsnaps' not in os.listdir(snapdir):
-        print('making directory subsnaps in %s' % snapdir)
-        os.mkdir(datadir)
-    return datadir
 
 ## geometry functions
 def rotateVectorsZY(thetay,thetaz,vectors):

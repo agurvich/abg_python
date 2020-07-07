@@ -1,12 +1,57 @@
 import numpy as np 
-import os
+from abg_python.all_utils import *
 
-def getAgesGyrs(open_snapshot):
-    cosmo_sfts=open_snapshot['StellarFormationTime']
-    cur_time = open_snapshot['Time']
-    HubbleParam = open_snapshot['HubbleParam']
-    Omega0 = open_snapshot['Omega0']
-    return convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+
+### Constants
+G = 4.301e-9 #km^2 Mpc MSun^-1 s^-2
+
+##### THIS CHANGES WHAT HUBBLE IS
+REDSHIFT=0
+
+#from WMAP
+H0=71 # km /s / Mpc
+OMEGA_0 = 0.27
+OMEGA_B = 0.044
+OMEGA_LAMBDA = 1-OMEGA_0
+HUBBLE=H0*(OMEGA_0*(1+REDSHIFT)**3+OMEGA_LAMBDA)**0.5 #km/s / Mpc
+RHOCRIT = 3*HUBBLE**2./(8*np.pi*G)# 139 Msun / Mpc^3
+
+### Hernquist/NFW Profiles
+def findCCFromHernquistA(m200,akpc):
+    r200 = (3*m200/(800*np.pi*RHOCRIT))**(1./3)#pc
+    CC=getNFWCCFromHernquist(r200*1e6,a=akpc*1e3)
+    return CC
+
+def getNFWCCFromHernquist(R200,a=300,plot=0):
+    """Inverts relationship between R200, nfw concentration, 
+        nfw scale radius, and hernquist scale radius for concentration"""
+    cs = np.linspace(1e-2,1e3,1e5)
+    hernquist_as = R200/cs * (2 * (np.log(1 + cs) - cs / (1 + cs)))**0.5
+    if plot:
+        plt.plot(cs,hernquist_as,label=r'a=$\frac{r200}{c}\sqrt{2(\log(1+c)-\frac{c}{1+c})}$',lw=3)
+        plt.plot(cs,[a]*len(cs),label='a=%.2f'%a,lw=3)
+        plt.gca().legend(loc=0)
+        plt.gca().set_xlabel('c')
+        plt.gca().set_ylabel('a (kpc)')
+        plt.show()
+    return cs[np.argmin((hernquist_as-a)**2.)]
+
+def hernquist_profile(mtot,a,r,nfw=0):
+    """Defines a herqnuist profile with mass mtot 
+        and scale radius a. has the option of 
+        being nfw instead using a flag."""
+    return a*mtot/(2*np.pi)*(r*(a+r)**(3-nfw))**-1.
+
+def contained_hernquist_profile(MR,R,a,r):
+    """Defines a hernquist profile with mass mtot
+        and scale radius a. Howver, this is done by measuring
+        the mass contained in a radius R and scaling it up to 
+        Mtot"""
+    #for convenience
+    u,U=r/a,R/a
+    #scale up to Mtot
+    Mtot =MR*(1-2*(2*U-1)/(1+U)**2.)**-1
+    return Mtot/(2*np.pi*a**3.)*u**-1*(1+u)**-3
 
 ### Lookback time (in context of converting stellar ages)
 def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
@@ -30,6 +75,65 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
     age *= 0.001*UnitTime_in_Megayears/HubbleParam
     return age
 
+def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs):
+
+    ## many zs..., uniformly in log(1+z) from z=0 to z=15
+    zs = 10**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
+
+    ## standard FIRE cosmology...
+    #HubbleParam = 0.7
+    #Omega0 = 0.272
+
+    scale_factors = 1./(1+zs)
+    close_times = convertStellarAges(HubbleParam,Omega0,1e-16,scale_factors)
+
+    ## find indices of close_times that match closest to gyrs
+    indices = findArrayClosestIndices(gyrs,close_times)
+    
+    ## make sure we're close enough...
+    try:
+        assert np.mean(close_times[indices]-gyrs)<=1e-2
+    except:
+        print('Redshift range was not fine enough: 0.01 <',np.mean(close_times[indices]-gyrs))
+        if recurse_depth > 3:
+            raise ValueError("Failed to downsample the SFH to the snapshot times")
+        else:
+            return approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs,recurse_depth+1)
+
+    return zs[indices]
+
+def convertReadsnapTimeToGyr(snap):
+    cur_time = snap['Time']
+    HubbleParam = snap['HubbleParam']
+    Omega0 = snap['Omega0']
+    cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
+    return cur_time_gyr
+
+def getAgesGyrs(open_snapshot):
+    cosmo_sfts=open_snapshot['StellarFormationTime']
+    cur_time = open_snapshot['Time']
+    HubbleParam = open_snapshot['HubbleParam']
+    Omega0 = open_snapshot['Omega0']
+    return convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+
+def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
+    if snapshot_handle==None:
+        if arr!=None:
+            cosmo_sfts=arr
+        else:
+            cosmo_sfts=open_snapshot['StellarFormationTime']
+        cur_time = open_snapshot['Time']
+        HubbleParam = open_snapshot['HubbleParam']
+        Omega0 = open_snapshot['Omega0']
+        print('Using',HubbleParam,Omega0,'cosmology')
+    else:
+        raise Exception("Unimplemented you lazy bum!")
+
+    cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
+    sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+    return sfts,cur_time_gyr
+
+## AHF file opening
 def load_AHF(
     snapdir,snapnum,
     current_redshift,
@@ -122,3 +226,4 @@ def load_AHF(
         return_val = np.append(return_val,row[names_to_read.index(name)]*unit_fact)
 
     return return_val
+
