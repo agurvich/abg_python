@@ -13,6 +13,8 @@ from scipy.interpolate import interp1d
 from matplotlib.ticker import NullFormatter
 from numba import jit
 
+import inspect
+
 #GLOBAL VARIABLES   
 
 # Code mass -> g , (code length)^-3 -> cm^-3 , g -> nH
@@ -41,6 +43,8 @@ def filter_kwargs(func,kwargs):
     return good,bad 
 
 def append_function_docstring(function_1,function_2):
+    #print(function_1,function_2)
+    #print(function_1.__doc__,function_2.__doc__)
     function_1.__doc__+="\n--------\n %s:\n %s"%(
         function_2.__name__,
         function_2.__doc__)

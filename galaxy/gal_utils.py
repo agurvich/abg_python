@@ -99,6 +99,8 @@ class Galaxy(
         multi_thread = 1,
         ahf_path = None,
         ahf_fname = None,
+        save_header_to_table=True,
+        **ignored_kwargs ## allow garbage to be passed here, if it's convenient
         ):
 
         ## bind input
@@ -115,7 +117,7 @@ class Galaxy(
 
         self.data_name = self.name if data_name is None else data_name
 
-        ## append _md to the data_name for my own sanity
+        ## append _md to the name for my own sanity
         if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
             self.name = self.name + '_md'
 
@@ -205,10 +207,11 @@ class Galaxy(
                 ## save the header to our catalog of simulation headers
                 ##  so that we can open the header in scenarios where
                 ##  snapnum is None, as above.
-                try:
-                    self.saveHeaderToCatalog()
-                except ValueError:
-                    pass
+                if save_header_to_table:
+                    try:
+                        self.saveHeaderToCatalog()
+                    except ValueError:
+                        pass
 
 
             except IOError:
@@ -442,7 +445,7 @@ class Galaxy(
         extract_DM = True, ## do we want the DM particles? 
         **kwargs):
         """
-        radius = None, cylinder = '',
+        radius = None,
         use_saved_subsnapshots = True,
         force = False,
         """
@@ -468,10 +471,9 @@ class Galaxy(
         def extract_halo_inner(
             self,
             orient_stars=True,
-            radius = None,
-            cylinder = '',
-            use_saved_subsnapshots = True,
-            force = False):
+            radius=None,
+            use_saved_subsnapshots=True,
+            force=False):
 
             ## handle default remappings
 
