@@ -293,29 +293,31 @@ class SFR_helper(SFR_plotter):
 
             ## apply the radial mask
             rmask = np.sum(self.sub_star_snap['Coordinates']**2,axis=1)<radial_thresh**2
+
             star_snap = all_utils.filterDictionary(self.sub_star_snap,rmask)
 
             ## get initial stellar masses if possible, otherwise estimate them by "undoing" the 
             ##  integrated STARBURST99 mass loss rates
-            smasses = star_snap['Masses'].astype(np.float64)*1e10 # solar masses, assumes 20% mass loss
+            smasses = star_snap['Masses'].astype(np.float64)*1e10 # solar masses
             ages = star_snap['AgeGyr']  # gyr, as advertised
             smasses = all_utils.get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
 
             ## calculate the star formation history
             SFTs,timemax = temp_fin_gal.current_time_Gyr - star_snap['AgeGyr'],temp_fin_gal.current_time_Gyr
+
+            ## make sure our last bin ends at the current time
+            time_edges = np.arange(temp_fin_gal.current_time_Gyr,0,-DT)[::-1]
+
             SFRs,SFH_time_edges = arch_method(
                 smasses,
                 SFTs,
-                timemax,
-                tmin=1e-16,
+                time_edges,
                 DT=DT)
-
-            assert SFH_time_edges[-1]/DT == temp_fin_gal.current_time_Gyr//DT
 
             ## calculate the stellar metallicity history-- which Katie Breivik once asked me for
             ##  /shrug
             metals = star_snap['Metallicity'][:,0] # mass fractions
-            SFR_metals,SFH_time_edges = arch_method(smasses*metals,SFTs,timemax,tmin=1e-16,DT=DT)
+            SFR_metals,SFH_time_edges = arch_method(smasses*metals,SFTs,time_edges,DT=DT)
             SFR_metals = SFR_metals/SFRs # metal masses / total masses -> metal mass fraction in each bin
  
             ## free up temporary galaxy memory
@@ -326,17 +328,13 @@ class SFR_helper(SFR_plotter):
             ##  file so it's easier to share (with say, Jonathan, for instance)
             catpath = os.path.join(self.datadir,'sfrcat_%d_%s'%(self.finsnap,sfr_string))
             if not os.path.isfile(catpath):
-                sfrcat = {'metals':self.SFR_metals,'sfrs':self.SFRs,'time_edges':self.SFH_time_edges}
+                sfrcat = {'metals':SFR_metals,'sfrs':SFRs,'time_edges':SFH_time_edges}
                 print("outputting sfrcat to:",catpath,'radial_thresh:',radial_thresh)
                 np.savez(catpath,**sfrcat)
 
             return SFH_time_edges, SFRs, SFR_metals, DT
 
-
-
-        compute_SFH(self,**kwargs)
-
-        return self.SFH_time_edges, self.SFRs, self.SFR_metals, self.SFH_dt
+        return compute_SFH(self,**kwargs)
 
     def downsample_SFH(
         self,
@@ -472,17 +470,12 @@ class SFR_helper(SFR_plotter):
         return compute_bursty_regime(self,**kwargs)
 
 #### HELPER FUNCTIONS
-def arch_method(smasses,SFTs,timemax,tmin=None,DT=None):
+def arch_method(smasses,SFTs,time_edges,DT=None):
 
     if DT==None:
         DT = .001 #1 Myr in Gyr
 
-    if tmin == None:
-        tmin = np.min(SFTs)
+    SFRs,time_edges = np.histogram(SFTs,weights=smasses/(DT*1e9),bins=time_edges) #solar masses/year, Myr
 
-    edges = np.arange(tmin,timemax,DT,dtype=np.float64)
-
-    SFRs,time_edges = np.histogram(SFTs,weights=smasses/(DT*1e9),bins=edges) #solar masses/year, Myr
-    assert (time_edges==edges).all()
     #ignore the last point because it will often contain a "remainder bin", not a full bin width
     return SFRs, time_edges
