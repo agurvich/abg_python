@@ -254,7 +254,7 @@ class Metadata(object):
                                     value = value[0]
                                 setattr(self,'%s_%s'%(group,key),value)
         else:
-            raise KeyError("%s isn't in the metadata file")
+            raise KeyError("%s isn't in the metadata file"%key)
 
     def __load_from_open_handle(self,handle,group,key):
         pathh = '%s/%s'%(group,key)

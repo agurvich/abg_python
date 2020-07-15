@@ -352,7 +352,6 @@ class Galaxy(
                     snapnum,
                     0, ## dummy particle index, ignored for header_only = True
                     header_only=True,
-                    snapdir_name=self.snapdir_name,
                     cosmological=True)
 
                 ## save each one to a list
@@ -665,7 +664,6 @@ class Galaxy(
             self.snapdir,
             self.snapnum,4,
             cosmological=True,
-            snapdir_name=self.snapdir_name,
             **kwargs)
 
     def load_gas(self,**kwargs):
@@ -674,7 +672,6 @@ class Galaxy(
             self.snapdir,
             self.snapnum,0,
             cosmological=True,
-            snapdir_name=self.snapdir_name,
             **kwargs)
 
     def load_dark_matter(self,**kwargs):
@@ -682,7 +679,6 @@ class Galaxy(
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
             cosmological=True,
-            snapdir_name=self.snapdir_name,
             **kwargs)
 
     def calculate_rstar_half(self):
@@ -954,6 +950,7 @@ class ManyGalaxy(Galaxy):
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
 
+
         ## append _md to the datadir_name for my own sanity
         if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
             self.name = self.name + '_md'
@@ -966,12 +963,6 @@ class ManyGalaxy(Galaxy):
             for strr in pretty_name] 
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
-
-        ## TODO??
-        self.snapdir_name = 'snapdir' if (
-            'angles' in self.snapdir or 
-            '_md' in self.name 
-            and 'm11' not in self.name) else ''
 
         ## handle datadir creation
         if datadir is None:
@@ -1078,4 +1069,5 @@ class ManyGalaxy(Galaxy):
             snapnum,
             datadir=os.path.dirname(self.datadir),
             datadir_name=self.datadir_name,
+            snapdir_name=self.snapdir_name,
             **new_kwargs)
