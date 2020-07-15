@@ -227,10 +227,10 @@ class Galaxy(
                 ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
 
             if ahf_path is None:
-                ## assumes we are on stampede2
-                ahf_path = "/work/04210/tg835099/stampede2/halo_files/%s/%s"
-                ## assumes we are on quest
-                ahf_path = "/projects/b1026/halo_files/%s/%s"
+                ## system blind if you put the soft link in
+                ahf_path = os.path.join(
+                    os.environ['HOME'],'halo_files',
+                    "%s","%s")
 
                 if 'metal_diffusion' in self.snapdir:
                     ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
