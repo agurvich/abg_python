@@ -176,14 +176,12 @@ class SFR_plotter(object):
             ##  but tbh shouldn't really be doing near for redshift xs so....
             ##  automatically handles if xl or xr is outside SFH_time_edges
             foo = ((self.SFH_time_edges[1:]-near/2)-self.SFH_time_edges[1:])**2
-            print((self.SFH_time_edges[1:]-near/2)-self.SFH_time_edges[1:])
             xl = xs[np.argmin(
                 ((self.current_time_Gyr-near/2)-self.SFH_time_edges[1:])**2)]
             xr = xs[np.argmin(
                 ((self.current_time_Gyr+near/2)-self.SFH_time_edges[1:])**2)]
 
             ax.plot(xi,sfri,'ro',markeredgewidth=0,markersize=8)
-            print(xl,xr)
             ax.set_xlim(xl,xr)
 
         nameAxes(ax,None,xlabel,ylabel,logflag=(0,1),**axkwargs)
