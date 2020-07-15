@@ -49,7 +49,7 @@ class Galaxy(
             snapdir - location that the snapshots live in, should end in "output"
             snapnum - snapshot number
             datadir = None - directory where any new files are saved to
-            data_name = None - name of the data directory, if different than name
+            datadir_name = None - name of the data directory, if different than name
             plot_color = 0 - color this instance will use when plotting onto an axis
             multi_thread = 1 - number of threads this instance will use if multi-threading
                 is available
@@ -79,7 +79,7 @@ class Galaxy(
         *args,
         **kwargs):
             
-        kwargs['label'] = self.data_name
+        kwargs['label'] = self.name
         kwargs['color'] = self.plot_color
         add_to_legend(*args,**kwargs)
 
@@ -92,7 +92,8 @@ class Galaxy(
         snapdir,
         snapnum,
         datadir=None,
-        data_name = None,
+        datadir_name = None,
+        snapdir_name = None,
         plot_color = 0,
         multi_thread = 1,
         ahf_path = None,
@@ -113,7 +114,8 @@ class Galaxy(
             snapdir = snapdir[:-1]
         self.snapdir = snapdir
 
-        self.data_name = self.name if data_name is None else data_name
+        self.datadir_name = self.name if datadir_name is None else datadir_name
+        self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
 
         ## append _md to the name for my own sanity
         if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
@@ -127,12 +129,6 @@ class Galaxy(
             for strr in pretty_name] 
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
-
-        ## TODO??
-        self.snapdir_name = 'snapdir' if (
-            'angles' in self.snapdir or 
-            '_md' in self.name 
-            and 'm11' not in self.name) else ''
 
         if type(plot_color) is int:
             plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
@@ -149,7 +145,7 @@ class Galaxy(
             os.makedirs(self.datadir)
 
         if name not in self.datadir and name!='temp':
-            self.datadir = os.path.join(self.datadir,self.data_name)
+            self.datadir = os.path.join(self.datadir,self.datadir_name)
 
         if not os.path.isdir(self.datadir):
             os.makedirs(self.datadir)
@@ -199,7 +195,6 @@ class Galaxy(
                     self.snapnum,
                     0, ## dummy particle index, not used if header_only is True
                     header_only=1,
-                    snapdir_name=self.snapdir_name,
                     cosmological=True)
 
                 ## save the header to our catalog of simulation headers
@@ -229,26 +224,27 @@ class Galaxy(
 
             ## attempt to read halo location and properties from AHF
             if ahf_fname is None:
-                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.data_name)
+                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
 
             if ahf_path is None:
                 ## assumes we are on stampede2
                 ahf_path = "/work/04210/tg835099/stampede2/halo_files/%s/%s"
                 ## assumes we are on quest
-                #ahf_path = "/projects/b1026/halo_files/%s/%s"
+                ahf_path = "/projects/b1026/halo_files/%s/%s"
 
                 if 'metal_diffusion' in self.snapdir:
-                    ahf_path = ahf_path%('metal_diffusion',self.data_name)
-                elif 'HL000' in self.data_name:
-                    ahf_path = ahf_path%('xiangcheng',self.data_name)
+                    ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
+                elif 'HL000' in self.snapdir_name:
+                    ahf_path = ahf_path%('xiangcheng',self.snapdir_name)
                 elif 'core' in self.snapdir:
-                    ahf_path = ahf_path%('core',self.data_name)
+                    ahf_path = ahf_path%('core',self.snapdir_name)
                 else: ## set myself up for failure below
-                    ahf_path = ahf_path%('foo',self.data_name)
+                    ahf_path = ahf_path%('foo',self.snapdir_name)
 
             ## check if this first guess at the ahf_fname and ahf_path
             ##  is right
             if not os.path.isfile(os.path.join(ahf_path,ahf_fname)):
+                print("Couldn't find halo file in",ahf_path,"with name",ahf_fname)
                 ## try looking in the simulation directory
                 ahf_path = os.sep.join(
                     self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
@@ -393,8 +389,8 @@ class Galaxy(
         master_datadir = os.path.split(self.datadir)[0]
         with h5py.File(os.path.join(master_datadir,catalog_name),'r') as handle:
             ## have we saved this simulation to the catalog?
-            if self.data_name in handle.keys():
-                this_group = handle[self.data_name]
+            if self.snapdir_name in handle.keys():
+                this_group = handle[self.snapdir_name]
                 for key in this_group.keys():
                     ## transfer the keys from the hdf5 file to dictionary
                     header[key] = this_group[key].value
@@ -411,13 +407,13 @@ class Galaxy(
         master_datadir = os.path.split(self.datadir)[0]
 
         with h5py.File(os.path.join(master_datadir,catalog_name),'a') as handle:
-            if self.data_name in handle.keys() and overwrite:
+            if self.snapdir_name in handle.keys() and overwrite:
                 ## if we want to overwrite, can just delete it and "start from scratch"
                 ##  recursively
-                del handle[self.data_name]
+                del handle[self.snapdir_name]
                 return self.saveHeaderToCatalog(catalog_name)
-            elif self.data_name not in handle.keys():
-                this_group = handle.create_group(self.data_name)
+            elif self.snapdir_name not in handle.keys():
+                this_group = handle.create_group(self.snapdir_name)
                 for key in self.header.keys():
                     ## only take the keys that are constant throughout the simulation
                     if key not in ['Time','Redshift','TimeGyr','ScaleFactor']:
@@ -428,7 +424,7 @@ class Galaxy(
             else:
                 raise ValueError("This halo is already in the catalog") 
          
-        print("Saved header of %s to %s header table"%(self.data_name,master_datadir))
+        print("Saved header of %s to %s header table"%(self.snapdir_name,master_datadir))
 
 #### use the parameters set in __init__ to find the main halo, rotate
 ####  coordinates to lie along gas/star angular momentum axis
@@ -501,11 +497,13 @@ class Galaxy(
             ## attempt to open up the cached subsnaps 
             ##  (if they exist) and bind them
             fname = os.path.join(
-                self.datadir,
+                ## avoid making multiple subsnaps of the same simulation
+                ##  snapshots...
+                self.datadir.replace(self.datadir_name,self.snapdir_name),  
                 'subsnaps',
                 'snapshot_%03d.hdf5'%self.snapnum)
-            already_saved = os.path.isfile(fname)
 
+            already_saved = os.path.isfile(fname)
 
             ## if we've already bound these to our Galaxy instance
             ##  let's go ahead and pass these to the rotation routine
@@ -712,7 +710,11 @@ class Galaxy(
             self.extractMainHalo()
 
         ## make the subsnap directory if necessary
-        subsnapdir = os.path.join(self.datadir,'subsnaps')
+        subsnapdir = os.path.join(
+            ## avoid making multiple subsnaps of the same simulation
+            ##  snapshots...
+            self.datadir.replace(self.datadir_name,self.snapdir_name),  
+            'subsnaps')
         if not os.path.isdir(subsnapdir):
             os.makedirs(subsnapdir)
 
@@ -928,7 +930,8 @@ class ManyGalaxy(Galaxy):
         name,
         snapdir,
         datadir=None,
-        data_name=None,
+        datadir_name=None,
+        snapdir_name=None,
         load_snapnums=None,
         population_kwargs=None,
         name_append='',
@@ -948,9 +951,10 @@ class ManyGalaxy(Galaxy):
         self.snapdir = snapdir
 
         self.name = name+name_append
-        self.data_name = self.name if data_name is None else data_name
+        self.datadir_name = self.name if datadir_name is None else datadir_name
+        self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
 
-        ## append _md to the data_name for my own sanity
+        ## append _md to the datadir_name for my own sanity
         if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
             self.name = self.name + '_md'
 
@@ -980,7 +984,7 @@ class ManyGalaxy(Galaxy):
             os.makedirs(self.datadir)
 
         if name not in datadir and name!='temp':
-            self.datadir = os.path.join(self.datadir,self.data_name)
+            self.datadir = os.path.join(self.datadir,self.datadir_name)
 
         if not os.path.isdir(self.datadir):
             os.makedirs(self.datadir)
@@ -1073,5 +1077,5 @@ class ManyGalaxy(Galaxy):
             self.snapdir,
             snapnum,
             datadir=os.path.dirname(self.datadir),
-            data_name=self.data_name,
+            datadir_name=self.datadir_name,
             **new_kwargs)
