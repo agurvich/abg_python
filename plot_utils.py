@@ -7,6 +7,9 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
+from abg_python.all_utils import pairFilter
+from scipy.interpolate import interp1d
+
 """
 try:
     from distinct_colours import get_distinct
@@ -23,6 +26,8 @@ except:
 #except:
     #pass
 
+## stupid way of handling black faceolor... 
+GLOBAL_linecolor='k'
 
 def add_to_legend(
     ax,
@@ -85,9 +90,11 @@ def addColorbar(
     ax,cmap,
     vmin,vmax,
     label,logflag = 0,
-    fontsize=8,cmap_number=0,
+    fontsize=12,cmap_number=0,
     tick_tuple=None,
-    horizontal = False):
+    horizontal = False,
+    span_full_figure=True):
+
     if logflag:
         from matplotlib.colors import LogNorm as norm
         ticks = np.linspace(np.log10(vmin),np.log10(vmax),5,endpoint=True)
@@ -105,15 +112,37 @@ def addColorbar(
     ## x,y of bottom left corner, width,height in percentage of figure size
     ## matches the default aspect ratio of matplotlib
     cur_size = fig.get_size_inches()*fig.dpi        
+    bbox = ax.get_position()
+    extents = bbox.extents
+    offset = 10
+    if span_full_figure:
+        for ax in fig.get_axes():
+            bbox = ax.get_position()
+            these_extents = bbox.extents
+            for i in range(2):
+                if these_extents[i] < extents[i]:
+                    extents[i] = these_extents[i]
+            for i in range(2,4):
+                if these_extents[i] > extents[i]:
+                    extents[i] = these_extents[i]
+        height = extents[3] - extents[1]
+        width = extents[2] - extents[0]
+    else:
+        height = bbox.height
+        width = bbox.width
 
-    cur_height = cur_size[1]
-    cur_width = cur_size[0]
-    offset = 0.05 + cmap_number*(25/cur_width+50/cur_width)
+    fig_x0,fig_y0,fig_x1,fig_y1 = extents
 
     if not horizontal:
-        ax1 = fig.add_axes([0.95 + offset, 0.125, 25./cur_width, 0.75])
+        thickness = 20./cur_size[0] * fig.dpi/100
+        ax1 = fig.add_axes([fig_x1+offset/cur_size[0], fig_y0, thickness, height])
+
     else:
-        ax1 = fig.add_axes([0.3, -.05 - offset,0.4, 50./cur_height])
+        xlabel = ax.xaxis.get_label()
+        if xlabel.get_text() != '':
+            print("addColorbar does not support finding xaxis text, this will look bad")
+        thickness = 20./cur_size[1] * fig.dpi/100
+        ax1 = fig.add_axes([fig_x0,.125-thickness - offset/cur_size[1],width, thickness])
 
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax1, cmap=cmap,
@@ -648,7 +677,9 @@ def plot_histogram_contour_log(
         ax.plot(10**xs,10**ys,'.',markeredgewidth=0,c='g')
 
 
-    return plot_percentile_contours(ax,10**X,10**Y,h,**contour_kwargs)
+    return_value = plot_percentile_contours(ax,10**X,10**Y,h,**contour_kwargs)
+
+    return h,return_value
 
 def plot_percentile_contours(
     ax,
