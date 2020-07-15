@@ -20,7 +20,8 @@ class Metadata(object):
         groups_to_sub_load_with_index=None,
         sub_load_low_indices=None,
         sub_load_high_indices=None,
-        target_last_sizes=None):
+        target_last_sizes=None,
+        sub_load_exclude=None):
 
 
         self.metapath = metapath
@@ -50,6 +51,7 @@ class Metadata(object):
         self.sub_load_low_indices = sub_load_low_indices
         self.sub_load_high_indices = sub_load_high_indices
         self.target_last_sizes = target_last_sizes
+        self.sub_load_exclude = [] if sub_load_exclude is None else sub_load_exclude
 
         try:
             with h5py.File(metapath,'r') as handle:
@@ -267,7 +269,9 @@ class Metadata(object):
             group_index = self.groups_to_sub_load_with_index.index(group)
 
             ## does this array match the target we are trying to mask?
-            if shape[-1] == self.target_last_sizes[group_index]:
+            if (shape != () and
+                shape[-1] == self.target_last_sizes[group_index] and
+                key not in self.sub_load_exclude):
                 ## load only from [low:high]
                 low = self.sub_load_low_indices[group_index]
                 high = self.sub_load_high_indices[group_index]
@@ -399,8 +403,10 @@ def metadata_cache(
                     if type(return_value) == tuple:
                         if len(keys) != len(return_value):
                             raise ValueError(
-                                "Number of keys doesn't match"+
-                                " number of returned values!")
+                                "Number of keys doesn't match",
+                                len(keys),keys,
+                                "number of returned values!",
+                                len(return_value))
                         for key,value in zip(keys,return_value):
                             self.metadata.save_to_metadata(
                                 group,
@@ -409,9 +415,14 @@ def metadata_cache(
                                 overwrite=1)
                     else:
                         if len(keys) != 1:
+                            ## otherwise if you returned just a list alone it could try and 
+                            ##  bind the elements to keys?
                             raise ValueError(
-                                "Number of keys doesn't match"+
-                                " number of returned values!")
+                                "Number of keys should be 1",
+                                len(keys),keys,
+                                "if you return a list",
+                                type(return_value),len(return_value))
+
                         self.metadata.save_to_metadata(
                             group,
                             keys[0],
