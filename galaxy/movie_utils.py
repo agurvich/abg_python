@@ -128,113 +128,64 @@ class FIREstudio_helper(object):
             from firestudio.studios.gas_studio import GasStudio
             from firestudio.studios.star_studio import StarStudio
 
-            from firestudio.gas_movie_maker import renderGalaxy
-            from firestudio.star_movie_maker import renderStarGalaxy
-
-
             self.firestudio_GasStudio = GasStudio
             self.firestudio_StarStudio = StarStudio
 
-            self.firestudio_renderGalaxy = renderGalaxy
-            self.firestudio_renderStarGalaxy = renderStarGalaxy
         except ImportError as error:
             print(error)
             print(error.message)
             print('download firestudio from github')
+            raise
 
     def render(
         self,
         ax,
-        cylinder=None,
-        savefig=0,noaxis=0,
-        take_log=False,
-        image_names = None,
+        assert_cached=False,
         edgeon=False,
-        frame_half_width=None,
+        frame_depth=None,
+        frame_half_width=15,
+        min_weight=-0.5,
+        max_weight=1.6,
+        min_quantity=2,
+        max_quantity=7,
         **kwargs):
 
-        quantity_map_name = ('massWeightedLogtemperatureMap' if 
-            take_log else 'massWeightedTemperatureMap')
+        frame_depth = frame_half_width if frame_depth is None else frame_depth
 
-        if image_names is None:
-           image_names = [
-            'columnDensityMap',
-            quantity_map_name,
-            'two_color']
+        kwargs.update(
+            {'min_weight':min_weight,
+            'max_weight':max_weight,
+            'min_quantity':min_quantity,
+            'max_quantity':max_quantity})
 
-        if frame_half_width is None:
-            frame_half_width=self.sub_radius*1.1
+        ## attempt to import FIRE_studio
+        self.initialize_FIREstudio()
 
-        try:
-            if 'overwrite' in kwargs and kwargs['overwrite']:
-                raise AssertionError
+        gasStudio = self.firestudio_GasStudio(
+            datadir=os.path.join(self.datadir,'firestudio'),
+            snapnum=self.snapnum,
+            sim_name=self.name.split('-')[0], ## split for anything tacked on to end of name
+            snapdir=self.snapdir,
+            gas_snapdict=self.sub_snap if not assert_cached else None,
+            star_snapdict=self.sub_star_snap if not assert_cached else None,
+            frame_depth=frame_depth,
+            frame_half_width=frame_half_width,
+            **kwargs)
 
-            if take_log:
-                ## add LogTemperature to the subsnap if necessary
-                if 'Logtemperature' not in self.sub_snap.keys():
-                    self.sub_snap['Logtemperature'] = np.log10(
-                        self.sub_snap['Temperature'])
+        ## manually set the aspect ratio to an integer number of the disk
+        ##  aspect ratios, since we know what that is. don't use the 
+        ##  built in edgeon flag in render in this case. 
+        if edgeon:
+            gasStudio.set_ImageParams(
+                theta = 90,
+                aspect_ratio = frame_depth/frame_half_width)
 
-            gasStudio = self.firestudio_GasStudio(
-                self.snapdir,self.snapnum,
-                datadir=self.datadir,
-                frame_half_width=frame_half_width,
-                frame_depth=cylinder if cylinder is not None else self.sub_radius,
-                frame_center=np.zeros(3),
-                extract_galaxy=False, ## already extracted the galaxy
-                snapdict=None,#self.sub_snap,
-                savefig=savefig,noaxis=noaxis,
-                Hsml = None,#self.sub_snap['SmoothingLength'],
-                take_log_of_quantity=not take_log, ## ironic, I  know. it's just log taken before or after
-                quantity_name = 'Temperature' if not take_log else 'Logtemperature',
-                **kwargs)
-
-            ## manually set the aspect ratio to an integer number of the disk
-            ##  aspect ratios, since we know what that is. don't use the 
-            ##  built in edgeon flag in render in this case. 
-            if edgeon:
-                gasStudio.theta = 90
-                gasStudio.aspect_ratio = edgeon*cylinder/frame_half_width
-                gasStudio.identifyThisSetup()
-                gasStudio.computeFrameBoundaries()
-
-            gasStudio.render(ax,image_names,assert_cached=True)
-        except (AssertionError,KeyError):
-            print("Failed to find it in a cache. Attempting to access particle data and rerender.")
-            if take_log:
-                ## add LogTemperature to the subsnap if necessary
-                if 'Logtemperature' not in self.sub_snap.keys():
-                    self.sub_snap['Logtemperature'] = np.log10(
-                        self.sub_snap['Temperature'])
-
-            gasStudio = self.firestudio_GasStudio(
-                self.snapdir,self.snapnum,
-                datadir=self.datadir,
-                frame_half_width=frame_half_width,
-                frame_depth=cylinder if cylinder is not None else self.sub_radius,
-                frame_center=np.zeros(3),
-                extract_galaxy=False, ## already extracted the galaxy
-                snapdict=self.sub_snap,
-                savefig=savefig,noaxis=noaxis,
-                Hsml = self.sub_snap['SmoothingLength'],
-                take_log_of_quantity=not take_log, ## ironic, I  know. it's just log taken before or after
-                quantity_name = 'Temperature' if not take_log else 'Logtemperature',
-                **kwargs)
-
-            ## manually set the aspect ratio to an integer number of the disk
-            ##  aspect ratios, since we know what that is. don't use the 
-            ##  built in edgeon flag in render in this case. 
-
-            if edgeon:
-                gasStudio.theta = 90
-                gasStudio.aspect_ratio = edgeon*cylinder/frame_half_width
-                gasStudio.identifyThisSetup()
-                gasStudio.computeFrameBoundaries()
-            
-            gasStudio.render(ax,image_names)
-
-        ## set the figure size appropriately
-        ax.get_figure().set_size_inches(6,6)
+        gasStudio.render(
+            ax,
+            assert_cached=assert_cached,
+            quantity_adjustment_function=np.log10,
+            weight_adjustment_function=lambda x: np.log10(x*1e10/1e6/gasStudio.Acell),
+            **kwargs)
 
         ## free up any memory associated with that object
         del gasStudio
@@ -243,75 +194,40 @@ class FIREstudio_helper(object):
     def star_render(
         self,
         ax,
-        cylinder=None,
-        savefig=0,
-        noaxis=0,
-        edgeon=0,
-        frame_half_width=None,
+        assert_cached=False,
+        frame_half_width=15,
+        frame_depth=None,
+        edgeon=False,
         **kwargs):
 
-        image_names = ['out_u','out_g','out_r','hubble']
+        frame_depth = frame_half_width if frame_depth is None else frame_depth
 
-        if frame_half_width is None:
-            frame_half_width=self.sub_radius*1.1
-        try:
-            starStudio = self.firestudio_StarStudio(
-                self.snapdir,self.snapnum,
-                self.datadir,
-                frame_half_width,
-                cylinder if cylinder is not None else self.sub_radius,
-                extract_galaxy=False, ## already extracted the galaxy
-                snapdict=None,#self.sub_snap,
-                star_snapdict=None,#self.sub_star_snap,
-                savefig=savefig,noaxis=noaxis,
-                **kwargs)
+        starStudio = self.firestudio_StarStudio(
+            datadir=os.path.join(self.datadir,'firestudio'),
+            snapnum=self.snapnum,
+            sim_name=self.name.split('-')[0], ## split for anything tacked on to end of name
+            snapdir=self.snapdir,
+            gas_snapdict=self.sub_snap if not assert_cached else None,
+            star_snapdict=self.sub_star_snap if not assert_cached else None,
+            frame_depth=frame_depth,
+            frame_half_width=frame_half_width,
+            **kwargs)
             
             ## manually set the aspect ratio to an integer number of the disk
             ##  aspect ratios, since we know what that is. don't use the 
             ##  built in edgeon flag in render in this case. 
-            if edgeon:
-                starStudio.theta = 90
-                starStudio.aspect_ratio = edgeon*cylinder/frame_half_width
-                starStudio.identifyThisSetup()
-                starStudio.computeFrameBoundaries()
+        if edgeon:
+            starStudio.set_ImageParams(
+                theta = 90,
+                aspect_ratio =frame_depth/frame_half_width)
+ 
+        print(starStudio.npix_x,starStudio.npix_y,'pixels input')
 
-            starStudio.render(ax,image_names,assert_cached=True)
-        except:
-            print("Failed to find it in a cache. Attempting to access particle data and rerender.")
-            starStudio = self.firestudio_StarStudio(
-                self.snapdir,self.snapnum,
-                self.datadir,
-                frame_half_width,
-                cylinder if cylinder is not None else self.sub_radius,
-                extract_galaxy=False, ## already extracted the galaxy
-                snapdict=self.sub_snap,
-                star_snapdict=self.sub_star_snap,
-                savefig=savefig,noaxis=noaxis,
-                **kwargs)
-            
-            ## manually set the aspect ratio to an integer number of the disk
-            ##  aspect ratios, since we know what that is. don't use the 
-            ##  built in edgeon flag in render in this case. 
-            if edgeon:
-                starStudio.theta = 90
-                starStudio.aspect_ratio = edgeon*cylinder/frame_half_width
-                starStudio.identifyThisSetup()
-                starStudio.computeFrameBoundaries()
-
-            starStudio.render(ax,image_names)
-
-        with h5py.File(starStudio.projection_file,'r') as handle:
-            this_group = handle[starStudio.this_setup_id]
-            for key in this_group.keys():
-                if 'out' in key:
-                    logs = np.log10(this_group[key].value)
-                    logs = logs[np.isfinite(logs)]
-
-        ## set the figure size appropriately
-        ax.get_figure().set_size_inches(6,6)
+        starStudio.render(ax,assert_cached=assert_cached,**kwargs)
 
         ## free up any memory associated with that object
         del starStudio
+        return ax
 
     def renderPatch(self,ax,
         frame_half_width,frame_center,
