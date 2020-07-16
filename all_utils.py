@@ -11,7 +11,6 @@ from scipy.spatial.distance import cdist as cdist
 from scipy.interpolate import interp1d
 
 from matplotlib.ticker import NullFormatter
-from numba import jit
 
 import inspect
 
@@ -745,30 +744,35 @@ def denToff_time(den):
     ff_time /=3.15e7 # yr
     return ff_time
 
-@jit(nopython=True)
-def get_cylindrical_velocities(vels,coords):
-    this_coords_xy = coords[:,:2]
-    this_radii_xy = np.sqrt(
-        np.array([
-            np.linalg.norm(this_coords_xy[pi,:]) for
-            pi in range(len(this_coords_xy))])**2)
+try:
+    from numba import jit
+    @jit(nopython=True)
+    def get_cylindrical_velocities(vels,coords):
+        this_coords_xy = coords[:,:2]
+        this_radii_xy = np.sqrt(
+            np.array([
+                np.linalg.norm(this_coords_xy[pi,:]) for
+                pi in range(len(this_coords_xy))])**2)
 
-    rhats = np.zeros((len(this_coords_xy),2))
-    rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
-    rhats[:,1] = this_coords_xy[:,1]/this_radii_xy
+        rhats = np.zeros((len(this_coords_xy),2))
+        rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
+        rhats[:,1] = this_coords_xy[:,1]/this_radii_xy
 
-    vrs = np.sum(rhats*vels[:,:2],axis=1)
-    #vrs = np.zeros(len(this_coords))
-    #for pi in range(len(this_coords)):
-        #vrs[pi] = np.sum(this_coords[pi,:2]/np.sum
+        vrs = np.sum(rhats*vels[:,:2],axis=1)
+        #vrs = np.zeros(len(this_coords))
+        #for pi in range(len(this_coords)):
+            #vrs[pi] = np.sum(this_coords[pi,:2]/np.sum
 
-    vzs = vels[:,2]
+        vzs = vels[:,2]
 
-    vphis = np.sqrt(
-        np.array([
-            np.linalg.norm(vels[i,:]) for
-            i in range(len(vels))
-        ])**2 -
-        vrs**2 -
-        vzs**2)
-    return vrs,vphis,vzs
+        vphis = np.sqrt(
+            np.array([
+                np.linalg.norm(vels[i,:]) for
+                i in range(len(vels))
+            ])**2 -
+            vrs**2 -
+            vzs**2)
+        return vrs,vphis,vzs
+except ImportError:
+    print("couldn't import numba. Missing:")
+    print("abg_python.all_utils.get_cylindrical_velocities")
