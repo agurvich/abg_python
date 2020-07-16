@@ -774,5 +774,5 @@ try:
             vzs**2)
         return vrs,vphis,vzs
 except ImportError:
-    print("couldn't import numba. Missing:")
+    print("Couldn't import numba. Missing:")
     print("abg_python.all_utils.get_cylindrical_velocities")

@@ -1,6 +1,5 @@
 import h5py,sys,os
 import numpy as np
-import pandas as pd
 from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
 
@@ -271,36 +270,41 @@ def openSnapshot(
 
     return new_dictionary
 
-## pandas dataframe stuff
-def openSnapshotToDF(snapdir,snapnum,parttype,**kwargs):
-    ## can't keep the header keys in there and add them to the dataframe
-    snap = openSnapshot(snapdir,snapnum,parttype,no_header_keys=1,**kwargs)
+try:
+    import pandas as pd
+    ## pandas dataframe stuff
+    def openSnapshotToDF(snapdir,snapnum,parttype,**kwargs):
+        ## can't keep the header keys in there and add them to the dataframe
+        snap = openSnapshot(snapdir,snapnum,parttype,no_header_keys=1,**kwargs)
 
-    ## handle multidimensional array data, if it's been requested
-    if 'Coordinates' in snap:
-        coords = snap.pop('Coordinates')
-        snap['xs'],snap['ys'],snap['zs']=coords.T
+        ## handle multidimensional array data, if it's been requested
+        if 'Coordinates' in snap:
+            coords = snap.pop('Coordinates')
+            snap['xs'],snap['ys'],snap['zs']=coords.T
 
-    if 'Velocities' in snap:
-        vels = snap.pop('Velocities')
-        snap['vxs'],snap['vys'],snap['vzs']=vels.T
+        if 'Velocities' in snap:
+            vels = snap.pop('Velocities')
+            snap['vxs'],snap['vys'],snap['vzs']=vels.T
 
-    if 'Metallicity' in snap:
-        metallicity = snap.pop('Metallicity')
+        if 'Metallicity' in snap:
+            metallicity = snap.pop('Metallicity')
 
-        ## flatten the various metallicity arrays
-        for i,zarray in enumerate(metallicity.T):
-            snap['met%d'%i]=zarray
-    
-    ## are the particle IDs in the snap? then index by them
-    if 'ParticleIDs' in snap:
-        ids = snap.pop('ParticleIDs')
-        snap_df = pd.DataFrame(snap,index=ids)
-    else:
-        print("You didn't ask for IDs, so I'm not indexing by them")
-        snap_df = pd.DataFrame(snap)
+            ## flatten the various metallicity arrays
+            for i,zarray in enumerate(metallicity.T):
+                snap['met%d'%i]=zarray
+        
+        ## are the particle IDs in the snap? then index by them
+        if 'ParticleIDs' in snap:
+            ids = snap.pop('ParticleIDs')
+            snap_df = pd.DataFrame(snap,index=ids)
+        else:
+            print("You didn't ask for IDs, so I'm not indexing by them")
+            snap_df = pd.DataFrame(snap)
 
-    return snap_df
+        return snap_df
+except ImportError:
+    print("Couldn't import pandas. Missing:")
+    print("abg_python.snapshot_utils.openSnapshotToDF")
 
 ## thanks Alex Richings!
 def read_chimes(filename, chimes_species): 
