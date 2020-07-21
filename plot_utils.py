@@ -142,7 +142,7 @@ def addColorbar(
         if xlabel.get_text() != '':
             print("addColorbar does not support finding xaxis text, this will look bad")
         thickness = 20./cur_size[1] * fig.dpi/100
-        ax1 = fig.add_axes([fig_x0,.125-thickness - offset/cur_size[1],width, thickness])
+        ax1 = fig.add_axes([fig_x0,fig_y0 - thickness - offset/cur_size[1],width, thickness])
 
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax1, cmap=cmap,
