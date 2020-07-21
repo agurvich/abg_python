@@ -4,7 +4,7 @@
 #from sne_utils import findClusterExtent,drawSN
 #from all_utils import getTemperature
 
-from distinct_colours import get_distinct
+from abg_python.distinct_colours import get_distinct
 
 from abg_python.all_utils import rotateVectors
 from abg_python.plot_utils import nameAxes,addColorbar
