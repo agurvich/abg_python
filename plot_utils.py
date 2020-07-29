@@ -34,6 +34,8 @@ def add_to_legend(
     label='',
     shape='line',
     loc=0,
+    ls='-',
+    c='k',
     legend_kwargs=None,
     make_new_legend=False,
     **kwargs):
@@ -58,7 +60,8 @@ def add_to_legend(
     if shape == 'line':
         line = Line2D(
         [0],[0],
-        **kwargs)
+        ls=ls,
+        c=c)
     else:
         raise NotImplementedError
 
@@ -68,6 +71,9 @@ def add_to_legend(
 
     if loc in legend_kwargs:
         loc = legend_kwargs.pop('loc')
+
+    ## for backwards compatibility...
+    legend_kwargs.update(kwargs)
     ax.legend(lines,labels,loc=loc,**legend_kwargs)
 
     return ax
