@@ -144,6 +144,9 @@ def addColorbar(
         thickness = 20./cur_size[1] * fig.dpi/100
         ax1 = fig.add_axes([fig_x0,fig_y0 - thickness - offset/cur_size[1],width, thickness])
 
+    if type(cmap) == str:
+        cmap = plt.get_cmap(cmap)
+
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax1, cmap=cmap,
         extend='both',
@@ -499,16 +502,17 @@ def bufferAxesLabels(
     
     fig = axs.flatten()[0].get_figure()
     if share_ylabel is not None:
+        bbox = ax.get_position()
         fig.text(
-            label_offset,0.5,
+            0-label_offset,0.5,
             share_ylabel,
-            rotation=90,va='center',ha='center',fontsize=16)
+            rotation=90,va='center',ha='right',fontsize=13)
 
     if share_xlabel is not None:
         fig.text(
             0.5,label_offset,
             share_xlabel,
-            va='center',ha='center',fontsize=16)
+            va='center',ha='center',fontsize=13)
 
 
 def nameAxes(
@@ -590,20 +594,25 @@ def nameAxes(
     if subfontsize is not None:
         subtextkwargs['fontsize']=subfontsize
 
+    bbox = ax.get_position()
     if swap_annotate_side:
-        x_pos = 1-0.01
+        x_pos = 1-0.01/bbox.width
         halign = 'right'
     else:
-        x_pos = 0.01
+        x_pos = 0.01/bbox.width
         halign = 'left'
+
     if supertitle:
-        ax.text(x_pos,.96,supertitle,transform=ax.transAxes,
+
+        y_pos = 1-(0.01/bbox.height)
+        ax.text(x_pos,y_pos,supertitle,transform=ax.transAxes,
             verticalalignment='top',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        ax.text(x_pos,.01,subtitle,transform=ax.transAxes,
+        y_pos = (0.01/bbox.height)
+        ax.text(x_pos,y_pos,subtitle,transform=ax.transAxes,
             verticalalignment='bottom',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
