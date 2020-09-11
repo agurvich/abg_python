@@ -13,7 +13,7 @@ from abg_python.distinct_colours import get_distinct
 import abg_python.all_utils as all_utils
 import abg_python.cosmo_utils as cosmo_utils 
 
-from abg_python.galaxy.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
+from abg_python.galaxy.cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from abg_python.galaxy.movie_utils import Draw_helper,FIREstudio_helper
 from abg_python.galaxy.sfr_utils import SFR_helper
 from abg_python.galaxy.metadata_utils import metadata_cache,Metadata,MultiMetadata
@@ -33,10 +33,7 @@ snap_dict = {
 
 ## function to determine what the "main" halo is
 def halo_id(name):
-    if 'm10v_res250' in name:
-        return 2
-    else:
-        return 0 
+    return 0 
 
 ## bread and butter galaxy class
 class Galaxy(
@@ -244,7 +241,6 @@ class Galaxy(
             ## check if this first guess at the ahf_fname and ahf_path
             ##  is right
             if not os.path.isfile(os.path.join(ahf_path,ahf_fname)):
-                print("Couldn't find halo file in",ahf_path,"with name",ahf_fname)
                 ## try looking in the simulation directory
                 ahf_path = os.sep.join(
                     self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
@@ -268,7 +264,7 @@ class Galaxy(
                     else:
                         raise IOError("can't find a halo file (or found too many)",fnames)
                 else:
-                    raise IOError("can't find a halo file with",ahf_path,'and',ahf_fname)
+                    raise IOError("can't find a halo file with "+ahf_path+" and "+ahf_fname)
                 
 
             self.ahf_path = ahf_path
@@ -437,9 +433,14 @@ class Galaxy(
         extract_DM = True, ## do we want the DM particles? 
         **kwargs):
         """
-        radius = None,
-        use_saved_subsnapshots = True,
-        force = False,
+        radius = None -- radius of final sub_snap extraction, *not* orient_radius, 
+            which is fixed to 5*rstarhalf
+        use_saved_subsnapshots = True -- save/load hdf5 cache files. if want to overwrite, set to True
+            and force=True
+        force = False -- force extraction, despite existing extractions attached to instance or
+            in cache files. 
+        force_theta_TB = None -- force orientation
+        force_phi_TB = None -- force orientation
         """
         
         if orient_stars:
@@ -451,10 +452,10 @@ class Galaxy(
             group_name,
             ['sub_radius',
             'orient_stars',
-            'thetay',
-            'thetaz',
-            'sphere_lz',
-            'sphere_ltot',
+            'theta_TB',
+            'phi_TB',
+            #'sphere_lz', ## TODO reimplement this elsewhere
+            #'sphere_ltot',
             'rvir',
             'rstar_half'],
             use_metadata=False,
@@ -465,7 +466,9 @@ class Galaxy(
             orient_stars=True,
             radius=None,
             use_saved_subsnapshots=True,
-            force=False):
+            force=False,
+            force_theta_TB=None,
+            force_phi_TB=None):
 
             ## handle default remappings
 
@@ -584,14 +587,16 @@ class Galaxy(
                 
 
             ## pass the snapshots into the rotation routine
-            sub_snaps = diskFilterDictionary(
+            sub_snaps = extractDiskFromSnapdicts(
                 which_star_snap,
                 which_snap,
                 radius, ## radius to extract particles within
                 orient_radius, ## radius to orient on
                 scom=self.scom,
                 dark_snap=which_dark_snap, ## dark_snap = None will ignore dark matter particles
-                orient_stars=orient_stars)
+                orient_stars=orient_stars,
+                force_theta_TB=force_theta_TB,
+                force_phi_TB=force_phi_TB)
 
             ## unpack the return value
             if not extract_DM:
@@ -613,21 +618,10 @@ class Galaxy(
                 not already_saved):
                 self.outputSubsnapshot()
 
-            ## read out the angular momentum from the sub_snap
-            ##  to return it below
-            if orient_stars:
-                lz = self.sub_star_snap['star_lz']
-                ltot = self.sub_star_snap['star_ltot']
-            else:
-                lz = self.sub_snap['lz']
-                ltot = self.sub_snap['ltot']
-
             return (self.sub_radius,
                 self.orient_stars,
-                self.sub_snap['thetay'],
-                self.sub_snap['thetaz'],
-                lz,
-                ltot,
+                self.sub_snap['theta_TB'],
+                self.sub_snap['phi_TB'],
                 self.rvir,
                 self.rstar_half)
 
@@ -774,8 +768,8 @@ class Galaxy(
             snaps += [self.dark_snap]
 
         ## get the extraction parameters
-        thetay,thetaz,scom,vscom,orient_stars = (
-            self.sub_snap['thetay'],self.sub_snap['thetaz'],
+        theta_TB,phi_TB,scom,vscom,orient_stars = (
+            self.sub_snap['theta_TB'],self.sub_snap['phi_TB'],
             self.sub_snap['scom'],self.sub_snap['vscom'],
             self.sub_snap['orient_stars'])
 
@@ -786,7 +780,7 @@ class Galaxy(
                 snap = offsetRotateSnapshot(
                     snap,
                     scom,vscom,
-                    thetay,thetaz,
+                    theta_TB,phi_TB,
                     orient_stars)
 
                 ## snapdict holds ptype -> "snap"/"star_snap"/"dark_snap"
