@@ -36,6 +36,8 @@ def add_to_legend(
     loc=0,
     ls='-',
     c='k',
+    alpha=1,
+    lw=None,
     legend_kwargs=None,
     make_new_legend=False,
     **kwargs):
@@ -58,10 +60,17 @@ def add_to_legend(
 
     ## make the new line
     if shape == 'line':
+        line_kwargs = {}
+        if lw is not None:
+            line_kwargs['lw'] = lw
+
         line = Line2D(
         [0],[0],
         ls=ls,
-        c=c)
+        c=c,
+        alpha=alpha,
+        **line_kwargs
+        )
     else:
         raise NotImplementedError
 
@@ -164,7 +173,8 @@ def addColorbar(
     cb1.set_label(label,fontsize=fontsize)
 
     cb1.set_ticks(ticks)
-    cb1.set_ticklabels(tick_labels)
+    if tick_labels is not None:
+        cb1.set_ticklabels(tick_labels)
     cb1.ax.tick_params(labelsize=fontsize)
     return cb1,ax1
 
