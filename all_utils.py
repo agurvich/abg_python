@@ -423,6 +423,77 @@ def rotationMatrixZ(theta):
             [0,0,1]
         ])
 
+def rotateEuler(
+    theta,phi,psi,
+    pos,
+    order='xyz', ## defaults to Tait-Bryan, actually
+    recenter=False,
+    rotation_point=None,
+    loud=True,
+    inverse=False):
+
+    if rotation_point is None:
+        rotation_point = np.zeros(3)
+    pos=pos-rotation_point
+    ## if need to rotate at all really -__-
+    if theta==0 and phi==0 and psi==0:
+        return pos
+    # rotate particles by angle derived from frame number
+    theta_rad = np.pi*theta/ 180
+    phi_rad   = np.pi*phi  / 180
+    psi_rad   = np.pi*psi  / 180
+
+    c1 = np.cos(theta_rad)
+    s1 = np.sin(theta_rad)
+    c2 = np.cos(phi_rad)
+    s2 = np.sin(phi_rad)
+    c3 = np.cos(psi_rad)
+    s3 = np.sin(psi_rad)
+
+    # construct rotation matrix
+    ##  Tait-Bryan angles
+    if order == 'xyz':
+        if loud:
+            print('Using Tait-Bryan angles (xyz). Change with order=zxz.')
+        rot_matrix = np.array([
+            [c2*c3           , - c2*s3         , s2    ],
+            [c1*s3 + s1*s2*c3, c1*c3 - s1*s2*s3, -s1*c2],
+            [s1*s3 - c1*s2*c3, s1*c3 + c1*s2*s3, c1*c2 ]],
+            dtype = np.float32)
+
+    ##  classic Euler angles
+    elif order == 'zxz':
+        if loud:
+            print('Using Euler angles (zxz). Change with order=xyz.')
+        rot_matrix = np.array([
+            [c1*c3 - c2*s1*s3, -c1*s3 - c2*c3*s1, s1*s2 ],
+            [c3*s1 + c1*c2*s3, c1*c2*c3 - s1*s3 , -c1*s2],
+            [s2*s3           , c3*s2            , c2    ]])
+    else:
+        raise Exception("Bad order")
+
+    ## the inverse of a rotation matrix is its tranpose
+    if inverse:
+        rot_matrix = rot_matrix.T
+
+    ## rotate about each axis with a matrix operation
+    pos_rot = np.matmul(rot_matrix,pos.T).T
+
+    ## on 11/23/2018 (the day after thanksgiving) I discovered that 
+    ##  numpy will change to column major order or something if you
+    ##  take the transpose of a transpose, as above. Try commenting out
+    ##  this line and see what garbage you get. ridiculous.
+    ##  also, C -> "C standard" i.e. row major order. lmfao
+    pos_rot = np.array(pos_rot,order='C')
+    
+    ### add the frame_center back
+    if not recenter:
+        pos_rot+=rotation_point
+
+    ## can never be too careful that we're float32
+    return pos_rot
+
+
 #list operations
 def substep(arr,N):
     """linearly interpolates between the values in array arr using N steps"""
@@ -488,6 +559,13 @@ def findArrayClosestIndices(xs,ys):
 def findIntersection(xs,ys,ys1):
     argmin = np.argmin((ys-ys1)**2)
     return xs[argmin],ys[argmin]
+
+def getFWHM(xs,ys):
+    argmax = np.argmax(ys)
+    xl,yl = findIntersection(xs[:argmax],(ys/np.max(ys))[:argmax],0.5)
+    xr,yr = findIntersection(xs[argmax:],(ys/np.max(ys))[argmax:],0.5)
+    return (xr-xl),(xl,xr,yl,yr)
+    
 
 def boxcar_average(
     time_edges,
@@ -617,15 +695,8 @@ def extractCylindricalVolumeIndices(coords,r,h,rcom=None):
     indices = np.logical_and(gindices,gzindices)
     return indices
 
-def extractSphericalVolumeIndices(rs,rcom,radius2,rotationAngle=None):
-    if rotationAngle != None : 
-        rs = np.dot(rotationMatrix(rotationAngle),rs.T).T
-        rcom = np.dot(rotationMatrix(rotationAngle),rcom)
-    
-    indices = np.sum((rs - rcom)**2.,axis=1) < radius2
-    if rotationAngle!=None:
-        return indices,rs,rcom
-    return indices
+def extractSphericalVolumeIndices(rs,rcom,radius):
+    return np.sum((rs - rcom)**2.,axis=1) < radius**2
 
 ## FIRE helper functions
 def getSpeedOfSound(U_code):
@@ -786,3 +857,33 @@ try:
 except ImportError:
     print("Couldn't import numba. Missing:")
     print("abg_python.all_utils.get_cylindrical_velocities")
+
+def getVcom(masses,velocities):
+    assert np.sum(masses) > 0 
+    return np.sum(masses[:,None]*velocities,axis=0)/np.sum(masses)
+
+def iterativeCoM(coords,masses,n=4,r0=np.array([0,0,0])):
+    rcom = r0
+    for i in xrange(n):
+        mask = extractSphericalVolumeIndices(coords,rcom,1000/3**i)
+        rcom = np.sum(coords[mask]*masses[mask][:,None],axis=0)/np.sum(masses[mask])
+    return rcom
+
+def getAngularMomentum(vectors,masses,velocities):
+    return np.sum(np.cross(vectors,masses[:,None]*velocities),axis=0)
+
+def getAngularMomentumSquared(vectors,masses,velocities):
+    ltot = np.sum(# sum in quadrature |lx|,|ly|,|lz|
+        np.sum( # sum over particles 
+            np.abs(np.cross( # |L| = |(r x mv )|
+                vectors,
+                masses[:,None]*velocities))
+            ,axis=0)**2
+        )**0.5 # msun - kpc - km/s units of L
+
+    return ltot**2
+
+    Li = np.cross(vectors,masses[:,None]*velocities)
+    L2i = np.sum(Li*Li,axis=1)
+
+    return np.sum(L2i)
