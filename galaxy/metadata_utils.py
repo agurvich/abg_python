@@ -124,7 +124,7 @@ class Metadata(object):
 
             ## we have a single partial match
             else:
-                raise KeyError("Partial loaded match %s"%file_keys[0])
+                raise KeyError("Partial loaded match %s"%dict_keys[0])
 
     def __repr__(self):
         return "Metadata object at %s" % (self.metapath)# + self.__dict__.keys()
@@ -377,7 +377,11 @@ def metadata_cache(
                     except AttributeError:
                         value = getattr(self.metadata,"%s_%s"%(group,key)) 
                         setattr(self,key,value)
-                return_value = tuple([getattr(self,key) for key in keys])
+                if len(keys) > 1:
+                    return_value = tuple([getattr(self,key) for key in keys])
+                else:
+                    return_value = getattr(self,key)
+
                 if loud:
                     print("cache",
                         group,func_name,
