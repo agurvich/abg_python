@@ -227,3 +227,28 @@ def load_AHF(
 
     return return_val
 
+def addRedshiftAxis(ax,
+    HubbleParam,
+    Omega0,zs=None):
+    if zs is None:
+        zs = np.array([0,0.1,0.25,0.5,1,2,4])[::-1]
+    #0**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
+    ## standard FIRE cosmology... #HubbleParam = 0.7 #Omega0 = 0.272
+    scale_factors = 1./(1+zs)
+    close_times = convertStellarAges(
+        HubbleParam,
+        Omega0,
+        1e-16,
+        scale_factors)
+
+    ax1 = ax.twiny()
+    ax1.set_xticks(close_times)
+
+    ax1.set_xlabel('Redshift')
+    #ax.set_xlim(0,close_times[-1])
+    #ax1.set_xlim(0,close_times[-1])
+    ax.set_xlim(0,14)
+    ax1.set_xlim(0,14)
+
+    ax1.set_xticklabels(["%g"%red for red in zs])
+    return ax1
