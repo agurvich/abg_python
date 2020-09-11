@@ -143,14 +143,14 @@ class SFR_plotter(object):
             ax.axvline(xs[bursty_index],c=color,ls='--',alpha=0.65)
 
         if plot_grayBand:
-            factor = 3
+            factor = 2
             ## should we plot a band showing the running average of the
             ##  the SFR +- a factor of sqrt(3)?
             if renormed:
                 ax.fill_between(
                     xs,
-                    np.ones(xs.size)/factor**0.5,
-                    np.ones(xs.size)*factor**0.5,
+                    np.ones(xs.size)/factor,
+                    np.ones(xs.size)*factor,
                     lw=0,
                     color='gray',
                     alpha=0.25)
@@ -159,7 +159,7 @@ class SFR_plotter(object):
                     ax,
                     want_redshift_xs=redshift_xs,
                     color='gray',
-                    factor=3)
+                    factor=factor)
     
 
         if near is not None:
@@ -193,7 +193,7 @@ class SFR_plotter(object):
         window_size=0.3,
         want_redshift_xs=0,
         color=None,
-        factor=3):
+        factor=2): ## approx 0.3 dex
 
         color = self.plot_color if color is None else color
 
@@ -214,8 +214,8 @@ class SFR_plotter(object):
             ## if we already divided by this function then we just want a constant window
             ax.fill_between(
                 xs[1:],
-                avg_long/factor**0.5,
-                avg_long*factor**0.5,
+                avg_long/factor,
+                avg_long*factor,
                 lw=0,
                 color=color,
                 alpha=0.25)
@@ -278,11 +278,11 @@ class SFR_helper(SFR_plotter):
                     self.snapdir,
                     finsnap,
                     datadir=os.path.dirname(self.datadir),
-                    data_name=self.data_name,
+                    datadir_name=self.datadir_name,
                     ahf_path=self.ahf_path,
                     ahf_fname=self.ahf_fname)
                 print(temp_fin_gal,'loaded to compute SFR archaeologically')
-
+                return temp_fin_gal.get_SFH(radial_thresh=radial_thresh)
 
             ## do we need to extract the sub_star_snap? if 
             ##  finsnap is self.snapnum maybe not...
@@ -301,10 +301,10 @@ class SFR_helper(SFR_plotter):
             smasses = all_utils.get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
 
             ## calculate the star formation history
-            SFTs,timemax = temp_fin_gal.current_time_Gyr - star_snap['AgeGyr'],temp_fin_gal.current_time_Gyr
+            SFTs,timemax = star_snap['TimeGyr'] - star_snap['AgeGyr'],star_snap['TimeGyr']
 
             ## make sure our last bin ends at the current time
-            time_edges = np.arange(temp_fin_gal.current_time_Gyr,0,-DT)[::-1]
+            time_edges = np.arange(star_snap['TimeGyr'],0,-DT)[::-1]
 
             SFRs,SFH_time_edges = arch_method(
                 smasses,
