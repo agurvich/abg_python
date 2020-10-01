@@ -152,11 +152,6 @@ class FIREstudio_helper(object):
 
         frame_depth = frame_half_width if frame_depth is None else frame_depth
 
-        kwargs.update(
-            {'min_weight':min_weight,
-            'max_weight':max_weight,
-            'min_quantity':min_quantity,
-            'max_quantity':max_quantity})
 
         ## attempt to import FIRE_studio
         self.initialize_FIREstudio()
@@ -168,7 +163,7 @@ class FIREstudio_helper(object):
             snapdir=self.snapdir,
             gas_snapdict=self.sub_snap if not assert_cached else None,
             star_snapdict=self.sub_star_snap if not assert_cached else None,
-            frame_depth=frame_depth,
+            frame_half_thickness=frame_depth,
             frame_half_width=frame_half_width,
             **kwargs)
 
@@ -179,6 +174,12 @@ class FIREstudio_helper(object):
             gasStudio.set_ImageParams(
                 theta = 90,
                 aspect_ratio = frame_depth/frame_half_width)
+
+        kwargs.update(
+            {'min_weight':min_weight,
+            'max_weight':max_weight,
+            'min_quantity':min_quantity,
+            'max_quantity':max_quantity})
 
         gasStudio.render(
             ax,
