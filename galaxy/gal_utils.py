@@ -200,12 +200,13 @@ class Galaxy(
                 if save_header_to_table:
                     try:
                         self.saveHeaderToCatalog()
-                    except ValueError:
+                    except (ValueError,OSError):
+                        ## OSError is when parallel processes try to write to header at the same time...
+                        ##  Value Error is probably when the simulation is already in the file?
                         pass
 
 
-            except IOError:
-                print("Couldn't find snapshot",self.snapnum,"in",self.snapdir)
+            except IOError as e:
                 return 
 
             ## simulation timing
@@ -563,7 +564,7 @@ class Galaxy(
                     if extract_DM:
                         which_dark_snap = self.sub_dark_snap
 
-                except (AttributeError,AssertionError,ValueError,IOError) as error:
+                except (AttributeError,AssertionError,ValueError,IOError,KeyError) as error:
                     message = "Failed to open saved sub-snapshots"
                     message+= ' %s'%error.__class__  
                     if hasattr(error,'message'):

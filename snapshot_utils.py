@@ -330,9 +330,84 @@ try:
 
         return snap_df
 
+    def index_match_snapshots_with_dataframes(
+        prev_sub_snap,
+        next_sub_snap,
+        extra_keys_to_extract=None):
+        """
+        keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+        """
+        
+        init=time.time()
+        print('Creating a merged DF')
+        keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+        if extra_keys_to_extract is not None:
+            keys_to_extract += list(extra_keys_to_extract)
+
+        ## convert snapshot dictionaries to pandas dataframes
+        prev_df_snap = convertSnapToDF(prev_sub_snap,
+            keys_to_extract=keys_to_extract)
+        
+        ## apparently index operations go faster if you sort by index
+        prev_df_snap.sort_index(inplace=True)
+        
+        next_df_snap = convertSnapToDF(next_sub_snap,
+            keys_to_extract=keys_to_extract)
+        
+        ## apparently index operations go faster if you sort by index
+        next_df_snap.sort_index(inplace=True)
+        
+        
+        ## remove particles that do not exist in the previous snapshot, 
+        ##  difficult to determine which particle they split from
+        next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
+        
+        ## merge rows of dataframes based on 
+        prev_next_merged_df_snap = pd.merge(
+            prev_df_snap,
+            next_df_snap_reduced,
+            how='inner',
+            on=prev_df_snap.index,
+            suffixes=('','_next'),
+            copy=False).set_index('key_0')
+        
+        ## remove particles that do not exist in the next snapshot, 
+        ##  difficult to tell if they turned into stars or were merged. 
+        prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
+        
+        return prev_next_merged_df_snap
+
+    def make_interpolated_snap(t,time_merged_df,t0,t1):
+        interp_snap = {}
+        for key in time_merged_df.keys():
+            if '_next' in key:
+                continue
+            elif key in ['coord_xs','coord_ys','coord_zs']:
+                continue
+            interp_snap[key] = linear_interpolate(
+                getattr(time_merged_df,key),
+                getattr(time_merged_df,key+'_next'),
+                t0,t1,
+                t).values
+        
+        ## handle coordinates explicitly
+        coords = np.zeros((time_merged_df.shape[0],3))
+        for i,key in enumerate(['coord_xs','coord_ys','coord_zs']):
+            coords[:,i] = linear_interpolate(
+                getattr(time_merged_df,key),
+                getattr(time_merged_df,key+'_next'),
+                t0,t1,
+                t).values
+            
+        interp_snap['Coordinates'] = coords
+        return interp_snap
+
 except ImportError:
     print("Couldn't import pandas. Missing:")
     print("abg_python.snapshot_utils.openSnapshotToDF")
+    print("abg_python.snapshot_utils.convertSnapshotToDF")
+    print("abg_python.index_match_snapshots_with_dataframes")
+    print("abg_python.make_interpolated_snap")
 
 ## thanks Alex Richings!
 def read_chimes(filename, chimes_species): 
