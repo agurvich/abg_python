@@ -20,6 +20,12 @@ def getThetasTaitBryan(angMom):
     theta_TB = np.arctan2(angMom[1],np.sqrt(angMom[0]**2+angMom[2]**2))*180/np.pi
     phi_TB = np.arctan2(-angMom[0],angMom[2])*180/np.pi
 
+    #new_angMom = rotateEuler(
+        #theta_TB,phi_TB,0,
+        #angMom,
+        #order='xyz',loud=False)
+    #print('old:',angMom,'new:',new_angMom)
+
     ## RETURNS DEGREES
     return theta_TB,phi_TB
 

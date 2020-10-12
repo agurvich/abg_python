@@ -455,8 +455,6 @@ class Galaxy(
             'orient_stars',
             'theta_TB',
             'phi_TB',
-            #'sphere_lz', ## TODO reimplement this elsewhere
-            #'sphere_ltot',
             'rvir',
             'rstar_half'],
             use_metadata=False,
@@ -710,12 +708,21 @@ class Galaxy(
             os.makedirs(subsnapdir)
 
 
-        ## get keys directly from the parent snapshot:
-        with h5py.File(self.snap['fnames'][0],'r') as handle:
+        outpath = os.path.join(subsnapdir,'snapshot_%03d.hdf5'%self.snapnum)
+
+        ## if we haven't already created a subsnapshot, read keys from the 
+        ##  parent snapshot
+        if not os.path.isfile(outpath):
+            fname = self.snap['fnames'][0]
+        else: 
+            ## actually a subsnapshot already exists, let's use that one
+            fname = outpath
+            
+        ## read keys from existing snapshot
+        with h5py.File(fname,'r') as handle:
             header_keys = list(handle['Header'].attrs.keys())
             pkeyss = [list(handle['PartType%d'%ptype].keys()) for ptype in ptypes]
 
-        outpath = os.path.join(subsnapdir,'snapshot_%03d.hdf5'%self.snapnum)
         extra_keyss = []
         with h5py.File(outpath,'w') as handle:
             ## make header
