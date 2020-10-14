@@ -114,7 +114,9 @@ def getAgesGyrs(open_snapshot):
     cur_time = open_snapshot['Time']
     HubbleParam = open_snapshot['HubbleParam']
     Omega0 = open_snapshot['Omega0']
-    return convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+    ages = convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+    ages[ages<0] = 0 ## why does this happen? only noticed once, m12i_res7100_md@526
+    return ages
 
 def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     if snapshot_handle==None:
