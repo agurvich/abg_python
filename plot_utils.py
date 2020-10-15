@@ -29,6 +29,52 @@ except:
 ## stupid way of handling black faceolor... 
 GLOBAL_linecolor='k'
 
+def add_many_to_legend(
+    ax,
+    line_labels,
+    line_kwargss=None,
+    make_new_legend=False,
+    **legend_kwargs):
+    """ use this for markers because matplotlib won't fix their bug!"""
+
+    
+    if line_kwargss is None:
+        line_kwargss = [{} for i in len(labels)]
+
+    legend = ax.get_legend()
+    ## add the current legend to the tracked artists
+    ##  and then pretend we weren't passed one
+    if make_new_legend and legend is not None:
+        ax.add_artist(legend)
+        legend=None
+
+    if legend is not None:
+        lines = legend.get_lines()
+        labels = [text.get_text() for text in legend.get_texts()]
+    else:
+        lines,labels=[],[]
+
+    if legend_kwargs is None:
+        legend_kwargs = {}
+
+    ## make the new line
+    for i,label in enumerate(line_labels):
+        line_kwargs = line_kwargss[i]
+        line = Line2D([0],[0],**line_kwargs)
+
+        if label not in labels:
+            lines.append(line)
+            labels.append(label)
+
+    ## for backwards compatibility...
+    ax.legend(lines,labels,**legend_kwargs)
+
+    return ax
+
+
+
+    
+        
 def add_to_legend(
     ax,
     label='',
