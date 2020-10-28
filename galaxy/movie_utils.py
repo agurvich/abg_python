@@ -27,8 +27,11 @@ class Draw_helper(object):
         thetax=None,thetay=None,thetaz=None,
         indices=None,
         axs=None,
+        radius=None,
         **kwargs):
         coords = self.sub_snap['Coordinates']
+        if radius is not None:
+            indices = np.sum(coords**2,axis=1)<radius**2
         return self.drawGalaxy(
             coords,
             thetax,thetay,thetaz,
@@ -285,8 +288,9 @@ def plotSideBySide(
     else:
         fig = axs[0].get_figure()
         ax1,ax2=axs
-    print(axs,ax1,ax2)
     xs,ys,zs = (rs[indices]-rcom).T
+    rs = np.sqrt(xs**2+ys**2+zs**2)
+
     twoDHist(ax1,xs,ys,bins=200,weights=weights,**kwargs)
     if 'cbar' in kwargs:
         kwargs.pop('cbar')
@@ -332,13 +336,16 @@ def twoDHist(
         from matplotlib.colors import LogNorm
         norm=LogNorm(vmin=vmin,vmax=vmax)
     cmap=plt.get_cmap('afmhot')
+
     h,xedges,yedges=np.histogram2d(
         xs,ys,
         weights=weights,
         bins=bins)
+    
     ax.imshow(h.T,cmap=cmap,origin='lower',
         norm=norm,
         extent=[min(xedges),max(xedges),min(yedges),max(yedges)])
+
     if cbar:
         addColorbar(
             ax,cmap,
@@ -347,6 +354,7 @@ def twoDHist(
             logflag = 0,
             fontsize=12,
             cmap_number=0)
+
     return h,xedges,yedges
 
 def rotateEuler(
