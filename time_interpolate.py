@@ -1,12 +1,11 @@
 import os
 import time
 import copy
+import itertools
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
 
 from abg_python.snapshot_utils import convertSnapToDF
 from abg_python.galaxy.gal_utils import Galaxy
@@ -26,16 +25,15 @@ class TimeInterpolationHandler(object):
         ## need to check/decide how one would convert to Myr if necessary. I think only
         ##  the snap interpolation would break.
 
-
-        if snap_times is None:
+        if snap_times_gyr is None:
             raise NotImplementedError("Need to open each snapshot and extract the time in Gyr")
 
         dGyr_or_times_gyr = np.array(dGyr_or_times_gyr)
 
         if len(dGyr_or_times_gyr.shape) == 0:
             ## we were passed a time spacing
-            times_gyr,snap_pairs = find_bordering_snapnums(
-                    prev_galaxy.snap_gyrs,
+            times_gyr,snap_pairs,snap_pair_times = find_bordering_snapnums(
+                    snap_times_gyr,
                     dGyr=dGyr_or_times_gyr,
                     tmin=dGyr_tmin,
                     tmax=dGyr_tmax)
@@ -46,18 +44,23 @@ class TimeInterpolationHandler(object):
             inds_next = np.argmax((times_gyr - snap_times_gyr[:,None]) < 0 ,axis=0)
             inds_prev = inds_next-1
             snap_pairs = np.array(list(zip(inds_prev,inds_next)))
+            snap_pair_times = np.array(list(zip(
+                snap_times_gyr[inds_prev],
+                snap_times_gyr[inds_next])))
 
         else:
             raise ValueError("Could not interpret dGyr_or_times_gyr",dGyr_or_times_gyr)
 
         self.times_gyr = times_gyr
         self.snap_pairs = snap_pairs
+        self.snap_pair_times = snap_pair_times
 
     def interpolate_on_snap_pairs(
         self,
         function_to_call_on_interpolated_dataframe,
         galaxy_kwargs=None,
-        multi_threads=1):
+        multi_threads=1,
+        extra_keys_to_extract=None):
         """ """
 
         if galaxy_kwargs is None:
@@ -69,12 +72,33 @@ class TimeInterpolationHandler(object):
                 function_to_call_on_interpolated_dataframe,
                 self.times_gyr,
                 self.snap_pairs,
-                galaxy_kwargs)
+                self.snap_pair_times,
+                galaxy_kwargs,
+                extra_keys_to_extract)
             
-        elif multi_threads > 1
-            raise NotImplementedError("Need to break pairs into chunks and dispatch them to python processes")
+        elif multi_threads > 1:
+            ## split the pairs of snapshots into approximately equal chunks
+            ##  prioritizing  matching pairs of snapshots
+            mps_indices = split_into_n_approx_equal_chunks(self.snap_pairs,multi_threads)
+            split_times_gyr = np.array_split(self.times_gyr,mps_indices)
+            split_snap_pairs = np.array_split(self.snap_pairs,mps_indices)
+            split_snap_pair_times = np.array_split(self.snap_pair_times,mps_indices)
+            
+            argss = zip(
+                itertools.repeat(function_to_call_on_interpolated_dataframe),
+                split_times_gyr,
+                split_snap_pairs,
+                split_snap_pair_times,
+                itertools.repeat(galaxy_kwargs),
+                itertools.repeat(extra_keys_to_extract))
+
+            with multiprocessing.Pool(multi_threads) as my_pool:
+                    my_pool.starmap(single_threaded_control_flow,argss)
         else:
             raise ValueError("Specify a number of threads >=1, not",multi_threads)
+
+def find_matching_split_indices(snap_pairs):
+    pass
 
 def find_bordering_snapnums(
     snap_times_gyr,
@@ -99,18 +123,26 @@ def find_bordering_snapnums(
     
     inds_next = np.argmax((times_gyr - snap_times_gyr[:,None]) < 0 ,axis=0)
     inds_prev = inds_next-1
-    return times_gyr,np.array(list(zip(inds_prev,inds_next)))
+    return (
+        times_gyr,
+        np.array(list(zip(inds_prev,inds_next))),
+        np.array(list(zip(snap_times_gyr[inds_prev],snap_times_gyr[inds_next]))))
 
 def single_threaded_control_flow(
     function_to_call_on_interpolated_dataframe,
     times,
     snap_pairs,
-    galaxy_kwargs):
+    snap_pair_times,
+    galaxy_kwargs,
+    extra_keys_to_extract):
     """ """
 
     prev_galaxy,next_galaxy = None,None
     prev_snapnum,next_snapnum=None,None
-    for i,pair in enumerate(snap_pairs):     
+
+    return_values = []
+
+    for i,(pair,pair_times) in enumerate(zip(snap_pairs,snap_pair_times)):     
         ## determine if the galaxies in the pair are actually
         ##  changed, and if so, open their data from the disk.
         prev_galaxy,next_galaxy,changed = load_gals_from_disk(
@@ -129,16 +161,19 @@ def single_threaded_control_flow(
             ## make an interpolated snapshot with these galaxies,
             ##  this takes a while so we'll hold onto it and only 
             ##  make a new one if necessary.
-            t0,t1 =  prev_galaxy.current_time_Gyr,next_galaxy.current_time_Gyr
+            t0,t1 = pair_times
             time_merged_df = index_match_snapshots_with_dataframes(
                 prev_galaxy.sub_snap,
                 next_galaxy.sub_snap,
-                extra_keys_to_extract=['Temperature'])
+                extra_keys_to_extract=extra_keys_to_extract)
 
         ## update the interp_snap with new values for the new time
         interp_snap = make_interpolated_snap(this_time,time_merged_df,t0,t1)
         interp_snap['prev_snapnum'] = prev_snapnum
         interp_snap['next_snapnum'] = next_snapnum
+        interp_snap['prev_time'] = t0
+        interp_snap['next_time'] = t1
+        interp_snap['this_time'] = this_time
 
         ## call the function we were passed
         return_values += [function_to_call_on_interpolated_dataframe(interp_snap)]
@@ -174,12 +209,12 @@ def load_gals_from_disk(
 
     changed = False ## flag for whether we loaded something from disk
     if prev_galaxy is None:
-        #print('loading',prev_snapnum,'from disk')
+        print('loading',pair[0],'from disk')
         prev_galaxy = Galaxy(snapnum=pair[0],**kwargs)
         prev_galaxy.extractMainHalo()
         changed = True
     if next_galaxy is None:
-        #print('loading',next_snapnum,'from disk')
+        print('loading',pair[1],'from disk')
         next_galaxy = Galaxy(snapnum=pair[1],**kwargs)
         next_galaxy.extractMainHalo()
         changed = True
@@ -269,7 +304,13 @@ def index_match_snapshots_with_dataframes(
     ##  difficult to determine which particle they split from
     next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
     
+
     ## merge rows of dataframes based on 
+    """
+    lol this used to work, obviously, but now it
+    raises an internal error when trying to extract the
+    multi-indices. pandas sucks.
+
     prev_next_merged_df_snap = pd.merge(
         prev_df_snap,
         next_df_snap_reduced,
@@ -277,12 +318,59 @@ def index_match_snapshots_with_dataframes(
         on=prev_df_snap.index,
         suffixes=('','_next'),
         copy=False).set_index('key_0')
-    
+    """
+    prev_next_merged_df_snap = prev_df_snap.join(
+        next_df_snap_reduced,
+        rsuffix='_next')
+
     ## remove particles that do not exist in the next snapshot, 
     ##  difficult to tell if they turned into stars or were merged. 
     prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
     
     return prev_next_merged_df_snap
+
+def split_into_n_approx_equal_chunks(snap_pairs,nchunks):
+    
+    nrenders = len(snap_pairs)
+    ## split matching pairs into groups
+    indices = split_pairs(snap_pairs[:])
+    splitted = np.array_split(snap_pairs,indices)
+    
+    ## determine how many of each matching pair there are
+    n_renders_per_split = [len(this_split) for this_split in splitted]
+    
+    mps_chunks = []
+    this_chunk = 0
+    # 1 would bias early, do this if the remainder would dump a lot of pairs on the last
+    ##  process, i.e. when the remainder > nchunks/2
+    per_chunk = nrenders//nchunks + (nrenders%nchunks > nchunks//2)
+    
+    for i in range(len(indices)):
+        #print(this_chunk,per_chunk)
+        if this_chunk >= per_chunk:
+            mps_chunks+=[indices[i-1]]
+            this_chunk=0
+        this_chunk+=n_renders_per_split[i]
+    
+    mps_chunks = np.array(mps_chunks)#-indices[0]
+    mps_chunks=list(mps_chunks)
+    print('split into:',np.diff([0]+mps_chunks+[len(snap_pairs)]))   
+    return mps_chunks
+
+def split_pairs(snap_pairs):
+    indices = []
+    changed = split_head(snap_pairs)
+    cur_index = 0
+    while changed > 0:
+        changed = split_head(snap_pairs[cur_index:])
+        cur_index+=changed
+        indices+=[cur_index]
+
+    return indices[:-1]#np.array_split(snap_pairs,indices[:-1])
+    
+def split_head(snap_pairs):
+    split_index = np.argmax(np.logical_not(np.all(snap_pairs==snap_pairs[0],axis=1)))
+    return split_index
 
 def main():
 
@@ -325,7 +413,9 @@ def main():
             name,
             gas_snapdict=interp_snap)
         
-        my_gasStudio.this_setup_id += "_time%.3f"%this_time ## differentiate this time to Myr precision
+        ## differentiate this time to Myr precision
+        my_gasStudio.this_setup_id += "_time%.3f"%interp_snap['this_time'] 
+
 
         ## create a new figure for this guy
         fig = plt.figure()
