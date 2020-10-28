@@ -115,15 +115,16 @@ class Galaxy(
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
 
         ## append _md to the name for my own sanity
-        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            self.name = self.name + '_md'
+        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            #self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
         pretty_name = self.name.split('_')
-        pretty_name = [
+        pretty_name = np.array([
             strr if 'res' not in strr else '' 
-            for strr in pretty_name] 
+            for strr in pretty_name])
+        pretty_name = pretty_name[pretty_name!= '']
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
@@ -151,6 +152,11 @@ class Galaxy(
         self.metadatadir = os.path.join(self.datadir,'metadata')
         if not os.path.isdir(self.metadatadir):
             os.makedirs(self.metadatadir)
+
+        ## handle plotdir creation
+        self.plotdir = os.path.join(self.datadir,'plots')
+        if not os.path.isdir(self.plotdir):
+            os.makedirs(self.plotdir)
 
         ## are we just trying to open this simulation's constant header info?
         if self.snapnum is None:
@@ -211,14 +217,8 @@ class Galaxy(
 
             ## simulation timing
             ##  load snapshot times to convert between snapnum and time_Gyr
-            try:
-                self.createSnapshotTimes()
-                self.current_time_Gyr = self.snap_gyrs[self.snapnums==self.snapnum][0]
-                self.current_redshift = self.snap_zs[self.snapnums==self.snapnum][0]
-            except:
-                print("Couldn't load or create snapshot times, opening the header.")
-                self.current_redshift = self.header['Redshift']
-                self.current_time_Gyr = cosmo_utils.convertReadsnapTimeToGyr(self.header)
+            self.current_redshift = self.header['Redshift']
+            self.current_time_Gyr = self.header['TimeGyr']
 
             ## attempt to read halo location and properties from AHF
             if ahf_fname is None:
@@ -310,28 +310,40 @@ class Galaxy(
         ##  by checking the snapdir and sorting the files by snapnum
         self.finsnap = all_utils.getfinsnapnum(self.snapdir)
 
-    def createSnapshotTimes(self,snaptimes='snapshot_times'):
-
+    def get_snapshotTimes(self,snaptimes='snapshot_times',assert_cached=False): 
         ## try looking in the simulation directory for a snapshot_times.txt file
-        snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
+        #snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
         ## try loading from the datadir
-        data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
 
-        for pathh in [
-            snap_FIRE_SN_times,
-            data_FIRE_SN_times]:
+        #for pathh in [
+            #snap_FIRE_SN_times,
+            #data_FIRE_SN_times]:
 
-            if os.path.isfile(pathh):
-                (self.snapnums,
-                    self.snap_sfs,
-                    self.snap_zs,
-                    self.snap_gyrs,
-                    self.dTs) = np.genfromtxt(pathh,unpack=1)
-                return
+        ## TODO
+        ## ignore the snapshot times that are saved in the FIRE
+        ##  directory because I can't re-derive them :\
+        ##  using the stated cosmology and convertStellarAges
+        ##  better to consistently rederive age using stated cosmology
+        ##  and the provided redshift, as is done in openSnapshot
         
         ## if we didn't manage to find an existing snapshot times file
         ##  we'll try and make one ourself using the available snapshots
         ##  in the snapdir
+
+        data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
+
+        if os.path.isfile(data_FIRE_SN_times):
+            (self.snapnums,
+                self.snap_sfs,
+                self.snap_zs,
+                self.snap_gyrs,
+                self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
+            return
+
+
+        if assert_cached:
+            raise AssertionError("User asserted that the snapshot times should be saved to disk.")
+
         finsnap = all_utils.getfinsnapnum(self.snapdir)
         print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
 
@@ -364,6 +376,7 @@ class Galaxy(
             except IOError:
                 print("snapshot %d doesn't exist, skipping..."%snapnum)
                 continue
+
 
         ## write out our snapshot_times.txt to datadir
         np.savetxt(
@@ -543,15 +556,22 @@ class Galaxy(
                         cosmological=True,
                         abg_subsnap=1)
 
-                    ## check if the extraction radius is what we want, to 5 decimal places
-                    if np.round(radius,5) != np.round(self.sub_snap['scale_radius'],5):
+                    ## check if the extraction radius is what we want, to 4 decimal places
+                    if np.round(radius,4) != np.round(self.sub_snap['scale_radius'],4):
+                        ## delete it because it is GARBAGE
+                        os.remove(fname)
+                        already_saved = False
                         raise ValueError("scale_radius is not the same",
-                            radius,
-                            self.sub_snap['scale_radius'])
+                            radius-self.sub_snap['scale_radius'],
+                            radius,self.sub_snap['scale_radius'])
 
-                    ## check if halo center is the same to 5 decimal places
-                    if (np.round(self.scom,5) != np.round(self.sub_snap['scom'],5)).any():
+                    ## check if halo center is the same to 4 decimal places
+                    if (np.round(self.scom,4) != np.round(self.sub_snap['scom'],4)).any():
+                        ## delete it because it is GARBAGE
+                        os.remove(fname)
+                        already_saved = False
                         raise ValueError("Halo center is not the same",
+                            self.scom -self.sub_snap['scom'],
                             self.scom ,self.sub_snap['scom'])
 
                     print("Successfully loaded a pre-extracted subsnap")
@@ -564,9 +584,8 @@ class Galaxy(
 
                 except (AttributeError,AssertionError,ValueError,IOError,KeyError) as error:
                     message = "Failed to open saved sub-snapshots"
-                    message+= ' %s'%error.__class__  
-                    if hasattr(error,'message'):
-                        message+= ' %s'%error.message
+                    #message+= ' %s'%error.__class__  
+                    message+= ' %s'%repr(error)
                     print(message)
 
                     ## have to load the full snapshots...
@@ -954,15 +973,16 @@ class ManyGalaxy(Galaxy):
 
 
         ## append _md to the datadir_name for my own sanity
-        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            self.name = self.name + '_md'
+        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            #self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
         pretty_name = self.name.split('_')
-        pretty_name = [
+        pretty_name = np.array([
             strr if 'res' not in strr else '' 
-            for strr in pretty_name] 
+            for strr in pretty_name])
+        pretty_name = pretty_name[pretty_name!= '']
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
@@ -987,6 +1007,11 @@ class ManyGalaxy(Galaxy):
         if not os.path.isdir(self.metadatadir):
             os.makedirs(self.metadatadir)
 
+        ## handle plotdir creation
+        self.plotdir = os.path.join(self.datadir,'plots')
+        if not os.path.isdir(self.plotdir):
+            os.makedirs(self.plotdir)
+
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
             self.finsnap = all_utils.getfinsnapnum(self.snapdir)
@@ -995,6 +1020,11 @@ class ManyGalaxy(Galaxy):
         else:
             ## filler values
             self.finsnap=self.minsnap=None
+
+        try:
+            self.get_snapshotTimes(assert_cached=True)
+        except AssertionError:
+            print("No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
 
         ## for anything else you'd like to pass to future loaded galaxies
         self.galaxy_kwargs = galaxy_kwargs
@@ -1014,9 +1044,12 @@ class ManyGalaxy(Galaxy):
 
             ## define convenient access patterns
             def __getattr__(self,attr):
-                return np.array(
-                    [getattr(gal,attr) for gal 
-                    in self.galaxies])
+                if 'galaxies' in self.__dict__.keys():
+                    return np.array(
+                        [getattr(gal,attr) for gal 
+                        in self.galaxies])
+                else:
+                    return getatr(self,attr) ## might fail but that's what we want
 
             def __getitem__(self,index):
                 return self.galaxies[index]
@@ -1026,29 +1059,46 @@ class ManyGalaxy(Galaxy):
 
     def find_galaxy_population(
         self,
-        N=10,
         cursnap=600,
+        N=10,
         objects=False, ## do we want to return functioning Galaxy instances or just their snapnums?
-        DTMyr=50):
+        DTMyr=50,
+        loud=True):
         """ Finds evenly spaced snapshots by iteratively loading snapshots in reverse"""
 
-        ## initialize the search at our current snapshot
         found = 1
-        return_list = [self.loadAtSnapshot(cursnap)]
-        cur_time = return_list[0].current_time_Gyr
+        return_list = [cursnap]
+
+        def get_time_from_snapnum(snapnum):
+            
+            if not hasattr(self,'snap_gyrs'):
+                gal = self.loadAtSnapshot(cursnap)
+                this_time = gal.current_time_Gyr
+            else:
+                this_time = self.snap_gyrs[self.snapnums==snapnum][0]
+            return this_time
+
+
+        ## initialize the search at our current snapshot
+
+        cur_time = get_time_from_snapnum(cursnap)
         new_snap = cursnap-1
+
         while found < N:
-            new_galaxy = self.loadAtSnapshot(new_snap)
-            if (cur_time - new_galaxy.current_time_Gyr)*1000 > DTMyr:
-                cur_time = new_galaxy.current_time_Gyr
-                return_list +=[new_galaxy]
+            new_time = get_time_from_snapnum(new_snap)
+            if loud:
+                print(new_snap,'%.2f'%((cur_time - new_time)*1000),end='\t')
+            if (cur_time - new_time)*1000 > DTMyr:
+                cur_time = new_time
+                return_list +=[new_snap]
                 found+=1
             new_snap-=1
+
         if not objects:
             ## return only the snapnums
-            return [galaxy.snapnum for galaxy in return_list[::-1]]
-        else: 
             return return_list[::-1]
+        else: 
+            return [self.loadAtSnapshot(snapnum) for snapnum in return_list[::-1]]
 
     def loadAtSnapshot(self,snapnum,**kwargs):
         """ Create a Galaxy instance at snapnum using the stored 
