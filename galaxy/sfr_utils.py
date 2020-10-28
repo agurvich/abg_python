@@ -245,6 +245,7 @@ class SFR_helper(SFR_plotter):
         **kwargs):
         """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
 
+
         sfr_string = self.get_sfr_string(DT)
         ### begin wrapped
         @metadata_cache(
@@ -414,7 +415,7 @@ class SFR_helper(SFR_plotter):
         assert_cached=False,
         loud=True,
         **kwargs):
-        """ thresh=0.5, ## dex of scatter
+        """ thresh=0.3, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within"""
 
         ### begin wrapped
@@ -432,26 +433,40 @@ class SFR_helper(SFR_plotter):
             self,
             thresh=0.3, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within
+            numerator_time=0.01
             ):
 
             ## ensure that we have the 1 Myr SFH loaded
             self.get_SFH(DT=0.001,loud=False)
 
 
-            adjusted_sfrs = self.SFRs + self.SFRs[self.SFRs>0].min()/10
+            adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
 
             ## calculate the relative scatter as sigma/y
-            xs,sfh_long = all_utils.boxcar_average(
+            xs,boxcar_ys_10 = all_utils.boxcar_average(
                 self.SFH_time_edges,
-                np.log10(adjusted_sfrs),
+                adjusted_sfrs,
+                numerator_time,
+                loud=True)
+
+            xs,boxcar_ys_300 = all_utils.boxcar_average(
+                self.SFH_time_edges,
+                adjusted_sfrs,
                 window_size,
                 loud=True)
 
-            xs2,sfh_long_2 = all_utils.boxcar_average(
+            ## calculate the scatter in <SFR>_10/<SFR>_300
+            xs,boxcar_ys = all_utils.boxcar_average(
                 self.SFH_time_edges,
-                np.log10(adjusted_sfrs)**2,window_size)
+                boxcar_ys_10/boxcar_ys_300,
+                window_size)
 
-            rel_scatters = (sfh_long_2-sfh_long**2)**0.5/np.abs(sfh_long)
+            xs2,boxcar_ys_2 = all_utils.boxcar_average(
+                self.SFH_time_edges,
+                (boxcar_ys_10/boxcar_ys_300)**2,
+                window_size)
+
+            rel_scatters = (boxcar_ys_2-boxcar_ys**2)**0.5
 
             ## have to reverse the rel_scatters to find the "last point of crossing" 
             ##  after which the rel_scatter doesn't cross the threshold. 
