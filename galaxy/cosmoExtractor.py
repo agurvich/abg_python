@@ -145,7 +145,7 @@ def extractDiskFromSnapdicts(
 
     ## dictionary to add to extracted snapshot
     add_to_dict = {
-        'scale_radius':radius}
+        'scale_radius':np.round(radius,5)}
 
     #overwrite gindices/sindices/dindices
     for i,this_snap in enumerate(snaps):
