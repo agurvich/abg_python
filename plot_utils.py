@@ -572,7 +572,7 @@ def bufferAxesLabels(
 
     if share_xlabel is not None:
         fig.text(
-            0.5,label_offset,
+            0.5,label_offset-0.05,
             share_xlabel,
             va='center',ha='center',fontsize=13)
 
