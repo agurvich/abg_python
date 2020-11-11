@@ -437,7 +437,12 @@ class SFR_helper(SFR_plotter):
             ):
 
             ## ensure that we have the 1 Myr SFH loaded
-            self.get_SFH(DT=0.001,loud=False)
+            self.get_SFH(
+                DT=0.001,
+                loud=False,
+                save_meta=save_meta,
+                use_metadata=use_metadata,
+                assert_cached=assert_cached)
 
 
             adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
