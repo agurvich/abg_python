@@ -7,7 +7,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from abg_python.all_utils import pairFilter
+from abg_python.all_utils import pairFilter,covarianceEigensystem
 from scipy.interpolate import interp1d
 
 """
@@ -146,6 +146,48 @@ def plotCircle(
     """
     return ax.add_artist(
         plt.Circle((x,y),radius,fill=fill,lw=lw,**kwargs))
+
+def plotEllipse(
+    ax,
+    x,y,
+    semi_major,
+    semi_minor,
+    angle=0,
+    fill=False,
+    lw=3,
+    log=False,
+    **kwargs):
+    from matplotlib.patches import Ellipse
+    from matplotlib.transforms import ScaledTranslation
+
+    if log:
+        # use the axis scale tform to figure out how far to translate 
+        circ_offset = ScaledTranslation(x,y,ax.transScale)
+
+        # construct the composite tform
+        circ_tform = circ_offset + ax.transLimits + ax.transAxes
+
+        # create the circle centred on the origin, apply the composite tform
+        circ = Ellipse(
+            (0,0),
+            2*semi_major,
+            2*semi_minor,
+            angle=angle,
+            fill=fill,lw=lw,
+            transform=circ_tform,
+            **kwargs)
+        ax.add_artist(circ)
+
+    else:
+        return ax.add_artist(
+            Ellipse(
+                (x,y),
+                semi_major,
+                semi_minor,
+                angle=angle,
+                fill=fill,
+                lw=lw,
+                **kwargs))
 
 def addColorbar(
     ax,cmap,
@@ -703,7 +745,8 @@ def plot_histogram_contour_log(
     xedges,yedges,
     plot_histogram=True,
     plot_points=False,
-    contour_kwargs=None):
+    contour_kwargs=None,
+    plot_ellipse=True):
 
     ## initialize contour_kwargs, controls what contours are plotted, 
     ##  their linestyles (as an array), and their color (mainly... I'm sure there 
@@ -747,10 +790,37 @@ def plot_histogram_contour_log(
     if plot_points:
         ax.plot(10**xs,10**ys,'.',markeredgewidth=0,c='g')
 
+    evecs,evals = covarianceEigensystem(xs,ys)
+
+    ## choose new x-axis to be evecs[0], rotation angle is
+    ##  angle between it and old x-axis, i.e.
+    ##  ehat . xhat = cos(angle)
+    angle = np.arccos(evecs[0][0])
+
+    ## evals are variance along principle axes
+    rx,ry = evals**0.5 ## in dex
+    cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+    if plot_ellipse:
+        ## doesn't work for log
+        for evec,this_eval in zip(evecs,evals):
+            dx,dy = evec*this_eval**0.5
+            ax.plot(
+                [cx,10**(np.log10(cx)+dx)],
+                [cy,10**(np.log10(cy)+dy)],
+                lw=3,ls=':',c='limegreen')
+
+        plotEllipse(
+            ax,
+            cx,cy,
+            rx,ry,
+            angle=angle*180/np.pi,
+            log=True,
+            color='limegreen')
 
     return_value = plot_percentile_contours(ax,10**X,10**Y,h,**contour_kwargs)
 
-    return h,return_value
+    return h,rx,ry,evecs,return_value
 
 def plot_percentile_contours(
     ax,

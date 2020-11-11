@@ -291,6 +291,62 @@ def fitGauss(xs,ys,yerrs=None,format_str=None):
         pass
     return pars,lambda x: fn(pars,x)
 
+
+def covarianceEigensystem(xs,ys):
+    """ calculates the covariance matrix and the principle axes
+        (eigenvectors) of the data. 
+        Eigenvalues represent variance along those principle axes.
+
+        ## choose new x-axis to be evecs[0], rotation angle is
+        ##  angle between it and old x-axis, i.e.
+        ##  ehat . xhat = cos(angle)
+        angle = np.arccos(evecs[0][0])
+
+        ## evals are variance along principle axes
+        rx,ry = evals**0.5 ## in dex
+        cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+        for evec,this_eval in zip(evecs,evals):
+            dx,dy = evec*this_eval**0.5
+            ax.plot(
+                [cx,10**(np.log10(cx)+dx)],
+                [cy,10**(np.log10(cy)+dy)],
+                lw=3,ls=':',c='limegreen')
+
+        plotEllipse(
+            ax,
+            cx,cy,
+            rx,ry,
+            angle=angle*180/np.pi,
+            log=True,
+            color='limegreen')"""
+
+    cov = np.cov([xs,ys])
+    evals,evecs = np.linalg.eig(cov)
+    evecs = evecs.T ## after transpose becomes [e1,e2], which makes sense...? lol
+
+    ## re-arrange so semi-major axis is always 1st
+    sort_mask = np.argsort(evals)[::-1]
+    evals,evecs = evals[sort_mask],evecs[sort_mask]
+    evecs[np.all(evecs<0,axis=1)]*=-1 ## take the positive version
+
+    return evecs,evals
+
+def getCovarianceEllipse(xs,ys):
+    evecs,evals = covarianceEigensystem(xs,ys)
+
+    ## choose new x-axis to be evecs[0], rotation angle is
+    ##  angle between it and old x-axis, i.e.
+    ##  ehat . xhat = cos(angle)
+    angle = np.arccos(evecs[0][0])
+
+    ## evals are variance along principle axes
+    rx,ry = evals**0.5 ## in dex
+    cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+    return cx,cy,rx,ry,angle,evecs
+
+
 def fitSkewGauss(xs,ys,yerrs=None):
     ## initial parameter estimate
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys),.5]
