@@ -144,6 +144,8 @@ class FIREstudio_helper(object):
         self,
         ax,
         assert_cached=False,
+        use_metadata=True,
+        save_meta=True,
         edgeon=False,
         frame_depth=None,
         frame_half_width=15,
@@ -189,6 +191,8 @@ class FIREstudio_helper(object):
             assert_cached=assert_cached,
             quantity_adjustment_function=np.log10,
             weight_adjustment_function=lambda x: np.log10(x*1e10/1e6/gasStudio.Acell),
+            use_metadata=use_metadata,
+            save_meta=save_meta,
             **kwargs)
 
         ## free up any memory associated with that object
