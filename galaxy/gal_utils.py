@@ -241,7 +241,9 @@ class Galaxy(
 
             ## check if this first guess at the ahf_fname and ahf_path
             ##  is right
-            if not os.path.isfile(os.path.join(ahf_path,ahf_fname)):
+            if (not os.path.isfile(os.path.join(ahf_path,ahf_fname)) and 
+                ahf_path != 'None' and 
+                ahf_fname != 'None'):
                 ## try looking in the simulation directory
                 ahf_path = os.sep.join(
                     self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
@@ -271,40 +273,50 @@ class Galaxy(
             self.ahf_path = ahf_path
             self.ahf_fname = ahf_fname
 
-            ## now that we've attempted to identify an AHF file lets open 
-            ##  this puppy up
-            try:
-                self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
-                    self.snapdir,
-                    self.snapnum,
-                    self.current_redshift,
-                    ahf_path = ahf_path,
-                    fname=ahf_fname,
-                    hubble = self.header['HubbleParam'])
+            ## we'll set this manually
+            if self.ahf_path == 'None' or self.ahf_fname == 'None':
+                self.scom,self.rvir,self.rstar_half = None,None,None
+                print(
+                    'Make sure to set:',
+                    'scom',
+                    'rvir',
+                    'rstar_half',
+                    'attributes manually')
+            else:
+                ## now that we've attempted to identify an AHF file lets open 
+                ##  this puppy up
+                try:
+                    self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
+                        self.snapdir,
+                        self.snapnum,
+                        self.current_redshift,
+                        ahf_path = ahf_path,
+                        fname=ahf_fname,
+                        hubble = self.header['HubbleParam'])
 
-            ## TODO make sure there's some proper error handling in cosmo_utils.load_AHF
-            ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves in our first extraction
-            except ValueError:
-                self.scom, self.rvir = cosmo_utils.load_AHF(
-                    self.snapdir,
-                    self.snapnum,
-                    self.current_redshift,
-                    extra_names_to_read = [],
-                    ahf_path = ahf_path,
-                    fname=ahf_fname,
-                    hubble = self.header['HubbleParam'])
+                ## TODO make sure there's some proper error handling in cosmo_utils.load_AHF
+                ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves in our first extraction
+                except ValueError:
+                    self.scom, self.rvir = cosmo_utils.load_AHF(
+                        self.snapdir,
+                        self.snapnum,
+                        self.current_redshift,
+                        extra_names_to_read = [],
+                        ahf_path = ahf_path,
+                        fname=ahf_fname,
+                        hubble = self.header['HubbleParam'])
 
-                self.rstar_half = None
-                ## have we already calculated it and cached it?
-                for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
-                    if hasattr(self.metadata,attr):
-                        print('using cached',attr,'for rstar_half')
-                        self.rstar_half = getattr(self.metadata,attr)
-                        break
+                    self.rstar_half = None
+                    ## have we already calculated it and cached it?
+                    for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
+                        if hasattr(self.metadata,attr):
+                            print('using cached',attr,'for rstar_half')
+                            self.rstar_half = getattr(self.metadata,attr)
+                            break
 
-                ## I guess not
-                if self.rstar_half is None:
-                    print("No rstar 1/2 in AHF or metadata files, we will need to calculate it ourselves.")
+                    ## I guess not
+                    if self.rstar_half is None:
+                        print("No rstar 1/2 in AHF or metadata files, we will need to calculate it ourselves.")
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
@@ -484,6 +496,13 @@ class Galaxy(
 
             ## handle default remappings
 
+            if self.scom is None:
+                self.load_stars()
+                self.scom = all_utils.iterativeCoM(
+                    self.star_snap['Coordinates'],
+                    self.star_snap['Masses'],
+                    n=4)
+
             if radius is None:
                 radius = self.rvir ## radius of the sub-snapshot
 
@@ -582,7 +601,7 @@ class Galaxy(
                     if extract_DM:
                         which_dark_snap = self.sub_dark_snap
 
-                except (AttributeError,AssertionError,ValueError,IOError,KeyError) as error:
+                except (AttributeError,AssertionError,ValueError,IOError,KeyError,TypeError) as error:
                     message = "Failed to open saved sub-snapshots"
                     #message+= ' %s'%error.__class__  
                     message+= ' %s'%repr(error)
@@ -603,7 +622,6 @@ class Galaxy(
                     if extract_DM:
                         which_dark_snap = self.dark_snap
                 
-
             ## pass the snapshots into the rotation routine
             sub_snaps = extractDiskFromSnapdicts(
                 which_star_snap,
@@ -672,11 +690,12 @@ class Galaxy(
 
     def load_stars(self,**kwargs):
         print("Loading star particles of",self)
-        self.star_snap = openSnapshot(
-            self.snapdir,
-            self.snapnum,4,
-            cosmological=True,
-            **kwargs)
+        if not hasattr(self,'star_snap'):
+            self.star_snap = openSnapshot(
+                self.snapdir,
+                self.snapnum,4,
+                cosmological=True,
+                **kwargs)
 
     def load_gas(self,**kwargs):
         print("Loading gas particles of",self)

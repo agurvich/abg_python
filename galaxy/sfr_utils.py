@@ -476,7 +476,15 @@ class SFR_helper(SFR_plotter):
             ## have to reverse the rel_scatters to find the "last point of crossing" 
             ##  after which the rel_scatter doesn't cross the threshold. 
             tindex = np.argmax(rel_scatters[::-1] > thresh)
-            tindex = rel_scatters.size-tindex-1
+            xs,ys = all_utils.boxcar_average(
+                self.SFH_time_edges,
+                rel_scatters < thresh,
+                0.3) ## average boolean statement over 300 Myr
+
+            ## find the first 300 Myr window that is consistently below the threshold
+            ##  averaging boolean will be 1 if all entries are True and will be < 1 if 
+            ##  even one is not
+            tindex = np.argmax(ys == 1)
 
             bursty_redshift = approximateRedshiftFromGyr(
                 self.header['HubbleParam'],
