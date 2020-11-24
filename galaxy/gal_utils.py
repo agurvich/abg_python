@@ -481,7 +481,8 @@ class Galaxy(
             'theta_TB',
             'phi_TB',
             'rvir',
-            'rstar_half'],
+            'rstar_half',
+            'rgas_half'],
             use_metadata=False,
             save_meta=save_meta,
             loud=1)
@@ -510,7 +511,8 @@ class Galaxy(
                 ##  rather than relying on the output of AHF
                 if self.rstar_half is None:
                     self.load_stars()
-                    self.rstar_half = self.calculate_rstar_half() 
+                    self.rstar_half = self.calculate_half_mass_radius() 
+
 
                 ## radius to calculate angular momentum
                 ##  to orient on 
@@ -654,12 +656,17 @@ class Galaxy(
                 not already_saved):
                 self.outputSubsnapshot()
 
+            if not hasattr(self,'rgas_half'):
+                self.rgas_half = self.calculate_half_mass_radius(
+                    which_snap=self.sub_snap) 
+
             return (self.sub_radius,
                 self.orient_stars,
                 self.sub_snap['theta_TB'],
                 self.sub_snap['phi_TB'],
                 self.rvir,
-                self.rstar_half)
+                self.rstar_half,
+                self.rgas_half)
 
         return_value = extract_halo_inner(
             self,
@@ -712,16 +719,25 @@ class Galaxy(
             cosmological=True,
             **kwargs)
 
-    def calculate_rstar_half(self):
-        print("Calculating the stellar half mass radius")
+    def calculate_half_mass_radius(self,which_snap=None):
+        print("Calculating the half mass radius")
 
         ## find the stars within the virial radius
-        coords = self.star_snap['Coordinates']-self.scom
+        if which_snap is None:
+            which_snap = self.star_snap
+
+        if 'overwritten' in which_snap.keys() and which_snap['overwritten']:
+            coords = which_snap['Coordinates']
+        else:
+            coords = which_snap['Coordinates']-self.scom
+
+        masses = which_snap['Masses']
+
         radii = np.sum(coords**2,axis=1)**0.5
         halo_indices = radii < self.rvir
         
         edges = np.linspace(0,self.rvir/2,5000,endpoint=True)
-        h,edges = np.histogram(radii[halo_indices],bins=edges,weights = self.star_snap['Masses'][halo_indices])
+        h,edges = np.histogram(radii[halo_indices],bins=edges,weights = masses[halo_indices])
         h/=1.0*np.sum(h)
         cdf = np.cumsum(h)
 
