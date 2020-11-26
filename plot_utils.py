@@ -10,6 +10,8 @@ from matplotlib.ticker import NullFormatter
 from abg_python.all_utils import pairFilter,covarianceEigensystem
 from scipy.interpolate import interp1d
 
+latex_pagewidth=7.125 ## in
+
 """
 try:
     from distinct_colours import get_distinct
@@ -91,7 +93,9 @@ def add_to_legend(
     legend = ax.get_legend()
     ## add the current legend to the tracked artists
     ##  and then pretend we weren't passed one
+    prev_loc = None
     if make_new_legend and legend is not None:
+        prev_loc = legend._loc
         ax.add_artist(legend)
         legend=None
 
@@ -126,6 +130,9 @@ def add_to_legend(
 
     if loc in legend_kwargs:
         loc = legend_kwargs.pop('loc')
+
+    if prev_loc is not None and loc == prev_loc:
+        loc+=1
 
     ## for backwards compatibility...
     legend_kwargs.update(kwargs)
@@ -919,3 +926,47 @@ def plot_percentiles_shaded_region(ax,xs,yss,color,percentiles=None):
 
     ## half-width of shaded region in log space
     return (np.log10(top_qs/bottom_qs))/2.
+
+def set_matplotlib_params(matplotlib):
+    matplotlib.rcParams['legend.frameon'] = False
+
+    # Make the x and y ticks bigger                                                    
+    matplotlib.rcParams['xtick.labelsize'] = 11
+    matplotlib.rcParams['xtick.major.size'] = 5
+    matplotlib.rcParams['xtick.major.width'] = .5
+    matplotlib.rcParams['ytick.labelsize'] = 11
+    matplotlib.rcParams['ytick.major.size'] = 5
+    matplotlib.rcParams['ytick.major.width'] = .5
+                                                                                       
+    # Make the axes linewidths bigger                                                  
+    matplotlib.rcParams['axes.linewidth'] = 1
+
+    matplotlib.rcParams['lines.linewidth'] = 1.5
+
+    matplotlib.rcParams['figure.facecolor'] = 'white'
+
+    ## font family 
+    ##  math
+    matplotlib.rcParams['text.usetex'] = False
+    matplotlib.rcParams['mathtext.fontset'] = 'stix'
+
+    matplotlib.rcParams['font.size'] = 10
+    matplotlib.rcParams['axes.labelsize'] = 11
+    matplotlib.rcParams['legend.fontsize'] = 11
+
+    ##  outside math
+    matplotlib.rcParams['font.family'] = 'STIXGeneral'
+    #matplotlib.rcParams['font.serif'] = 'Computer Modern Roman'
+    #matplotlib.rcParams['font.sans-serif'] = 'Computer Modern Sans serif'
+    #matplotlib.rcParams['font.monospace'] = 'Computer Modern Typewriter'
+
+    matplotlib.rcParams['figure.figsize'] = [latex_pagewidth/2,latex_pagewidth/2]
+    matplotlib.rcParams['figure.dpi'] = 120
+
+    matplotlib.rcParams['figure.subplot.bottom'] = 0
+    matplotlib.rcParams['figure.subplot.top'] = 1
+    matplotlib.rcParams['figure.subplot.left'] = 0
+    matplotlib.rcParams['figure.subplot.right'] = 1
+
+    matplotlib.rcParams['figure.subplot.hspace'] = 0
+    matplotlib.rcParams['figure.subplot.wspace'] = 0
