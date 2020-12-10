@@ -38,7 +38,7 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
             unit_fact*=ascale
         if pkey in ['Density']:
             unit_fact*=(hinv/((ascale*hinv)**3))
-        if pkey in ['Velocity']:
+        if pkey in ['Velocities']:
             unit_fact*=ascale**0.5
     return unit_fact
 
@@ -112,6 +112,7 @@ def openSnapshot(
 
     ## save the ordering of the files if necessary
     new_dictionary['fnames']=fnames
+    new_dictionary['ParticleType'] = ptype
     
     ## need these keys to calculate the temperature
     ##  create this list IFF I want temperature but NOT these keys in the dictionary
