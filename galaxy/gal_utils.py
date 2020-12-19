@@ -17,6 +17,7 @@ from abg_python.galaxy.cosmoExtractor import extractDiskFromSnapdicts,offsetRota
 from abg_python.galaxy.movie_utils import Draw_helper,FIREstudio_helper
 from abg_python.galaxy.sfr_utils import SFR_helper
 from abg_python.galaxy.metadata_utils import metadata_cache,Metadata,MultiMetadata
+from abg_python.galaxy.firefly_utils import Firefly_helper
 
 ## mapping between particle type and what I called them
 sub_snap_dict = {
@@ -37,6 +38,7 @@ def halo_id(name):
 
 ## bread and butter galaxy class
 class Galaxy(
+    Firefly_helper,
     Draw_helper,
     FIREstudio_helper,
     SFR_helper):
