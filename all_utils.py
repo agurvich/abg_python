@@ -321,8 +321,11 @@ def covarianceEigensystem(xs,ys):
             log=True,
             color='limegreen')"""
 
+    if len(xs) == len(ys) == 0:
+        return np.array([[np.nan,np.nan],[np.nan,np.nan]]),np.array([np.nan,np.nan])
     cov = np.cov([xs,ys])
     evals,evecs = np.linalg.eig(cov)
+
     evecs = evecs.T ## after transpose becomes [e1,e2], which makes sense...? lol
 
     ## re-arrange so semi-major axis is always 1st
@@ -479,6 +482,20 @@ def rotationMatrixZ(theta):
             [0,0,1]
         ])
 
+def getThetasTaitBryan(angMom):
+    """ as Euler angles but xyz vs. zxz"""
+    theta_TB = np.arctan2(angMom[1],np.sqrt(angMom[0]**2+angMom[2]**2))*180/np.pi
+    phi_TB = np.arctan2(-angMom[0],angMom[2])*180/np.pi
+
+    #new_angMom = rotateEuler(
+        #theta_TB,phi_TB,0,
+        #angMom,
+        #order='xyz',loud=False)
+    #print('old:',angMom,'new:',new_angMom)
+
+    ## RETURNS DEGREES
+    return theta_TB,phi_TB
+
 def rotateEuler(
     theta,phi,psi,
     pos,
@@ -548,6 +565,29 @@ def rotateEuler(
 
     ## can never be too careful that we're float32
     return pos_rot
+
+def applyRandomOrientation(coords,vels,random_orientation):
+    ## interpret the random_orientation variable as a seed
+    np.random.seed(random_orientation)
+
+    ## position angles of random orientation vector 
+    theta = np.arccos(1-2*np.random.random())
+    phi = np.random.random()*2*np.pi
+
+    ## convert from position angles to rotation angles
+    orientation_vector = np.array([
+        np.sin(theta)*np.cos(phi),
+        np.sin(theta)*np.sin(phi),
+        np.cos(theta)])
+    new_theta,new_phi = getThetasTaitBryan(orientation_vector)
+
+    ## rotate the coordinates and velocities 
+    if coords is not None:
+        coords = rotateEuler(new_theta,new_phi,0,coords,loud=False)
+    if vels is not None:
+        vels = rotateEuler(new_theta,new_phi,0,vels,loud=False)
+
+    return orientation_vector,new_theta,new_phi,coords,vels
 
 
 #list operations
@@ -946,3 +986,5 @@ def getAngularMomentumSquared(vectors,masses,velocities):
     L2i = np.sum(Li*Li,axis=1)
 
     return np.sum(L2i)
+
+
