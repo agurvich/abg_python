@@ -396,12 +396,23 @@ def metadata_cache(
                 init = time.time()
                 ## go ahead and actually call the function
                 return_value = func(*func_args,**func_kwargs)
+                duration = time.time()-init
                 if loud:
-                    print(func_name,'%.2f s elapsed'%(time.time()-init))
+                    print(func_name,'%.2f s elapsed'%(duration))
                 
                 ## must be explicitly asked to save to metadata
                 ##  with a kwarg
                 if save_meta:
+                    ## save the time it took to get the solution
+                    try:
+                        self.metadata.save_to_metadata(
+                            group,
+                            '%s_duration'%func_name,
+                            [duration],
+                            overwrite=True)
+                    except:
+                        ## TODO debug this if it's failing somewhere....
+                        pass
                     ## confirm we returned the number of things
                     ##  we expected to
                     if type(return_value) == tuple:
