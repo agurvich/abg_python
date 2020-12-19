@@ -28,8 +28,12 @@ class Draw_helper(object):
         indices=None,
         axs=None,
         radius=None,
+        full_snap=False,
         **kwargs):
-        coords = self.sub_snap['Coordinates']
+        if not full_snap:
+            coords = self.sub_snap['Coordinates']
+        else:
+            coords = self.snap['Coordinates']
         if radius is not None:
             indices = np.sum(coords**2,axis=1)<radius**2
         return self.drawGalaxy(
@@ -91,11 +95,11 @@ class Draw_helper(object):
         **kwargs):
 
         frame_width=self.sub_radius
-        frame_depth=cylinder if cylinder else self.sub_radius
+        frame_half_thickness=cylinder if cylinder else self.sub_radius
         frame_center=np.zeros(3)
 
         indices = extractRectangularVolumeIndices(self.sub_snap['Coordinates'],
-            frame_center,frame_width,frame_width if frame_depth is None else frame_depth)
+            frame_center,frame_width,frame_width if frame_half_thickness is None else frame_half_thickness)
 
         pos = self.sub_snap['Coordinates']# want to rotate about frame_center
 
@@ -153,6 +157,7 @@ class FIREstudio_helper(object):
         max_weight=1.6,
         min_quantity=2,
         max_quantity=7,
+        quick=False,
         **kwargs):
 
         frame_half_thickness = frame_half_width if frame_half_thickness is None else frame_half_thickness 
@@ -193,6 +198,7 @@ class FIREstudio_helper(object):
             weight_adjustment_function=lambda x: np.log10(x*1e10/1e6/gasStudio.Acell),
             use_metadata=use_metadata,
             save_meta=save_meta,
+            quick=quick,
             **kwargs)
 
         ## free up any memory associated with that object
@@ -204,11 +210,13 @@ class FIREstudio_helper(object):
         ax,
         assert_cached=False,
         frame_half_width=15,
-        frame_depth=None,
+        frame_half_thickness=None,
         edgeon=False,
+        quick=False,
+        master_loud=False,
         **kwargs):
 
-        frame_depth = frame_half_width if frame_depth is None else frame_depth
+        frame_half_thickness = frame_half_width if frame_half_thickness is None else frame_half_thickness
 
         starStudio = self.firestudio_StarStudio(
             datadir=os.path.join(self.datadir,'firestudio'),
@@ -217,8 +225,9 @@ class FIREstudio_helper(object):
             snapdir=self.snapdir,
             gas_snapdict=self.sub_snap if not assert_cached else None,
             star_snapdict=self.sub_star_snap if not assert_cached else None,
-            frame_depth=frame_depth,
+            frame_half_thickness=frame_half_thickness,
             frame_half_width=frame_half_width,
+            master_loud=master_loud,
             **kwargs)
             
             ## manually set the aspect ratio to an integer number of the disk
@@ -227,11 +236,11 @@ class FIREstudio_helper(object):
         if edgeon:
             starStudio.set_ImageParams(
                 theta = 90,
-                aspect_ratio =frame_depth/frame_half_width)
+                aspect_ratio =frame_half_thickness/frame_half_width)
  
         print(starStudio.npix_x,starStudio.npix_y,'pixels input')
 
-        starStudio.render(ax,assert_cached=assert_cached,**kwargs)
+        starStudio.render(ax,assert_cached=assert_cached,quick=quick,**kwargs)
 
         ## free up any memory associated with that object
         del starStudio
@@ -239,20 +248,20 @@ class FIREstudio_helper(object):
 
     def renderPatch(self,ax,
         frame_half_width,frame_center,
-        frame_depth=None,
+        frame_half_thickness=None,
         savefig=0,
         noaxis=0,
         snap=None,
         **kwargs):
         """Renders a patch of the galaxy at frame_center, of dimensions
-            frame_width x frame_depth"""
+            frame_width x frame_half_thickness"""
 
         snap = self.sub_snap if snap is None else snap
         self.firestudio_renderGalaxy(
             ax,
             self.snapdir,self.snapnum,
             frame_half_width = frame_half_width,
-            frame_depth = frame_width if frame_depth is None else frame_depth,
+            frame_half_thickness = frame_width if frame_half_thickness is None else frame_half_thickness,
             frame_center = frame_center,
             extract_galaxy=False,
             datadir = self.datadir,
@@ -263,14 +272,14 @@ class FIREstudio_helper(object):
 
     def starRenderPatch(self,ax,
         frame_width,frame_center,
-        frame_depth=None,savefig=0,noaxis=0,**kwargs):
+        frame_half_thickness=None,savefig=0,noaxis=0,**kwargs):
         raise Exception("Not tested!")
 
         self.firestudio_renderStellarGalaxy(
             ax,
             self.snapdir,self.snapnum,
             frame_width = frame_width,
-            frame_depth = frame_width if frame_depth is None else frame_depth,
+            frame_half_thickness = frame_width if frame_half_thickness is None else frame_half_thickness,
             frame_center = frame_center,
             extract_galaxy=False,
             datadir = self.datadir,
@@ -307,11 +316,11 @@ def plotSideBySide(
 
 def fauxrenderPatch(sub_snap,ax,
     frame_center,frame_width,
-    frame_depth=None,savefig=0,noaxis=0,
+    frame_half_thickness=None,savefig=0,noaxis=0,
     theta=0,phi=0,psi=0,**kwargs):
 
     indices = extractRectangularVolumeIndices(sub_snap['p'],
-        frame_center,frame_width,frame_width if frame_depth is None else frame_depth)
+        frame_center,frame_width,frame_width if frame_half_thickness is None else frame_half_thickness)
 
     pos = sub_snap['p'] - frame_center # want to rotate about frame_center
     pos_rot = rotateEuler(theta,phi,psi,pos) +frame_center # add back the offset post rotation...?
