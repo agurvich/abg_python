@@ -436,6 +436,23 @@ class SFR_helper(SFR_plotter):
             numerator_time=0.01
             ):
 
+
+            if self.snapnum != self.finsnap:
+                from abg_python.galaxy.gal_utils import Galaxy
+                ## have to open a whole new galaxy object!!
+                temp_fin_gal = Galaxy(
+                    self.name,
+                    self.snapdir,
+                    self.finsnap,
+                    datadir=os.path.dirname(self.datadir),
+                    datadir_name=self.datadir_name,
+                    ahf_path=self.ahf_path,
+                    ahf_fname=self.ahf_fname)
+                return temp_fin_gal.get_bursty_regime(
+                    thresh=thresh,
+                    window_size=window_size,
+                    numerator_time=numerator_time,loud=False)
+
             ## ensure that we have the 1 Myr SFH loaded
             self.get_SFH(
                 DT=0.001,
