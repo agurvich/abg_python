@@ -97,9 +97,13 @@ class Galaxy(
         multi_thread = 1,
         ahf_path = None,
         ahf_fname = None,
-        save_header_to_table=True,
+        save_header_to_table = True,
+        meta_name = None,
         **metadata_kwargs 
         ):
+
+        if meta_name is None:
+            meta_name = 'meta_Galaxy_'
 
         ## bind input
         self.snapnum = snapnum
@@ -188,7 +192,7 @@ class Galaxy(
             ##  first entry is saved to metadata
             self.metapath = os.path.join(
                 self.metadatadir,
-                'meta_Galaxy_%03d.hdf5'%self.snapnum)
+                '%s_%03d.hdf5'%(meta_name,self.snapnum))
             self.metadata = Metadata(
                 self.metapath,
                 **metadata_kwargs)
