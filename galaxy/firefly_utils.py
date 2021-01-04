@@ -17,7 +17,7 @@ colors = {
 
 class Firefly_helper(object):
 
-    def initialize_reader(self,JSONdir=None,**kwargs):
+    def initialize_reader(self,JSONdir=None,write_startup='append',**kwargs):
         """Kwargs passed to this function will create a new self.reader instance:\n"""
         
         if JSONdir is None:
@@ -26,7 +26,7 @@ class Firefly_helper(object):
                 'firefly',
                 '%s_%03d'%(self.name,self.snapnum))
 
-        self.reader = Reader(JSONdir=JSONdir,clean_JSONdir=True,**kwargs)
+        self.reader = Reader(JSONdir=JSONdir,clean_JSONdir=True,write_startup=write_startup,**kwargs)
         return self.reader
     initialize_reader.__doc__ += Reader.__init__.__doc__
         
