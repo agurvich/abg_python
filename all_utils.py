@@ -589,6 +589,12 @@ def applyRandomOrientation(coords,vels,random_orientation):
 
     return orientation_vector,new_theta,new_phi,coords,vels
 
+def rotateSnapshot(which_snap,theta,phi,psi):
+    if 'Coordinates' in which_snap:
+        which_snap['Coordinates']=rotateEuler(theta,phi,psi,which_snap['Coordinates'],loud=False)
+    if 'Velocities' in which_snap:
+        which_snap['Velocities']=rotateEuler(theta,phi,psi,which_snap['Velocities'],loud=False)
+    return which_snap
 
 #list operations
 def substep(arr,N):
