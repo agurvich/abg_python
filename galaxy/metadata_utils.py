@@ -53,10 +53,13 @@ class Metadata(object):
         self.target_last_sizes = target_last_sizes
         self.sub_load_exclude = [] if sub_load_exclude is None else sub_load_exclude
 
+        self.file_groups = []
+
         try:
             with h5py.File(metapath,'r') as handle:
                 ## handle groups
                 for group in handle.keys():
+                    self.file_groups += [group]
                     for key in handle[group].keys():
                         self.file_keys+=["%s_%s"%(group,key)]
                         if upfront_load: 
@@ -348,6 +351,7 @@ def metadata_cache(
     assert_cached=0,
     loud=1,
     force_from_file=False,
+    check_cached_only=0,
     **kwargs):
 
     def decorator(func):
@@ -356,6 +360,19 @@ def metadata_cache(
         def wrapper(
             *func_args,
             **func_kwargs) :
+
+            ## need to declare these two as nonlocal since
+            ##  we write to them and that makes python
+            ##  think they will be local variables
+            nonlocal check_cached_only,force_from_file
+
+            ## not every function I've written has these explicitly passed,
+            ##  so peel them out of any kwargs for good measure
+            if 'check_cached_only' in kwargs:
+                check_cached_only = func_kwargs.pop('check_cached_only')
+
+            if 'force_from_file' in kwargs:
+                force_from_file = func_kwargs.pop('force_from_file')
 
             ## NOTE could put something that prints ignored_kwargs
             func_kwargs,ignored_kwargs = filter_kwargs(func,func_kwargs)
@@ -370,13 +387,18 @@ def metadata_cache(
                 ##  allow users to opt out
                 assert use_metadata
                 for key in keys:
-                    try:
-                        if force_from_file:
-                            raise AttributeError
-                        value = getattr(self,key)
-                    except AttributeError:
-                        value = getattr(self.metadata,"%s_%s"%(group,key)) 
-                        setattr(self,key,value)
+                    if not check_cached_only:
+                        try:
+                            if force_from_file:
+                                raise AttributeError
+                            value = getattr(self,key)
+                        except AttributeError:
+                            value = getattr(self.metadata,"%s_%s"%(group,key)) 
+                            setattr(self,key,value)
+                    else:
+                        if not hasattr(self,"%s_%s"%(group,key)):
+                            raise AttributeError("Missing: %s - %s"%(group,key))
+
                 if len(keys) > 1:
                     return_value = tuple([getattr(self,key) for key in keys])
                 else:
@@ -392,7 +414,7 @@ def metadata_cache(
                         group,func_name,
                         "fail :[")
                 if assert_cached:
-                    raise AssertionError("User asserted cached")
+                    raise AssertionError("User asserted cached for %s - %s"%(group,func_name),keys)
                 init = time.time()
                 ## go ahead and actually call the function
                 return_value = func(*func_args,**func_kwargs)
@@ -445,13 +467,11 @@ def metadata_cache(
                             overwrite=1)
 
                 ## set the attribute to self regardless of save_meta
-                for ikey,key in enumerate(keys):
-                    #if loud:
-                        #print('setting',key)
-                    if len(keys)>1:
-                        setattr(self,key,return_value[ikey])
-                    else:
-                        setattr(self,key,return_value)
+                for key,value in zip(keys,return_value):
+                    setattr(self,key,value)
+
+            if type(return_value) == tuple and len(keys) == 1 and len(return_value) == 1:
+                return_value=return_value[0]
             return return_value
         return wrapper
     return decorator
