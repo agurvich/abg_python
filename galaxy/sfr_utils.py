@@ -490,9 +490,6 @@ class SFR_helper(SFR_plotter):
 
             rel_scatters = (boxcar_ys_2-boxcar_ys**2)**0.5
 
-            ## have to reverse the rel_scatters to find the "last point of crossing" 
-            ##  after which the rel_scatter doesn't cross the threshold. 
-            tindex = np.argmax(rel_scatters[::-1] > thresh)
             xs,ys = all_utils.boxcar_average(
                 self.SFH_time_edges,
                 rel_scatters < thresh,
