@@ -720,6 +720,66 @@ def boxcar_average(
     ys = np.append([np.nan]*(N-1),ys)
     return time_edges[:],ys
     
+def smooth_x_varying_curve(xs,ys,smooth,log=False):
+
+    if log:
+        ys = np.log10(ys)
+
+    times = np.arange(xs.max(),xs.min()-0.01,-0.01)[::-1]
+    fn = interp1d(
+        xs,
+        ys,
+        fill_value=np.nan,
+        bounds_error=False)
+    values = fn(times)
+
+    smooth_xs,smooth_ys = boxcar_average(times,values,smooth)
+    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth)
+
+    ## have to skip first window's width of points
+    skip_index = int(np.round(smooth/0.01))
+    smooth_xs = smooth_xs[skip_index:]
+    smooth_ys = smooth_ys[skip_index:]
+    smooth_ys2 = smooth_ys2[skip_index:] 
+
+    sigmas = (smooth_ys2-smooth_ys**2)**0.5
+
+
+    if log:
+        lowers = 10**(smooth_ys-sigmas)
+        uppers = 10**(smooth_ys+sigmas)
+        smooth_ys = 10**smooth_ys
+        sigmas = 10**sigmas
+        ys = 10**ys
+    else:
+        lowers = smooth_ys-sigmas
+        uppers = smooth_ys+sigmas
+    
+    return smooth_xs,smooth_ys,sigmas,lowers,uppers
+    
+def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
+
+    ## calculate the slope of the curve
+    slopes = np.diff(ys)/np.diff(xs)
+    xs = xs[1:]
+
+    ## smooth the slope if requested
+    if smooth is not None:
+        ## x could also be uniform and this will work
+        xs,slopes,foo,bar,foo = smooth_x_varying_curve(xs,slopes,smooth)
+    
+    xs = xs[1:]
+    ## find where slope changes sign
+    zeros = xs[np.diff(slopes>0).astype(bool)]
+
+    if ax is not None:
+        ax.plot(xs,slopes[1:])
+        ax.axhline(0,ls='--',c='k')
+        #for zero in zeros:
+            #ax.axvline(zero)
+
+    return zeros
+    
 ###### DIRECTORY STUFF ######
 def add_directory_tree(datadir):
     """This function probably already exists lmfao..."""
