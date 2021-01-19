@@ -32,6 +32,8 @@ snap_dict = {
     4:'star_snap'
 }
 
+h_official_names = {'h206':'A1','h29':'A2','h113':'A4','h2':'A8'}
+
 ## function to determine what the "main" halo is
 def halo_id(name):
     return 0 
@@ -272,9 +274,6 @@ class Galaxy(
                         fname = fnames[0]
                     else:
                         raise IOError("can't find a halo file (or found too many)",fnames)
-                else:
-                    raise IOError("can't find a halo file with "+ahf_path+" and "+ahf_fname)
-                
 
             self.ahf_path = ahf_path
             self.ahf_fname = ahf_fname

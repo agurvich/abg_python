@@ -50,7 +50,7 @@ def openSnapshot(
     fnames = None,
     chimes_keys = [],
     abg_subsnap = 0,
-    snapdir_name='',
+    snapdir_name='snapdir',
     loud = 0,
     no_header_keys = 0):
     """
