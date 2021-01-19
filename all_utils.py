@@ -756,6 +756,28 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False):
         uppers = smooth_ys+sigmas
     
     return smooth_xs,smooth_ys,sigmas,lowers,uppers
+
+def find_first_window(xs,ys,bool_fn,window):
+
+    ## averages boolean over window,
+    ##  by taking the floor, it requires that 
+    ##  all times in the window fulfill the boolean
+    bool_xs,bool_ys = boxcar_average(
+        xs,
+        bool_fn(xs,ys),
+        window) 
+    bool_ys = np.floor(bool_ys).astype(int)
+
+    ## finds the right edge of the window
+    rindex = np.argmax(bool_ys == 1)
+    ## finds the point a window's width away from the right edge
+    lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
+    
+    return bool_xs[lindex],bool_xs[rindex]
+
+def find_last_instance(xs,ys,bool_fn):
+    rev_index = np.argmax(bool_fn(xs,ys)[::-1])
+    return xs[xs.size-rev_index],ys[xs.size-rev_index]
     
 def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
 
