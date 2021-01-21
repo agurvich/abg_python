@@ -315,7 +315,7 @@ class Galaxy(
                     ## have we already calculated it and cached it?
                     for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
                         if hasattr(self.metadata,attr):
-                            print('using cached',attr,'for rstar_half')
+                            #print('using cached',attr,'for rstar_half')
                             self.rstar_half = getattr(self.metadata,attr)
                             break
 
