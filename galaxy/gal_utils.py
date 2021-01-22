@@ -136,6 +136,9 @@ class Galaxy(
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
+        if self.pretty_name in ['h2','h206','h29','h113']:
+            self.pretty_name += '-%s'%h_official_names[self.pretty_name]
+
         if type(plot_color) is int:
             plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
         self.plot_color = plot_color
