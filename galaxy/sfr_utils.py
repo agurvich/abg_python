@@ -431,11 +431,14 @@ class SFR_helper(SFR_plotter):
             loud=loud)
         def compute_bursty_regime(
             self,
-            thresh=0.3, ## dex of scatter
+            thresh=None, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within
-            numerator_time=0.01
+            anna=False,
+            thresh_window=1.5, ## size of window must remain below threshold for
             ):
-
+                
+            if thresh is None:
+                thresh = 0.3#np.log10(2)
 
             if self.snapnum != self.finsnap:
                 from abg_python.galaxy.gal_utils import Galaxy
@@ -454,58 +457,78 @@ class SFR_helper(SFR_plotter):
                     numerator_time=numerator_time,loud=False)
 
             ## ensure that we have the 1 Myr SFH loaded
-            self.get_SFH(
-                DT=0.001,
-                loud=False,
-                save_meta=save_meta,
-                use_metadata=use_metadata,
-                assert_cached=assert_cached)
+            try:
+                self.get_SFH(
+                    DT=0.001,
+                    loud=False,
+                    use_metadata=True,
+                    assert_cached=True)
+            except:
+                self.get_SFH(
+                    DT=0.001,
+                    loud=False,
+                    save_meta=save_meta,
+                    use_metadata=use_metadata,
+                    assert_cached=assert_cached)
 
 
             adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
 
-            ## calculate the relative scatter as sigma/y
-            xs,boxcar_ys_10 = all_utils.boxcar_average(
+            ## calculate scatter using 10 Myr running average in 
+            ##  window_size sized window
+            xs,adjusted_sfrs = all_utils.boxcar_average(
                 self.SFH_time_edges,
                 adjusted_sfrs,
-                numerator_time,
+                0.01,
                 loud=True)
 
-            xs,boxcar_ys_300 = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                adjusted_sfrs,
-                window_size,
-                loud=True)
+            if not anna:
+                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs),
+                    window_size,
+                    loud=True)
 
-            ## calculate the scatter in <SFR>_10/<SFR>_300
-            xs,boxcar_ys = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                boxcar_ys_10/boxcar_ys_300,
-                window_size)
+                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs)**2,
+                    window_size,
+                    loud=True)
 
-            xs2,boxcar_ys_2 = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                (boxcar_ys_10/boxcar_ys_300)**2,
-                window_size)
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
+            else:
+                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs,
+                    0.5,#window_size,
+                    loud=True)
 
-            rel_scatters = (boxcar_ys_2-boxcar_ys**2)**0.5
+                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs**2,
+                    0.5,#window_size,
+                    loud=True)
 
-            xs,ys = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                rel_scatters < thresh,
-                0.3) ## average boolean statement over 300 Myr
+                ## <std>/<SFR>
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys2_300
 
             ## find the first 300 Myr window that is consistently below the threshold
-            ##  averaging boolean will be 1 if all entries are True and will be < 1 if 
-            ##  even one is not
-            tindex = np.argmax(ys == 1)
+            l_window, r_window = all_utils.find_first_window(
+                self.SFH_time_edges,
+                rel_scatters,
+                lambda x,y: y < thresh,
+                thresh_window)
 
-            bursty_redshift = approximateRedshiftFromGyr(
-                self.header['HubbleParam'],
-                self.header['Omega0'],
-                np.array([xs[tindex]]))[0]
+            tindex = np.nan
+            bursty_redshift = np.nan
+            if np.isfinite(l_window):
+                tindex = np.argmin((l_window-self.SFH_time_edges)**2)
+                bursty_redshift = approximateRedshiftFromGyr(
+                    self.header['HubbleParam'],
+                    self.header['Omega0'],
+                    np.array([l_window]) )[0]
 
-            return tindex, xs[tindex], bursty_redshift, rel_scatters
+            return tindex, l_window, bursty_redshift, rel_scatters
         
         return compute_bursty_regime(self,**kwargs)
 

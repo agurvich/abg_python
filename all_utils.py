@@ -757,8 +757,7 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False):
     
     return smooth_xs,smooth_ys,sigmas,lowers,uppers
 
-def find_first_window(xs,ys,bool_fn,window):
-
+def find_first_window(xs,ys,bool_fn,window,last=False):
     ## averages boolean over window,
     ##  by taking the floor, it requires that 
     ##  all times in the window fulfill the boolean
@@ -766,17 +765,26 @@ def find_first_window(xs,ys,bool_fn,window):
         xs,
         bool_fn(xs,ys),
         window) 
-    bool_ys = np.floor(bool_ys).astype(int)
+    bool_ys[np.isfinite(bool_ys)] = np.floor(bool_ys[np.isfinite(bool_ys)]).astype(int)
+
+    ## no window matches
+    if np.nansum(bool_ys) == 0:
+        return np.nan,np.nan
 
     ## finds the right edge of the window
+    if last:
+        bool_xs,bool_ys = bool_xs[::-1],bool_ys[::-1]
     rindex = np.argmax(bool_ys == 1)
     ## finds the point a window's width away from the right edge
     lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
-    
+
     return bool_xs[lindex],bool_xs[rindex]
 
 def find_last_instance(xs,ys,bool_fn):
-    rev_index = np.argmax(bool_fn(xs,ys)[::-1])
+    bool_ys = bool_fn(xs,ys)
+    if np.nansum(bool_ys) == 0:
+        return np.nan,np.nan
+    rev_index = np.argmax(bool_ys[::-1])
     return xs[xs.size-rev_index],ys[xs.size-rev_index]
     
 def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
