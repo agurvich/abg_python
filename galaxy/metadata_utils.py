@@ -354,6 +354,10 @@ def metadata_cache(
     check_cached_only=0,
     **kwargs):
 
+    ## overwrite loud if we're only checking if something is cached
+    if check_cached_only:
+        loud=False
+
     def decorator(func):
 
         @functools.wraps(func)
@@ -364,12 +368,14 @@ def metadata_cache(
             ## need to declare these two as nonlocal since
             ##  we write to them and that makes python
             ##  think they will be local variables
-            nonlocal check_cached_only,force_from_file
+            nonlocal check_cached_only,force_from_file,loud
 
             ## not every function I've written has these explicitly passed,
             ##  so peel them out of any kwargs for good measure
             if 'check_cached_only' in kwargs:
                 check_cached_only = func_kwargs.pop('check_cached_only')
+                if check_cached_only:
+                    loud=False
 
             if 'force_from_file' in kwargs:
                 force_from_file = func_kwargs.pop('force_from_file')
