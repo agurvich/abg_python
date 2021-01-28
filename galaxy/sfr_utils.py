@@ -246,7 +246,7 @@ class SFR_helper(SFR_plotter):
         """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
 
 
-        sfr_string = self.get_sfr_string(DT)
+        sfr_string = self.get_sfr_string(0.001)
         ### begin wrapped
         @metadata_cache(
             "SFR_%s"%sfr_string,[
@@ -257,7 +257,8 @@ class SFR_helper(SFR_plotter):
             use_metadata=use_metadata,
             save_meta=save_meta,
             assert_cached=assert_cached,
-            loud=loud)
+            loud=loud,
+            force_from_file=True)
         def compute_SFH(
             self,
             radial_thresh=None):
@@ -333,7 +334,19 @@ class SFR_helper(SFR_plotter):
 
             return SFH_time_edges, SFRs, SFR_metals, DT
 
-        return compute_SFH(self,**kwargs)
+        return_value = list(compute_SFH(self,**kwargs))
+
+        return_value[-1] = DT
+        foo,return_value[1] = all_utils.boxcar_average(
+            return_value[0],
+            return_value[1],
+            DT)
+
+        ## update the attributes of the instance
+        self.SFRs = return_value[1]
+        self.SFH_dt = return_value[-1]
+
+        return return_value
 
     def downsample_SFH(
         self,
@@ -433,7 +446,8 @@ class SFR_helper(SFR_plotter):
             self,
             thresh=None, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within
-            anna=False,
+            mode=None,
+            peaktrough=False,
             thresh_window=1.5, ## size of window must remain below threshold for
             ):
                 
@@ -482,21 +496,37 @@ class SFR_helper(SFR_plotter):
                 0.01,
                 loud=True)
 
-            if not anna:
-                xs,boxcar_ys_300 = all_utils.boxcar_average(
-                    self.SFH_time_edges,
-                    np.log10(adjusted_sfrs),
-                    window_size,
-                    loud=True)
+            
+            if mode == 'peaktrough':
 
-                xs,boxcar_ys2_300 = all_utils.boxcar_average(
-                    self.SFH_time_edges,
-                    np.log10(adjusted_sfrs)**2,
-                    window_size,
-                    loud=True)
+                rel_scatters = np.zeros(adjusted_sfrs.size)
+                per_ls = np.zeros(adjusted_sfrs.size)
+                per_rs = np.zeros(adjusted_sfrs.size)
+                medians = np.zeros(adjusted_sfrs.size)
+                
+                this_window_size = 0.05 #window_size
+                window_size_n = int(this_window_size/self.SFH_dt/2)
 
-                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
-            else:
+                for i in range(adjusted_sfrs.size):
+                    window = adjusted_sfrs[
+                        max(0,i-window_size_n):
+                        min(adjusted_sfrs.size-1,i+window_size_n)]
+
+                    median = np.median(window)
+                    per_l,per_r = np.quantile(
+                        window/median,
+                        [0.4,0.6])
+
+                    #rel_scatters[i] = (per_r - per_l)/median
+                    rel_scatters[i] = (per_r / per_l)
+                    per_ls[i] = per_l
+                    per_rs[i] = per_r
+                    medians[i] = median
+                self.SFH_scatter_per_ls = per_ls
+                self.SFH_scatter_per_rs = per_rs
+                self.SFH_scatter_medians = medians
+
+            elif mode == 'anna':
                 xs,boxcar_ys_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
@@ -510,7 +540,21 @@ class SFR_helper(SFR_plotter):
                     loud=True)
 
                 ## <std>/<SFR>
-                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys2_300
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
+            else:
+                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs),
+                    window_size,
+                    loud=True)
+
+                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs)**2,
+                    window_size,
+                    loud=True)
+
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
 
             ## find the first 300 Myr window that is consistently below the threshold
             l_window, r_window = all_utils.find_first_window(
