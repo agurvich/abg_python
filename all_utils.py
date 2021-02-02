@@ -675,7 +675,8 @@ def boxcar_average(
     boxcar_width,
     loud=False,
     average=True, ## vs. just counting non-nan entries in a window
-    edges = True):
+    edges = True,
+    assign='right'):
 
     """
     for lists with many nans need to first run w/ average=False, then 
@@ -718,6 +719,22 @@ def boxcar_average(
     if average:
         ys = ys/N
     ys = np.append([np.nan]*(N-1),ys)
+
+    ## because conditionals should default true
+    if assign == 'right':
+        pass
+    ## shift left by a whole window width
+    elif assign == 'left':
+        ys[:-N] = ys[N:]
+        ys[-N:] = np.nan
+    ## shift left by a half window width
+    elif assign == 'center':
+        n = int(N/2)
+        ys[:-n] = ys[n:]
+        ys[-n:] = np.nan
+    else:
+        raise ValueError("unknown bin assignment %s, should be left, right, or center"%assign) 
+
     return time_edges[:],ys
     
 def smooth_x_varying_curve(xs,ys,smooth,log=False):
@@ -784,8 +801,8 @@ def find_last_instance(xs,ys,bool_fn):
     bool_ys = bool_fn(xs,ys)
     if np.nansum(bool_ys) == 0:
         return np.nan,np.nan
-    rev_index = np.argmax(bool_ys[::-1])
-    return xs[xs.size-rev_index],ys[xs.size-rev_index]
+    rev_index = np.argmin(np.logical_not(bool_ys[::-1]))
+    return xs[xs.size-rev_index-(rev_index==0)],ys[xs.size-rev_index-(rev_index==0)]
     
 def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
 
