@@ -1,4 +1,6 @@
 ## from builtin
+import os
+
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -970,3 +972,37 @@ def set_matplotlib_params(matplotlib):
 
     matplotlib.rcParams['figure.subplot.hspace'] = 0
     matplotlib.rcParams['figure.subplot.wspace'] = 0
+
+def ffmpeg_frames(
+    framedir,
+    frame_heads,
+    savename=None,
+    framerate=15,
+    extension='.mp4',
+    outdir=None,
+    copy=True):
+
+    savename = '' if savename is None else savename
+
+    if outdir is None:
+        outdir = os.path.dirname(framedir)
+    
+    for frame_head in frame_heads:
+        cmd = 'ffmpeg -framerate %d'%framerate
+        cmd += ' -i %s'%os.path.join(framedir,frame_head)
+        cmd += '_%03d.png'
+        cmd += ' -q:v 1'
+        cmd += ' %s%s -y'%(os.path.join(outdir,frame_head),extension)
+        print(cmd)
+        os.system(cmd)
+
+        ## copy the movie to ~/movies
+        if copy:
+            src = os.path.join(outdir,frame_head+extension)
+            dst = os.path.join(
+                os.environ['HOME'],
+                'movies',
+                savename + ('_'*(savename!='')) + frame_head+extension)
+            cmd = 'cp %s %s'%(src,dst)
+            print(cmd)
+            os.system(cmd)
