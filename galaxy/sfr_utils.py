@@ -447,7 +447,6 @@ class SFR_helper(SFR_plotter):
             thresh=None, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within
             mode=None,
-            peaktrough=False,
             thresh_window=1.5, ## size of window must remain below threshold for
             ):
                 
@@ -515,13 +514,15 @@ class SFR_helper(SFR_plotter):
                     median = np.median(window)
                     per_l,per_r = np.quantile(
                         window/median,
-                        [0.4,0.6])
+                        [0.1,0.9])
 
-                    #rel_scatters[i] = (per_r - per_l)/median
-                    rel_scatters[i] = (per_r / per_l)
+                    rel_scatters[i] = (per_r - per_l)
+                    #rel_scatters[i] = (per_r / per_l)
                     per_ls[i] = per_l
                     per_rs[i] = per_r
                     medians[i] = median
+                ts = (self.SFH_time_edges[1:]+self.SFH_time_edges[:-1])/2
+                smooth_ts,rel_scatters = all_utils.boxcar_average(ts,rel_scatters,.3,assign='center')
                 self.SFH_scatter_per_ls = per_ls
                 self.SFH_scatter_per_rs = per_rs
                 self.SFH_scatter_medians = medians
@@ -531,13 +532,15 @@ class SFR_helper(SFR_plotter):
                     self.SFH_time_edges,
                     adjusted_sfrs,
                     0.5,#window_size,
-                    loud=True)
+                    loud=True,
+                    assign='center')
 
                 xs,boxcar_ys2_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs**2,
                     0.5,#window_size,
-                    loud=True)
+                    loud=True,
+                    assign='center')
 
                 ## <std>/<SFR>
                 rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
@@ -546,13 +549,15 @@ class SFR_helper(SFR_plotter):
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs),
                     window_size,
-                    loud=True)
+                    loud=True,
+                    assign='center')
 
                 xs,boxcar_ys2_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs)**2,
                     window_size,
-                    loud=True)
+                    loud=True,
+                    assign='center')
 
                 rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
 
