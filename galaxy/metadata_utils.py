@@ -372,12 +372,13 @@ def metadata_cache(
 
             ## not every function I've written has these explicitly passed,
             ##  so peel them out of any kwargs for good measure
-            if 'check_cached_only' in kwargs:
+            if 'check_cached_only' in func_kwargs:
                 check_cached_only = func_kwargs.pop('check_cached_only')
-                if check_cached_only:
-                    loud=False
 
-            if 'force_from_file' in kwargs:
+            if check_cached_only:
+                loud=False
+
+            if 'force_from_file' in func_kwargs:
                 force_from_file = func_kwargs.pop('force_from_file')
 
             ## NOTE could put something that prints ignored_kwargs
@@ -402,8 +403,10 @@ def metadata_cache(
                             value = getattr(self.metadata,"%s_%s"%(group,key)) 
                             setattr(self,key,value)
                     else:
-                        if not hasattr(self,"%s_%s"%(group,key)):
+                        if not hasattr(self.metadata,"%s_%s"%(group,key)):
                             raise AttributeError("Missing: %s - %s"%(group,key))
+                        else:
+                            return
 
                 if len(keys) > 1:
                     return_value = tuple([getattr(self,key) for key in keys])
@@ -414,7 +417,7 @@ def metadata_cache(
                     print("cache",
                         group,func_name,
                         "success!")
-            except (AssertionError,KeyError,AttributeError):
+            except (AssertionError,KeyError,AttributeError) as e:
                 if loud and use_metadata:
                     print("cache",
                         group,func_name,

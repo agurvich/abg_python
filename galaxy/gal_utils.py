@@ -562,7 +562,7 @@ class Galaxy(
             else:
                 try:
                     assert use_saved_subsnapshots
-                    print("Using the saved sub-snapshots")
+                    print("Using the saved sub-snapshots for",self)
 
                     self.sub_snap = openSnapshot(
                         None,None,
