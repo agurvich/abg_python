@@ -486,16 +486,7 @@ class SFR_helper(SFR_plotter):
 
 
             adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
-
-            ## calculate scatter using 10 Myr running average in 
-            ##  window_size sized window
-            xs,adjusted_sfrs = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                adjusted_sfrs,
-                0.01,
-                loud=True)
-
-            
+ 
             if mode == 'peaktrough':
 
                 rel_scatters = np.zeros(adjusted_sfrs.size)
@@ -528,6 +519,14 @@ class SFR_helper(SFR_plotter):
                 self.SFH_scatter_medians = medians
 
             elif mode == 'anna':
+                ## calculate scatter using 10 Myr running average in 
+                ##  window_size sized window
+                xs,adjusted_sfrs = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs,
+                    0.01,
+                    loud=True)
+
                 xs,boxcar_ys_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
