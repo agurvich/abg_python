@@ -729,7 +729,7 @@ def boxcar_average(
         ys[-N:] = np.nan
     ## shift left by a half window width
     elif assign == 'center':
-        n = int(N/2)
+        n = max(int(N/2),1)
         ys[:-n] = ys[n:]
         ys[-n:] = np.nan
     else:
@@ -737,7 +737,7 @@ def boxcar_average(
 
     return time_edges[:],ys
     
-def smooth_x_varying_curve(xs,ys,smooth,log=False):
+def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
 
     if log:
         ys = np.log10(ys)
@@ -750,15 +750,42 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False):
         bounds_error=False)
     values = fn(times)
 
-    smooth_xs,smooth_ys = boxcar_average(times,values,smooth)
-    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth)
+    smooth_xs,smooth_ys = boxcar_average(times,values,smooth,assign=assign)
+    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth,assign=assign)
+    smooth_xs,smooth_nan_count = boxcar_average(times,np.isnan(values),smooth,assign=assign)
+
+    ## exclude region that we filled with nans, or might have its
+    ##  average otherwise diluted
+    nan_mask = smooth_nan_count  == 0
+    smooth_xs = smooth_xs[nan_mask]
+    smooth_ys = smooth_ys[nan_mask]
+    smooth_ys2 = smooth_ys2[nan_mask]
+
+    ## need to resample what we had to make sure points are evenly spaced
+    if len(np.unique(np.diff(smooth_xs))) != 1:
+        ## evenly spaced times
+        times = np.arange(smooth_xs.max(),smooth_xs.min()-0.01,-0.01)[::-1]
+
+        ## replace ys
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys = fn(times)
+
+        ## replace ys2
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys2,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys2 = fn(times)
+        
+        ## replace smooth_xs
+        smooth_xs = times
 
     ## have to skip first window's width of points
-    skip_index = int(np.round(smooth/0.01))
-    smooth_xs = smooth_xs[skip_index:]
-    smooth_ys = smooth_ys[skip_index:]
-    smooth_ys2 = smooth_ys2[skip_index:] 
-
     sigmas = (smooth_ys2-smooth_ys**2)**0.5
 
 
