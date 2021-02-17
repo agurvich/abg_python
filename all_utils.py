@@ -757,9 +757,60 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
     ## exclude region that we filled with nans, or might have its
     ##  average otherwise diluted
     nan_mask = smooth_nan_count  == 0
-    smooth_xs = smooth_xs[nan_mask]
+    new_smooth_xs = smooth_xs[nan_mask]
+    dtop = smooth_xs.max()-new_smooth_xs.max()
+    dbottom = -(smooth_xs.min()-new_smooth_xs.min())
+
     smooth_ys = smooth_ys[nan_mask]
     smooth_ys2 = smooth_ys2[nan_mask]
+
+    if not np.isclose(dtop+dbottom,smooth):
+        print('there were nans within the boundaries')
+        if assign == 'center':
+            dtop_should_be = smooth/2
+            dbottom_should_be = smooth/2
+        elif assign == 'left':
+            dtop_should_be = smooth
+            dbottom_should_be = 0
+        elif assign == 'right':
+            dtop_should_be = 0
+            dbottom_should_be = smooth
+        else:
+            raise NotImplementedError("invalid assign")
+
+        if not np.isclose(dtop,dtop_should_be):
+            print('top was bad')
+            nmissing=int((dtop-dtop_should_be)/0.01)
+
+            ## append nans to the top
+            smooth_ys = np.append(smooth_ys,np.repeat(np.nan,nmissing))
+            smooth_ys2 = np.append(smooth_ys2,np.repeat(np.nan,nmissing))
+
+        if not np.isclose(dbottom,dbottom_should_be):
+            print('bottom was bad')
+            nmissing=int((dbottom-dbottom_should_be)/0.01)
+            print(nmissing,dbottom,dbottom_should_be)
+
+            ## prepend nans to the bottom
+            print(smooth_ys.shape)
+            smooth_ys = np.append(np.repeat(np.nan,nmissing),smooth_ys)
+            smooth_ys2 = np.append(np.repeat(np.nan,nmissing),smooth_ys2)
+            print(smooth_ys.shape)
+
+        dbottom_should_be = int(dbottom_should_be/0.01)
+        dtop_should_be = int(dtop_should_be/0.01)
+
+        ## assign right will break b.c. dtop_should_be is 0
+        if dtop_should_be !=0:
+            new_smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
+        else:
+            new_smooth_xs = smooth_xs[dbottom_should_be:]
+
+        print(dbottom_should_be,dtop_should_be)
+
+    print(smooth_xs.shape,smooth_ys.shape,smooth_ys2.shape)
+    smooth_xs = new_smooth_xs
+    print(smooth_xs.shape,smooth_ys.shape,smooth_ys2.shape)
 
     ## need to resample what we had to make sure points are evenly spaced
     if len(np.unique(np.diff(smooth_xs))) != 1:
@@ -793,7 +844,7 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
         lowers = 10**(smooth_ys-sigmas)
         uppers = 10**(smooth_ys+sigmas)
         smooth_ys = 10**smooth_ys
-        sigmas = 10**sigmas
+        sigmas = sigmas ## dex
         ys = 10**ys
     else:
         lowers = smooth_ys-sigmas
@@ -809,16 +860,38 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
         xs,
         bool_fn(xs,ys),
         window) 
-    bool_ys[np.isfinite(bool_ys)] = np.floor(bool_ys[np.isfinite(bool_ys)]).astype(int)
+
+    bool_ys[np.isfinite(ys)] = np.floor(bool_ys[np.isfinite(ys)]).astype(float)
+    bool_ys[np.isnan(ys)] = np.nan
 
     ## no window matches
     if np.nansum(bool_ys) == 0:
         return np.nan,np.nan
 
-    ## finds the right edge of the window
+    ## find the first instance of true
+    rindex = np.nanargmax(bool_ys==1)
+
     if last:
-        bool_xs,bool_ys = bool_xs[::-1],bool_ys[::-1]
-    rindex = np.argmax(bool_ys == 1)
+        ## nightmare code that finds the last instance
+        ##  of a true in a time series
+
+        offset = None
+        while offset != 0:
+            ## find the next time the time series has a false
+            next_false = np.nanargmax(bool_ys[rindex:]==0)
+
+            ## find the next time there's a true after that false
+            ##  3 cases since we're starting on a false:
+            ##  1) there are no more trues -> offset=0
+            ##  2) there are only trues following this false -> offset=1, will next be 0
+            ##  3) there are trues and falses -> offset = distance to next True
+            offset = np.nanargmax(bool_ys[rindex+next_false:])
+
+            ## if that false eventually has a true after it, let's
+            ##  move there and start the process over again.
+            if offset > 0:
+                rindex += offset + next_false 
+        
     ## finds the point a window's width away from the right edge
     lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
 
