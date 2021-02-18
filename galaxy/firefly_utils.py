@@ -3,8 +3,11 @@ import numpy as np
 
 from abg_python.all_utils import rotateEuler
 
-from firefly_api.reader import Reader
-from firefly_api.particlegroup import ParticleGroup
+try:
+    from firefly_api.reader import Reader
+    from firefly_api.particlegroup import ParticleGroup
+except ImportError:
+    print("missing firefly api")
 
 
 from matplotlib.colors import to_rgba
