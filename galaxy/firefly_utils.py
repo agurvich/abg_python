@@ -31,7 +31,15 @@ class Firefly_helper(object):
 
         self.reader = Reader(JSONdir=JSONdir,clean_JSONdir=True,write_startup=write_startup,**kwargs)
         return self.reader
-    initialize_reader.__doc__ += Reader.__init__.__doc__
+    try:
+        initialize_reader.__doc__ += Reader.__init__.__doc__
+    ## Reader won't exist if we didn't successfully import
+    except NameError as e1:
+        try:
+            import firefly_api
+            raise e1
+        except ImportError:
+            pass
         
 
     @property
