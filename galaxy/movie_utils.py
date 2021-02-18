@@ -202,8 +202,7 @@ class FIREstudio_helper(object):
             **kwargs)
 
         ## free up any memory associated with that object
-        del gasStudio
-        return ax
+        return ax,gasStudio
 
     def star_render(
         self,
@@ -243,8 +242,7 @@ class FIREstudio_helper(object):
         starStudio.render(ax,assert_cached=assert_cached,quick=quick,**kwargs)
 
         ## free up any memory associated with that object
-        del starStudio
-        return ax
+        return ax,starStudio
 
     def renderPatch(self,ax,
         frame_half_width,frame_center,
