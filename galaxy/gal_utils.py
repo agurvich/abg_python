@@ -140,7 +140,11 @@ class Galaxy(
             self.pretty_name += '-%s'%h_official_names[self.pretty_name]
 
         if type(plot_color) is int:
-            plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
+            try:
+                plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
+            except:
+                plot_color="C%d"%((plot_color-9)%13)
+
         self.plot_color = plot_color
         
         ## handle datadir creation
