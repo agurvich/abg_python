@@ -512,8 +512,12 @@ class SFR_helper(SFR_plotter):
                     per_ls[i] = per_l
                     per_rs[i] = per_r
                     medians[i] = median
-                ts = (self.SFH_time_edges[1:]+self.SFH_time_edges[:-1])/2
-                smooth_ts,rel_scatters = all_utils.boxcar_average(ts,rel_scatters,.3,assign='center')
+                xs,rel_scatters = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    rel_scatters,
+                    0.3,
+                    assign='center')
+
                 self.SFH_scatter_per_ls = per_ls
                 self.SFH_scatter_per_rs = per_rs
                 self.SFH_scatter_medians = medians
@@ -561,12 +565,15 @@ class SFR_helper(SFR_plotter):
                 rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
 
             ## find the first 300 Myr window that is consistently below the threshold
+            #print(thresh, thresh_window,rel_scatters)
             l_window, r_window = all_utils.find_first_window(
                 self.SFH_time_edges,
                 rel_scatters,
                 lambda x,y: y < thresh,
-                thresh_window)
+                thresh_window,
+                last=True)
 
+            #print(mode,l_window,r_window,rel_scatters)
             tindex = np.nan
             bursty_redshift = np.nan
             if np.isfinite(l_window):
@@ -576,6 +583,7 @@ class SFR_helper(SFR_plotter):
                     self.header['Omega0'],
                     np.array([l_window]) )[0]
 
+            #print(mode,tindex,l_window,r_window,bursty_redshift,rel_scatters)
             return tindex, l_window, bursty_redshift, rel_scatters
         
         return compute_bursty_regime(self,**kwargs)
