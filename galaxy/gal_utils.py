@@ -235,104 +235,153 @@ class Galaxy(
             self.current_redshift = self.header['Redshift']
             self.current_time_Gyr = self.header['TimeGyr']
 
-            ## attempt to read halo location and properties from AHF
-            if ahf_fname is None:
-                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
+        
+        ## opens the halo file to find the halo center and virial radius
+        self.load_halo_file()
 
-            if ahf_path is None:
-                ## system blind if you put the soft link in
-                ahf_path = os.path.join(
-                    os.environ['HOME'],'halo_files',
-                    "%s","%s")
+        ## have we already calculated it and cached it?
+        if self.rstar_half is None:
+            for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
+                if hasattr(self.metadata,attr):
+                    self.rstar_half = getattr(self.metadata,attr)
+                    break
 
-                if 'metal_diffusion' in self.snapdir:
-                    ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
-                elif 'HL000' in self.snapdir_name:
-                    ahf_path = ahf_path%('xiangcheng',self.snapdir_name)
-                elif 'core' in self.snapdir:
-                    ahf_path = ahf_path%('core',self.snapdir_name)
-                else: ## set myself up for failure below
-                    ahf_path = ahf_path%('foo',self.snapdir_name)
-
-            ## check if this first guess at the ahf_fname and ahf_path
-            ##  is right
-            if (not os.path.isfile(os.path.join(ahf_path,ahf_fname)) and 
-                ahf_path != 'None' and 
-                ahf_fname != 'None'):
-                ## try looking in the simulation directory
-                ahf_path = os.sep.join(
-                    self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
-                    +['halo','ahf']) ## look in <simdir>/halo/ahf
-
-                ## okay no smooth halo file but there is a halo/ahf directory at least
-                if (os.path.isdir(ahf_path) and (
-                    not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
-
-                    ## let's scan through the files in the directory and try and 
-                    ##  find an AHF halo file that corresponds to just this snapshot. 
-                    fnames = []
-                    snap_string = "%03d"%self.snapnum
-
-                    for fname in os.listdir(ahf_path):
-                        if (snap_string in fname and 
-                            'AHF_halos' in fname):
-                            fnames+=[fname]
-                    if len(fnames) == 1:
-                        fname = fnames[0]
-                    else:
-                        raise IOError("can't find a halo file (or found too many)",fnames)
-
-            self.ahf_path = ahf_path
-            self.ahf_fname = ahf_fname
-
-            ## we'll set this manually
-            if self.ahf_path == 'None' or self.ahf_fname == 'None':
-                self.scom,self.rvir,self.rstar_half = None,None,None
-                print(
-                    'Make sure to set:',
-                    'scom',
-                    'rvir',
-                    'rstar_half',
-                    'attributes manually')
-            else:
-                ## now that we've attempted to identify an AHF file lets open 
-                ##  this puppy up
-                try:
-                    self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
-                        self.snapdir,
-                        self.snapnum,
-                        self.current_redshift,
-                        ahf_path = ahf_path,
-                        fname=ahf_fname,
-                        hubble = self.header['HubbleParam'])
-
-                ## TODO make sure there's some proper error handling in cosmo_utils.load_AHF
-                ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves in our first extraction
-                except ValueError:
-                    self.scom, self.rvir = cosmo_utils.load_AHF(
-                        self.snapdir,
-                        self.snapnum,
-                        self.current_redshift,
-                        extra_names_to_read = [],
-                        ahf_path = ahf_path,
-                        fname=ahf_fname,
-                        hubble = self.header['HubbleParam'])
-
-                    self.rstar_half = None
-                    ## have we already calculated it and cached it?
-                    for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
-                        if hasattr(self.metadata,attr):
-                            #print('using cached',attr,'for rstar_half')
-                            self.rstar_half = getattr(self.metadata,attr)
-                            break
-
-                    ## I guess not
-                    if self.rstar_half is None:
-                        print("No rstar 1/2 in AHF or metadata files, we will need to calculate it ourselves.")
+            ## I guess not
+            if self.rstar_half is None:
+                print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
         self.finsnap = all_utils.getfinsnapnum(self.snapdir)
+
+    def load_halo_file(self,halo_fname=None,halo_path=None):
+
+        if halo_path == 'None' or halo_fname == 'None':
+            self.scom,self.rvir,self.rstar_half = None,None,None
+            print(
+                'Make sure to set:',
+                'scom',
+                'rvir',
+                'rstar_half',
+                'attributes manually')
+        else:
+            try:
+                if 'elvis' in self.snapdir:
+                    raise IOError("No AHF files for Elvis runs")
+                self.load_ahf(ahf_fname=halo_fname,ahf_path=halo_path)
+            except IOError:
+                try:
+                    
+                    if 'elvis' in self.snapdir:
+                        which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
+                        if which_host[:len(self.pretty_name)] == self.pretty_name:
+                            which_host = 0 
+                        else:
+                            if which_host[-len(self.pretty_name):] != self.pretty_name:
+                                raise IOError("invalid name, should be one of %s"%which_host)
+                            which_host = 1
+
+                    self.load_rockstar(
+                        rockstar_fname=halo_fname,
+                        rockstar_path=halo_path,
+                        which_host=which_host)
+                except IOError:
+                    print("Couldn't find AHF nor Rockstar halo files")
+                    raise
+
+    def load_ahf(self,**kwargs):
+
+        ## automatically search for the ahf_path and ahf_fname
+        self.ahf_path, self.ahf_fname = self.auto_search_ahf(**kwargs)
+    
+        ## now that we've attempted to identify an AHF file lets open 
+        ##  this puppy up
+        try:
+            ## first try and read the stellar half-mass radius (default args)
+            self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                ahf_path = ahf_path,
+                fname=ahf_fname,
+                hubble = self.header['HubbleParam'])
+
+        except ValueError:
+            ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves 
+            self.scom, self.rvir = cosmo_utils.load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                extra_names_to_read = [],
+                ahf_path = ahf_path,
+                fname=ahf_fname,
+                hubble = self.header['HubbleParam'])
+
+            self.rstar_half = None
+
+        return self.scom,self.rvir,self.rstar_half
+            
+    def auto_search_ahf(self,ahf_fname=None,ahf_path=None):
+        ## attempt to read halo location and properties from AHF
+        if ahf_fname is None:
+            ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
+
+        if ahf_path is None:
+            ## system blind if you put the soft link in
+            ahf_path = os.path.join(
+                os.environ['HOME'],'halo_files',
+                "%s","%s")
+
+            if 'metal_diffusion' in self.snapdir:
+                ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
+            elif 'HL000' in self.snapdir_name:
+                ahf_path = ahf_path%('xiangcheng',self.snapdir_name)
+            elif 'core' in self.snapdir:
+                ahf_path = ahf_path%('core',self.snapdir_name)
+            else: ## set myself up for failure below
+                ahf_path = ahf_path%('foo',self.snapdir_name)
+
+        ## check if this first guess at the ahf_fname and ahf_path
+        ##  is right
+        if (not os.path.isfile(os.path.join(ahf_path,ahf_fname)) and 
+            ahf_path != 'None' and 
+            ahf_fname != 'None'):
+            ## try looking in the simulation directory
+            ahf_path = os.sep.join(
+                self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
+                +['halo','ahf']) ## look in <simdir>/halo/ahf
+
+            ## okay no smooth halo file but there is a halo/ahf directory at least
+            if (os.path.isdir(ahf_path) and (
+                not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
+
+                ## let's scan through the files in the directory and try and 
+                ##  find an AHF halo file that corresponds to just this snapshot. 
+                fnames = []
+                snap_string = "%03d"%self.snapnum
+
+                for fname in os.listdir(ahf_path):
+                    if (snap_string in fname and 
+                        'AHF_halos' in fname):
+                        fnames+=[fname]
+                if len(fnames) == 1:
+                    fname = fnames[0]
+                else:
+                    raise IOError("can't find a halo file (or found too many)",fnames)
+
+        return ahf_path, ahf_fname
+
+    def load_rockstar(self,rockstar_fname=None,rockstar_path=None,which_host=0):
+
+        self.scom,self.rvir = cosmo_utils.load_rockstar(
+            self.snapdir,
+            self.snapnum,
+            fname=rockstar_fname,
+            rockstar_path=rockstar_path,
+            which_host=which_host)
+        self.rstar_half=None
+
+        return self.scom,self.rvir,self.rstar_half
 
     def get_snapshotTimes(self,snaptimes='snapshot_times',assert_cached=False): 
         ## try looking in the simulation directory for a snapshot_times.txt file

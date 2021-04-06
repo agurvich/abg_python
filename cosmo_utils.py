@@ -1,6 +1,8 @@
 import numpy as np 
 from abg_python.all_utils import *
 
+import h5py
+
 
 ### Constants
 G = 4.301e-9 #km^2 Mpc MSun^-1 s^-2
@@ -134,6 +136,46 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
+
+## rockstar file opening
+def load_rockstar(
+    snapdir,snapnum,
+    rockstar_path=None,
+    extra_names_to_read=None,
+    fname=None,
+    which_host=0):
+
+
+    ## does not allow for one to get main_halo indexed values out
+    extra_names_to_read = [] if extra_names_to_read is None else extra_names_to_read
+
+    if rockstar_path is None:
+        rockstar_path = '../halo/rockstar_dm/'
+        rockstar_path = os.path.join(snapdir,rockstar_path)
+
+    fname = 'halo_%03d.hdf5'%snapnum if fname is None else fname
+
+
+    if which_host == 0:
+        which_host = 'host'
+    elif which_host == 1:
+        which_host = 'host2'
+    
+    path = os.path.join(rockstar_path,'catalog_hdf5',fname)
+
+    with h5py.File(path,'r') as handle:
+        main_host_index = handle[which_host+'.index'][0]
+        ## in comoving kpc (NOT comoving kpc/h)
+        rcom = handle['position'][main_host_index]
+        scalefactor = handle['snapshot:scalefactor'][()]
+        #vcom = handle['velocity'][main_host_index]
+
+        ## in physical kpc? lmao
+        rvir = handle['radius'][main_host_index]
+        extra_values = [handle[key] for key in extra_names_to_read]
+
+    return tuple(np.append([rcom*scalefactor,rvir],extra_values))
+        
 
 ## AHF file opening
 def load_AHF(
