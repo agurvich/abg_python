@@ -130,7 +130,7 @@ def openSnapshot(
         if fname[-5:] != '.hdf5':
             ## this is some weird broken file, idk, like 
             ##  .snapshot_296.1.hdf5.VsOrnF which I encountered once
-            fnames.pop(i)
+            fnames.pop(i-popped)
             popped+=1
 
     for i,fname in enumerate(sorted(fnames)):
