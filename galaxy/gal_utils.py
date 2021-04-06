@@ -302,8 +302,8 @@ class Galaxy(
                 self.snapdir,
                 self.snapnum,
                 self.current_redshift,
-                ahf_path = ahf_path,
-                fname=ahf_fname,
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
                 hubble = self.header['HubbleParam'])
 
         except ValueError:
@@ -313,8 +313,8 @@ class Galaxy(
                 self.snapnum,
                 self.current_redshift,
                 extra_names_to_read = [],
-                ahf_path = ahf_path,
-                fname=ahf_fname,
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
                 hubble = self.header['HubbleParam'])
 
             self.rstar_half = None
