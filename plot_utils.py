@@ -784,7 +784,8 @@ def plot_histogram_contour_log(
 
     from palettable.colorbrewer.sequential import Oranges_3,Greens_3,Blues_3
     from matplotlib.colors import LinearSegmentedColormap
-    new_cmap = LinearSegmentedColormap.from_list(1,[(1,1,1)]+Oranges_3.mpl_colors)
+    color = (1,1,1) if 'k' in GLOBAL_linecolor else(0,0,0)
+    new_cmap = LinearSegmentedColormap.from_list(1,[color]+Oranges_3.mpl_colors)
 
     if plot_histogram:
         ax.pcolor(
@@ -946,6 +947,14 @@ def set_matplotlib_params(matplotlib):
     matplotlib.rcParams['lines.linewidth'] = 1.5
 
     matplotlib.rcParams['figure.facecolor'] = 'white'
+    matplotlib.rcParams['axes.facecolor'] = 'white'
+
+    matplotlib.rcParams['axes.edgecolor'] = 'black'
+    matplotlib.rcParams['axes.labelcolor'] = 'black'
+    matplotlib.rcParams['text.color'] = 'black'
+
+    matplotlib.rcParams['xtick.color'] = 'black'
+    matplotlib.rcParams['ytick.color'] = 'black'
 
     ## font family 
     ##  math
@@ -972,6 +981,63 @@ def set_matplotlib_params(matplotlib):
 
     matplotlib.rcParams['figure.subplot.hspace'] = 0
     matplotlib.rcParams['figure.subplot.wspace'] = 0
+
+def set_matplotlib_params_black_talk(matplotlib):
+    matplotlib.rcParams['legend.frameon'] = False
+
+    # Make the x and y ticks bigger                                                    
+    matplotlib.rcParams['xtick.major.size'] = 5
+    matplotlib.rcParams['xtick.major.width'] = 1
+    matplotlib.rcParams['ytick.major.size'] = 5
+    matplotlib.rcParams['ytick.major.width'] = 1
+                                                                                       
+    # Make the axes linewidths bigger                                                  
+    matplotlib.rcParams['axes.linewidth'] = 1
+
+    matplotlib.rcParams['lines.linewidth'] = 1.5
+
+    matplotlib.rcParams['figure.facecolor'] = 'k'
+    matplotlib.rcParams['axes.facecolor'] = 'black'
+
+    matplotlib.rcParams['axes.edgecolor'] = 'white'
+    matplotlib.rcParams['axes.labelcolor'] = 'white'
+    matplotlib.rcParams['text.color'] = 'white'
+
+    matplotlib.rcParams['xtick.color'] = 'white'
+    matplotlib.rcParams['ytick.color'] = 'white'
+
+    matplotlib.rcParams['xtick.labelsize'] = 20
+    matplotlib.rcParams['ytick.labelsize'] = 20
+    matplotlib.rcParams['axes.labelsize'] = 20
+
+    matplotlib.rcParams['font.size'] = 16
+    matplotlib.rcParams['legend.fontsize'] = 16
+
+    ## font family 
+    ##  math
+    matplotlib.rcParams['text.usetex'] = False
+    matplotlib.rcParams['mathtext.fontset'] = 'stix'
+
+
+    ##  outside math
+    matplotlib.rcParams['font.family'] = 'STIXGeneral'
+    #matplotlib.rcParams['font.serif'] = 'Computer Modern Roman'
+    #matplotlib.rcParams['font.sans-serif'] = 'Computer Modern Sans serif'
+    #matplotlib.rcParams['font.monospace'] = 'Computer Modern Typewriter'
+
+    matplotlib.rcParams['figure.figsize'] = [latex_pagewidth/2,latex_pagewidth/2]
+    matplotlib.rcParams['figure.dpi'] = 120
+
+    matplotlib.rcParams['figure.subplot.bottom'] = 0
+    matplotlib.rcParams['figure.subplot.top'] = 1
+    matplotlib.rcParams['figure.subplot.left'] = 0
+    matplotlib.rcParams['figure.subplot.right'] = 1
+
+    matplotlib.rcParams['figure.subplot.hspace'] = 0
+    matplotlib.rcParams['figure.subplot.wspace'] = 0
+
+    global GLOBAL_linecolor
+    GLOBAL_linecolor='white'
 
 def ffmpeg_frames(
     framedir,
