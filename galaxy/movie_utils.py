@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np 
 import os
 
-import multiprocessing
 import h5py
 
 import copy 
@@ -158,6 +157,7 @@ class FIREstudio_helper(object):
         min_quantity=2,
         max_quantity=7,
         quick=False,
+        cmap='viridis',
         **kwargs):
 
         frame_half_thickness = frame_half_width if frame_half_thickness is None else frame_half_thickness 
@@ -193,12 +193,14 @@ class FIREstudio_helper(object):
 
         gasStudio.render(
             ax,
+            quantity_name='LogTemperature',
             assert_cached=assert_cached,
-            quantity_adjustment_function=np.log10,
+            #quantity_adjustment_function=np.log10,
             weight_adjustment_function=lambda x: np.log10(x*1e10/1e6/gasStudio.Acell),
             use_metadata=use_metadata,
             save_meta=save_meta,
             quick=quick,
+            cmap=cmap,
             **kwargs)
 
         ## free up any memory associated with that object
