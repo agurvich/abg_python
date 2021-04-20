@@ -756,61 +756,47 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
 
     ## exclude region that we filled with nans, or might have its
     ##  average otherwise diluted
-    nan_mask = smooth_nan_count  == 0
-    new_smooth_xs = smooth_xs[nan_mask]
-    dtop = smooth_xs.max()-new_smooth_xs.max()
-    dbottom = -(smooth_xs.min()-new_smooth_xs.min())
 
-    smooth_ys = smooth_ys[nan_mask]
-    smooth_ys2 = smooth_ys2[nan_mask]
+    dx = smooth_xs[1]-smooth_xs[0]
+    if assign == 'center':
+        dtop_should_be = int(smooth/2/dx)
+        dbottom_should_be = int(smooth/2/dx)
+    elif assign == 'left':
+        dtop_should_be = int(smooth/dx)
+        dbottom_should_be = 0
+    elif assign == 'right':
+        dtop_should_be = 0
+        dbottom_should_be = int(smooth/dx)
+    else:
+        raise NotImplementedError("invalid assign")
 
-    if not np.isclose(dtop+dbottom,smooth):
-        print('there were nans within the boundaries')
-        if assign == 'center':
-            dtop_should_be = smooth/2
-            dbottom_should_be = smooth/2
-        elif assign == 'left':
-            dtop_should_be = smooth
-            dbottom_should_be = 0
-        elif assign == 'right':
-            dtop_should_be = 0
-            dbottom_should_be = smooth
-        else:
-            raise NotImplementedError("invalid assign")
+    if dtop_should_be !=0:
+        smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
+        smooth_ys = smooth_ys[dbottom_should_be:-dtop_should_be]
+        smooth_ys2 = smooth_ys2[dbottom_should_be:-dtop_should_be]
+        smooth_nan_count = smooth_nan_count[dbottom_should_be:-dtop_should_be]
+        
+    else:
+        smooth_xs = smooth_xs[dbottom_should_be:]
+        smooth_ys = smooth_ys[dbottom_should_be:]
+        smooth_ys2 = smooth_ys2[dbottom_should_be:]
+        smooth_nan_count = smooth_nan_count[dbottom_should_be:]
 
-        if not np.isclose(dtop,dtop_should_be):
-            print('top was bad')
-            nmissing=int((dtop-dtop_should_be)/0.01)
-
-            ## append nans to the top
-            smooth_ys = np.append(smooth_ys,np.repeat(np.nan,nmissing))
-            smooth_ys2 = np.append(smooth_ys2,np.repeat(np.nan,nmissing))
-
-        if not np.isclose(dbottom,dbottom_should_be):
-            print('bottom was bad')
-            nmissing=int((dbottom-dbottom_should_be)/0.01)
-            print(nmissing,dbottom,dbottom_should_be)
-
-            ## prepend nans to the bottom
-            print(smooth_ys.shape)
-            smooth_ys = np.append(np.repeat(np.nan,nmissing),smooth_ys)
-            smooth_ys2 = np.append(np.repeat(np.nan,nmissing),smooth_ys2)
-            print(smooth_ys.shape)
-
-        dbottom_should_be = int(dbottom_should_be/0.01)
-        dtop_should_be = int(dtop_should_be/0.01)
-
-        ## assign right will break b.c. dtop_should_be is 0
-        if dtop_should_be !=0:
-            new_smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
-        else:
-            new_smooth_xs = smooth_xs[dbottom_should_be:]
-
-        print(dbottom_should_be,dtop_should_be)
-
-    print(smooth_xs.shape,smooth_ys.shape,smooth_ys2.shape)
-    smooth_xs = new_smooth_xs
-    print(smooth_xs.shape,smooth_ys.shape,smooth_ys2.shape)
+    ## TODO
+    ## this is hard-coded for double-smoothing
+    ##  with the same window. one day i may regret this
+    nan_mask = smooth_nan_count  > 0
+    ## if there is an extra window's worth of nans
+    ##  we must have smoothing this before (or maybe
+    ##  we're smoothing a running scatter)
+    ##  let's get rid of all the nan's and hope that there
+    ##  aren't any that were in the middle, just at the edges
+    ##  from not having enough points in the window :\
+    if np.sum(nan_mask!=0) == (int(smooth/dx)):
+        nan_mask = smooth_nan_count == 0
+        smooth_xs = smooth_xs[nan_mask]
+        smooth_ys = smooth_ys[nan_mask]
+        smooth_ys2 = smooth_ys2[nan_mask]
 
     ## need to resample what we had to make sure points are evenly spaced
     if len(np.unique(np.diff(smooth_xs))) != 1:
