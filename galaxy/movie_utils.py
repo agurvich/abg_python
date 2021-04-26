@@ -45,8 +45,12 @@ class Draw_helper(object):
         self,
         thetax=None,thetay=None,thetaz=None,
         indices=None,axs=None,
+        radius=None,
         **kwargs):
         coords = self.sub_star_snap['Coordinates']
+
+        if radius is not None:
+            indices = np.sum(coords**2,axis=1)<radius**2
        
         return self.drawGalaxy(
             coords,
