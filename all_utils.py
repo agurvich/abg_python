@@ -29,7 +29,8 @@ def filter_kwargs(func,kwargs):
     bad = {}
 
     ## get the args that func takes
-    allowed_args = inspect.getargspec(func)[0]
+    allowed_args_dict = inspect.signature(func).parameters
+    allowed_args = allowed_args_dict.keys()
     for arg in kwargs.keys():
         ## ignore self if we're inspecting a method
         if arg == 'self':
@@ -742,7 +743,7 @@ def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
     if log:
         ys = np.log10(ys)
 
-    times = np.arange(xs.max(),xs.min()-0.01,-0.01)[::-1]
+    times = np.arange(np.nanmax(xs),np.nanmin(xs)-0.01,-0.01)[::-1]
     fn = interp1d(
         xs,
         ys,
