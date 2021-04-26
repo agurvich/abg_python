@@ -780,8 +780,13 @@ class Galaxy(
             cosmological=True,
             **kwargs)
 
-    def calculate_half_mass_radius(self,which_snap=None):
-        print("Calculating the half mass radius")
+    def calculate_half_mass_radius(
+        self,
+        which_snap=None,
+        geometry='spherical',
+        within_radius=None):
+
+        within_radius = self.rvir if within_radius is None else within_radius
 
         ## find the stars within the virial radius
         if which_snap is None:
@@ -794,15 +799,75 @@ class Galaxy(
 
         masses = which_snap['Masses']
 
-        radii = np.sum(coords**2,axis=1)**0.5
-        halo_indices = radii < self.rvir
-        
-        edges = np.linspace(0,self.rvir/2,5000,endpoint=True)
-        h,edges = np.histogram(radii[halo_indices],bins=edges,weights = masses[halo_indices])
+        edges = np.linspace(0,within_radius,5000,endpoint=True)
+
+        if geometry in ['cylindrical','scale_height']:
+            radii = np.sum(coords[:,:2]**2,axis=1)**0.5
+        elif geometry == 'spherical':
+            print("Calculating the half mass radius")
+            radii = np.sum(coords**2,axis=1)**0.5
+
+        within_mask = radii <= within_radius
+
+        ## let's co-opt this method to calculate a scale height as well
+        if geometry == 'scale_height':
+            ## take the z-component
+            radii = np.abs(coords[:,-1])
+            edges = np.linspace(0,10*within_radius,5000,endpoint=True)
+
+        h,edges = np.histogram(
+            radii[within_mask],
+            bins=edges,
+            weights = masses[within_mask])
+
         h/=1.0*np.sum(h)
         cdf = np.cumsum(h)
 
         return all_utils.findIntersection(edges[1:],cdf,0.5)[0]
+    
+    def get_simple_radius_and_height(
+        self,
+        component='gas',
+        save_meta=True,
+        use_metadata=True,
+        loud=True,
+        **kwargs):
+
+        if component not in ['gas','stars']:
+            raise ValueError("Invalid component %s must be gas or star."%component)
+
+        group_name = 'SimpleGeom_%s'%component
+
+        @metadata_cache(
+            group_name,
+            ['%s_simple_r'%component,
+            '%s_simple_h'%component],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud)
+        def compute_simple_radius_and_height(self,component):
+
+            if component == 'gas':
+                which_snap = self.sub_snap
+            elif component == 'stars':
+                which_snap = self.sub_star_snap
+
+            ## calculate the cylindrical half-mass radius using mass 
+            ##  within 20% virial radius
+            radius = self.calculate_half_mass_radius(
+                which_snap=which_snap,
+                geometry='cylindrical',
+                within_radius=0.2*self.rvir)
+
+            ## calculate the half-mass height w/i cylinder
+            ##  of radius previously calculated
+            height = self.calculate_half_mass_radius(
+                which_snap=which_snap,
+                geometry='scale_height',
+                within_radius=radius)
+                
+            return radius,height
+        return compute_simple_radius_and_height(self,component,**kwargs)
 
     ## load and save things to object
     def outputSubsnapshot(
