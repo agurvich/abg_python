@@ -258,7 +258,7 @@ def load_AHF(
     length_unit_fact = 1/hubble*(1/(1+current_redshift))
 
     rvir = row[names_to_read.index('Rvir')]*length_unit_fact
-    return_val = [scom, rvir]
+    return_val = np.array([scom, rvir],dtype=object)
 
     ## for everything that comes after Rvir
     for name in names_to_read[names_to_read.index('Rvir')+1:]:
@@ -267,7 +267,11 @@ def load_AHF(
         else:
             unit_fact = 1
             print(name,'does not have units')
-        return_val = np.append(return_val,row[names_to_read.index(name)]*unit_fact)
+        return_val = np.append(
+            return_val,
+            np.array(
+                row[names_to_read.index(name)]*unit_fact,
+                dtype=object))
 
     return return_val
 
