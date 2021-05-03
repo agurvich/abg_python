@@ -106,16 +106,16 @@ class Galaxy(
         ):
 
         if meta_name is None:
-            meta_name = 'meta_Galaxy_'
+            meta_name = 'meta_Galaxy'
 
         if suite_name is None:
             if 'metal_diffusion' in snapdir:
                 self.suite_name = 'metal_diffusion'
-            elif 'HL000' in self.snapdir_name:
+            elif 'HL000' in snapdir:
                 self.suite_name = 'xiangcheng'
-            elif 'core' in self.snapdir:
+            elif 'core' in snapdir:
                 self.suite_name = 'core'
-            elif 'cr_heating_fix' in self.snapdir:
+            elif 'cr_heating_fix' in snapdir:
                 self.suite_name = 'cr_heating_fix'
             else: ## set myself up for failure below
                 self.suite_name = 'unknown'
