@@ -101,11 +101,26 @@ class Galaxy(
         ahf_fname = None,
         save_header_to_table = True,
         meta_name = None,
+        suite_name = None,
         **metadata_kwargs 
         ):
 
         if meta_name is None:
             meta_name = 'meta_Galaxy_'
+
+        if suite_name is None:
+            if 'metal_diffusion' in snapdir:
+                self.suite_name = 'metal_diffusion'
+            elif 'HL000' in self.snapdir_name:
+                self.suite_name = 'xiangcheng'
+            elif 'core' in self.snapdir:
+                self.suite_name = 'core'
+            elif 'cr_heating_fix' in self.snapdir:
+                self.suite_name = 'cr_heating_fix'
+            else: ## set myself up for failure below
+                self.suite_name = 'unknown'
+        else:
+            self.suite_name = suite_name
 
         ## bind input
         self.snapnum = snapnum
@@ -149,7 +164,7 @@ class Galaxy(
         
         ## handle datadir creation
         if datadir is None:
-            self.datadir = "/home/abg6257/projects/data/"
+            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
         else:
             self.datadir = datadir
 
@@ -280,6 +295,8 @@ class Galaxy(
                             if which_host[-len(self.pretty_name):] != self.pretty_name:
                                 raise IOError("invalid name, should be one of %s"%which_host)
                             which_host = 1
+                    else:
+                        which_host = 0
 
                     self.load_rockstar(
                         rockstar_fname=halo_fname,
@@ -332,14 +349,7 @@ class Galaxy(
                 os.environ['HOME'],'halo_files',
                 "%s","%s")
 
-            if 'metal_diffusion' in self.snapdir:
-                ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
-            elif 'HL000' in self.snapdir_name:
-                ahf_path = ahf_path%('xiangcheng',self.snapdir_name)
-            elif 'core' in self.snapdir:
-                ahf_path = ahf_path%('core',self.snapdir_name)
-            else: ## set myself up for failure below
-                ahf_path = ahf_path%('foo',self.snapdir_name)
+            ahf_path = ahf_path%(self.suite_name,self.snapdir_name)
 
         ## check if this first guess at the ahf_fname and ahf_path
         ##  is right
@@ -949,7 +959,7 @@ class Galaxy(
                     abg_pgroup[key]=this_sub_snap[key]
         print('Finished, output sub-snapshot to:',outpath)
         
-    def overwrite_full_snaps_with_rotated_versions(self,extractDM):
+    def overwrite_full_snaps_with_rotated_versions(self,extract_DM):
         ## which snaps to offset and rotate?
         snaps = [self.snap,self.star_snap] 
         if extract_DM:
