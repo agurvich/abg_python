@@ -34,6 +34,44 @@ snap_dict = {
 
 h_official_names = {'h206':'A1','h29':'A2','h113':'A4','h2':'A8'}
 
+elvis_partners = {
+    'Romeo':('Juliet',0),
+    'Juliet':('Romeo',1),
+
+    'Romulus':('Remus',0),
+    'Remus':('Romulus',1),
+
+    'Thelma':('Louise',0),
+    'Louise':('Thelma',1)}
+
+def get_elvis_snapdir_name(savename):
+
+    print(savename)
+    this_name = None
+
+    ## check each of the partners and see if they're in the savename
+    ##  savename should be of the form ex.: Romeo_res3500
+    for partner in elvis_partners.keys():
+        if partner in savename:
+            ## which one do we want and what resolution
+            this,resolution = savename.split('_')
+            ## get the matching partner and figure which_host we are
+            that,which_host = elvis_partners[this]
+
+            ## ensure RomeoJuliet not JulietRomeo
+            if which_host == 0:
+                this_name = this+that
+            else:
+                this_name = that+this
+
+            ## format the final name
+            this_name = 'm12_elvis_%s_%s'%(this_name,resolution)
+
+    ## if we didn't do anything in the loop above, just return the savename
+    this_name = savename if this_name is None else this_name
+
+    return this_name
+
 ## function to determine what the "main" halo is
 def halo_id(name):
     return 0 
@@ -84,8 +122,6 @@ class Galaxy(
         kwargs['color'] = self.plot_color
         add_to_legend(*args,**kwargs)
 
-        return ax
-
     ## GALAXY
     def __init__(
         self,
@@ -104,6 +140,8 @@ class Galaxy(
         suite_name = None,
         **metadata_kwargs 
         ):
+
+        print(snapdir)
 
         if meta_name is None:
             meta_name = 'meta_Galaxy'
@@ -1220,7 +1258,7 @@ class ManyGalaxy(Galaxy):
                         [getattr(gal,attr) for gal 
                         in self.galaxies])
                 else:
-                    return getatr(self,attr) ## might fail but that's what we want
+                    return getattr(self,attr) ## might fail but that's what we want
 
             def __getitem__(self,index):
                 return self.galaxies[index]
