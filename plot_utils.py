@@ -43,7 +43,7 @@ def add_many_to_legend(
 
     
     if line_kwargss is None:
-        line_kwargss = [{} for i in len(labels)]
+        line_kwargss = [{} for i in len(line_labels)]
 
     legend = ax.get_legend()
     ## add the current legend to the tracked artists
