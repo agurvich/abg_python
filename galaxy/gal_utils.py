@@ -141,8 +141,6 @@ class Galaxy(
         **metadata_kwargs 
         ):
 
-        print(snapdir)
-
         if meta_name is None:
             meta_name = 'meta_Galaxy'
 
