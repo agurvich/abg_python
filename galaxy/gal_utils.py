@@ -265,8 +265,7 @@ class Galaxy(
                     self.snapdir,
                     self.snapnum,
                     0, ## dummy particle index, not used if header_only is True
-                    header_only=1,
-                    cosmological=True)
+                    header_only=True)
 
                 ## save the header to our catalog of simulation headers
                 ##  so that we can open the header in scenarios where
@@ -289,8 +288,13 @@ class Galaxy(
             self.current_time_Gyr = self.header['TimeGyr']
 
         
-        ## opens the halo file to find the halo center and virial radius
-        self.load_halo_file()
+        if self.header['cosmological']:
+            ## opens the halo file to find the halo center and virial radius
+            self.load_halo_file()
+        else:
+            self.scom = np.zeros(3)
+            self.rvir = 300 ## what should i do here...
+            self.rstar_half = None
 
         ## have we already calculated it and cached it?
         if self.rstar_half is None:
@@ -481,8 +485,7 @@ class Galaxy(
                     self.snapdir,
                     snapnum,
                     0, ## dummy particle index, ignored for header_only = True
-                    header_only=True,
-                    cosmological=True)
+                    header_only=True)
 
                 ## save each one to a list
                 snapnums += [snapnum]
@@ -669,21 +672,18 @@ class Galaxy(
                         None,None,
                         0, ## gas index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_star_snap = openSnapshot(
                         None,None,
                         4, ## star index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_dark_snap = openSnapshot(
                         None,None,
                         1, ## high-res DM index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
                     ## check if the extraction radius is what we want, to 4 decimal places
@@ -810,7 +810,6 @@ class Galaxy(
             self.star_snap = openSnapshot(
                 self.snapdir,
                 self.snapnum,4,
-                cosmological=True,
                 **kwargs)
 
     def load_gas(self,**kwargs):
@@ -818,14 +817,12 @@ class Galaxy(
         self.snap = openSnapshot(
             self.snapdir,
             self.snapnum,0,
-            cosmological=True,
             **kwargs)
 
     def load_dark_matter(self,**kwargs):
         print("Loading dark matter particles of",self)
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
-            cosmological=True,
             **kwargs)
 
     def calculate_half_mass_radius(
@@ -1161,11 +1158,13 @@ class ManyGalaxy(Galaxy):
         load_snapnums=None,
         population_kwargs=None,
         name_append='',
+        suite_name='metal_diffusion',
         **galaxy_kwargs):
         """ a wrapper that will allow one to open multiple galaxies at the same time,
             most useful for creating and accessing MultiMetadata instances while 
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
+
 
         ## snapdir is sometimes None if an instance is 
         ##  created just to access the metadata and cached
@@ -1179,6 +1178,10 @@ class ManyGalaxy(Galaxy):
         self.name = name+name_append
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
+        self.suite_name = suite_name
+
+        ## save this for any Galaxy instances we create as well
+        galaxy_kwargs['suite_name'] = suite_name
 
 
         ## append _md to the datadir_name for my own sanity
@@ -1197,7 +1200,7 @@ class ManyGalaxy(Galaxy):
 
         ## handle datadir creation
         if datadir is None:
-            self.datadir = "/home/abg6257/projects/data/"
+            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
         else:
             self.datadir = datadir
 
@@ -1205,7 +1208,7 @@ class ManyGalaxy(Galaxy):
         if not os.path.isdir(self.datadir):
             os.makedirs(self.datadir)
 
-        if name not in datadir and name!='temp':
+        if name not in self.datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.datadir_name)
 
         if not os.path.isdir(self.datadir):
