@@ -12,7 +12,9 @@ from matplotlib.ticker import NullFormatter
 from abg_python.all_utils import pairFilter,covarianceEigensystem
 from scipy.interpolate import interp1d
 
-latex_pagewidth=7.125 ## in
+latex_pagewidth=6.9738480697 ## in #7.125
+latex_columnwidth=3.32 ## in
+
 
 """
 try:
@@ -932,6 +934,9 @@ def plot_percentiles_shaded_region(ax,xs,yss,color,percentiles=None):
 
 def set_matplotlib_params(matplotlib):
     matplotlib.rcParams['legend.frameon'] = False
+ 
+    matplotlib.rcParams["xtick.direction"] = 'in'
+    matplotlib.rcParams["ytick.direction"] = 'in'
 
     # Make the x and y ticks bigger                                                    
     matplotlib.rcParams['xtick.labelsize'] = 11
@@ -984,6 +989,9 @@ def set_matplotlib_params(matplotlib):
 
 def set_matplotlib_params_black_talk(matplotlib):
     matplotlib.rcParams['legend.frameon'] = False
+
+    matplotlib.rcParams["xtick.direction"] = 'in'
+    matplotlib.rcParams["ytick.direction"] = 'in'
 
     # Make the x and y ticks bigger                                                    
     matplotlib.rcParams['xtick.major.size'] = 5

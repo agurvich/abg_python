@@ -107,7 +107,7 @@ def suppressSTDOUTToFile(fn,args,fname,mode='a+',debug=1):
 
         ret=fn(**args)
 
-        with file(fname,mode) as fhandle:
+        with open(fname,mode) as fhandle:
             fhandle.write(handle.getvalue())
     finally:
         sys.stdout=orgstdout
@@ -162,9 +162,9 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     return dict1
 
 #fitting functions
-def fitAXb(xs,ys,yerrs):
+def fitAXb(xs,ys,yerrs,fixed_a=None,fixed_b=None):
     """Fits a linear trendline to some data"""
-    if yerrs==None:
+    if yerrs is None:
         yerrs=np.array([1]*len(xs))
     weights=yerrs**-2.
     X=np.matrix([[sum(ys*weights)],[sum(xs*ys*weights)]])
@@ -172,15 +172,22 @@ def fitAXb(xs,ys,yerrs):
         [sum(weights),sum(xs*weights)],
         [sum(xs*weights),sum(xs**2.*weights)]
         ])
-    [y0],[a]=(M.I*X).A
-    return a,y0
+    if fixed_a is not None:
+        b = ((X[0] - fixed_a*M[0,1])/M[0,0])[0,0]
+        a = fixed_a
+    elif fixed_b is not None:
+        a = ((X[1] - fixed_b*M[1,0])/M[1,1])[0,0]
+        b = fixed_b
+    else:
+        [b],[a]=(M.I*X).A
+    return a,b
 
 def fit_running_AXb(time_edges,boxcar_width,xs,ys,yerrs):
     """fits a trendline using f(x) ~ y in bins 
     of t that are boxcar_width wide"""
     
     xs,ys = pairReplace(xs,ys,np.nan,np.isinf)
-    if yerrs==None:
+    if yerrs is None:
         yerrs=np.ones(len(xs))
     weights=yerrs**-2.
     
@@ -384,17 +391,23 @@ def fitLeastSq(fn,p0,xs,ys,yerrs=None,log_fit=0):
     
 def modelVariance(fn,xs,ys,yerrs=None):
     """takes a function and returns the variance compared to some data"""
-    if yerrs==None:
+    if yerrs is None:
         yerrs=[1]*len(xs)
     return sum([(fn(x)-ys[i])**2./yerrs[i]**2. for i,x in enumerate(xs)])
 
-def brokenPowerLaw(a1,b1,a2,b2,xoff,x):
+def brokenPowerLaw(x,a1,b1,a2,xoff):
     """A helper function to evaluate a broken power law given some
         parameters-- since lambda functions create unwanted aliases"""
-    if x < xoff:
-        return a1*x+b1
-    else:
-        return a2*x+b2
+
+    ## handle when we're passed an array, the lazy way
+    try:
+        iter(x)
+        return np.array([brokenPowerLaw(this_x,a1,b1,a2,xoff) for this_x in x])
+    except:
+        if x < xoff:
+            return a1*x+b1
+        else:
+            return a2*(x-xoff)+(a1*xoff+b1)
 
 def fit_broken_AXb(xs,ys,yerrs=None):
     """Finds the best fit broken linear trendline for a set of x and y 
@@ -410,32 +423,45 @@ def fit_broken_AXb(xs,ys,yerrs=None):
     """
     vars=[]
     models=[]
-    if yerrs==None:
+
+    xs,ys = pairFilter(xs,ys,np.isfinite)
+
+    if yerrs is None:
         yerrs=np.array([1]*len(xs))
+
     for i,xoff in enumerate(xs):
         if i==0 or i==1 or i==(len(xs)-2) or i==(len(xs)-1):
             #skip the first  and second guy, lol
             continue
-        b1,a1=fitAXb(xs[:i],ys[:i],yerrs[:i])
-        b2,a2=fitAXb(xs[i:],ys[i:],yerrs[i:])
-        params=(a1,b1,a2,b2,xoff)
+        these_xs = xs[:i]
+        ## fit a line to the first half
+        a1,b1=fitAXb(these_xs,ys[:i],yerrs[:i])
+
+        ## fit a line to the second half, 
+        ##   offset the points and pin them 
+        ##   to the end of the first line. 
+        a2,b2=fitAXb(
+            xs[i:]-xoff,
+            ys[i:],
+            yerrs[i:],
+            fixed_b=a1*xoff+b1)
+            
+        params=(a1,b1,a2,xoff)
         models+=[params]
-        model=lambda x: brokenPowerLaw(params[0],params[1],params[2],params[3],
-            params[4],x)
+        model=lambda x: brokenPowerLaw(x,*params)
         vars+=[modelVariance(model,xs,ys,yerrs)]
 
     #there is a hellish feature of python that refuses to evaluate lambda functions
     #so i can't save the models in their own list, I have to save their parameters
     #and recreate the best model
     params=models[np.argmin(vars)]
-    model=lambda x: brokenPowerLaw(params[0],params[1],params[2],params[3],
-        params[4],x)
+    model=lambda x: brokenPowerLaw(x,*params)
+
     return model,params
 
 def fitExponential(xs,ys):
     """Fits an exponential log y = ax +b => y = e^b e^(ax)"""
-    b,a = fitAXb(xs[ys>0],np.log(ys[ys>0]),yerrs=None)
-    return (b,a)
+    return fitAXb(xs[ys>0],np.log(ys[ys>0]),yerrs=None)
 
 
 #math functions (trig and linear algebra...)
@@ -920,12 +946,12 @@ def add_directory_tree(datadir):
     if not os.path.isdir(datadir):
         directories=datadir.split('/')
         directories_to_make=[]
-        for i in xrange(len(directories)):
+        for i in range(len(directories)):
             trialdir='/'.join(directories[:-i])
             if os.path.isdir(trialdir):
                 i-=1
                 break
-        for j in xrange(i):
+        for j in range(i):
             toadd='/'.join(directories[:-j-1])
             directories_to_make+=[toadd]
         directories_to_make+=[datadir]
@@ -984,7 +1010,7 @@ def extractRectangularVolumeIndices(rs,rcom,radius,height):
    return np.logical_and(np.logical_and(x_indices,y_indices),z_indices)
 
 def extractCylindricalVolumeIndices(coords,r,h,rcom=None):
-    if rcom==None:
+    if rcom is None:
         rcom = np.array([0,0,0])
     gindices = np.sum((coords[:,:2])**2.,axis=1) < r**2.
     gzindices = (coords[:,2])**2. < h**2.

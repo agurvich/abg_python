@@ -36,7 +36,8 @@ class Firefly_helper(object):
     ## Reader won't exist if we didn't successfully import
     except NameError as e1:
         try:
-            import firefly_api
+            from firefly_api.reader import Reader
+            from firefly_api.particlegroup import ParticleGroup
             raise e1
         except ImportError:
             pass

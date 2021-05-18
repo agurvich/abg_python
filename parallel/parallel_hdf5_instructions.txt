@@ -1,0 +1,33 @@
+## initialize new conda environment
+1. make a new conda environment: `conda create -n h5parallel`
+3. conda install openmpi-mpicc mpi4py
+4. add miniconda/envs/h5parallel: bin/include/lib to $PATH/$CPATH/$LIBRARY_PATH (maybe also LD_LIBRARY_PATH)?
+5. add hdf5: bin/include/lib to $PATH/$CPATH/$LIBRARY_PATH (maybe also LD_LIBRARY_PATH)?
+
+## build hdf5
+1. download hdf5 source from the web
+2. ./configure --enable-shared --enable-parallel --enable-build-mode=production CC=mpicc (might also need CPP_FLAGS="-I/path/to/miniconda/envs/h5parallel/include")
+3. make; make install
+
+## install h5py
+1. CC="mpicc" HDF5_MPI="ON" HDF5_DIR=/path/to/hdf5 pip install --no-binary=h5py h5py
+
+## test with following test program
+```python
+import h5py
+from mpi4py import MPI
+
+rank = MPI.COMM_WORLD.rank  # The process ID (integer 0-3 for 4-process run)
+
+print("rank is %d"%rank)
+
+f = h5py.File('parallel_test.hdf5', 'w', driver='mpio', comm=MPI.COMM_WORLD)
+print(f)
+
+dset = f.create_dataset('test', (4,), dtype='i')
+dset[rank] = rank
+f.close()```
+
+and executing w/ `$ mpiexec -n 4 python parallel_test.py`
+
+and use `$ h5dump parallel_test.hdf5` to inspect the contents of the file, should see a single array w/ the ranks going from 0-3
