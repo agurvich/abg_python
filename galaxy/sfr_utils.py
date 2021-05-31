@@ -528,21 +528,18 @@ class SFR_helper(SFR_plotter):
                 xs,adjusted_sfrs = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
-                    0.01,
-                    loud=True)
+                    0.01)
 
                 xs,boxcar_ys_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
                     0.5,#window_size,
-                    loud=True,
                     assign='center')
 
                 xs,boxcar_ys2_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs**2,
                     0.5,#window_size,
-                    loud=True,
                     assign='center')
 
                 ## <std>/<SFR>
@@ -552,14 +549,12 @@ class SFR_helper(SFR_plotter):
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs),
                     window_size,
-                    loud=True,
                     assign='center')
 
                 xs,boxcar_ys2_300 = all_utils.boxcar_average(
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs)**2,
                     window_size,
-                    loud=True,
                     assign='center')
 
                 rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)

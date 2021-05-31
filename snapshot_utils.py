@@ -44,8 +44,8 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
 
 def openSnapshot(
     snapdir,snapnum,ptype,
-    snapshot_name='snapshot', extension='.hdf5',
-    cosmological=0,header_only=0,
+    cosmological=0,
+    header_only=0,
     keys_to_extract = None,
     fnames = None,
     chimes_keys = [],
@@ -156,7 +156,8 @@ def openSnapshot(
 
                 ## determine if this snapshot is cosmological
                 if ( new_dictionary['HubbleParam']!=1 and not cosmological):
-                    print('This is a cosmological snapshot... converting to physical units')
+                    if loud:
+                        print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
                 if not header_only:
