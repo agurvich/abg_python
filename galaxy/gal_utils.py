@@ -46,7 +46,6 @@ elvis_partners = {
 
 def get_elvis_snapdir_name(savename):
 
-    print(savename)
     this_name = None
 
     ## check each of the partners and see if they're in the savename
@@ -169,6 +168,10 @@ class Galaxy(
         if snapdir is not None and snapdir[-1]==os.sep:
             snapdir = snapdir[:-1]
         self.snapdir = snapdir
+
+        ## determine what the final snapshot of this simulation is
+        ##  by checking the snapdir and sorting the files by snapnum
+        self.finsnap = all_utils.getfinsnapnum(self.snapdir)
 
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
@@ -304,10 +307,6 @@ class Galaxy(
             ## I guess not
             if self.rstar_half is None:
                 print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
-
-        ## determine what the final snapshot of this simulation is
-        ##  by checking the snapdir and sorting the files by snapnum
-        self.finsnap = all_utils.getfinsnapnum(self.snapdir)
 
     def load_halo_file(self,halo_fname=None,halo_path=None):
 
@@ -1163,6 +1162,12 @@ class ManyGalaxy(Galaxy):
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
 
+
+        if snapdir is not None:
+            ## will replace name with name if not an elvis name
+            ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
+            ##  or Juliet_res3500 w/ RomeoJuliet_res3500
+            snapdir = snapdir.replace(name,get_elvis_snapdir_name(name))
 
         ## snapdir is sometimes None if an instance is 
         ##  created just to access the metadata and cached
