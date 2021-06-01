@@ -29,7 +29,8 @@ def filter_kwargs(func,kwargs):
     bad = {}
 
     ## get the args that func takes
-    allowed_args = inspect.getargspec(func)[0]
+    allowed_args_dict = inspect.signature(func).parameters
+    allowed_args = allowed_args_dict.keys()
     for arg in kwargs.keys():
         ## ignore self if we're inspecting a method
         if arg == 'self':
@@ -41,12 +42,22 @@ def filter_kwargs(func,kwargs):
             bad[arg] = kwargs[arg]
     return good,bad 
 
-def append_function_docstring(function_1,function_2):
+def append_function_docstring(function_1,function_2,**kwargs):
     #print(function_1,function_2)
     #print(function_1.__doc__,function_2.__doc__)
-    function_1.__doc__+="\n--------\n %s:\n %s"%(
-        function_2.__name__,
+    function_1.__doc__ = append_string_docstring(
+        function_1.__doc__,function_2,**kwargs)
+
+def append_string_docstring(string,function_2,use_md=True,prepend_string=''):
+    prepend_string += use_md*"### "
+    name = function_2.__qualname__
+    if use_md:
+        name = '`' + name + '`' 
+
+    string+="\n--------\n %s:\n %s"%(
+        prepend_string + name,
         function_2.__doc__)
+    return string
 
     
 def get_size(obj, seen=None):
@@ -96,7 +107,7 @@ def suppressSTDOUTToFile(fn,args,fname,mode='a+',debug=1):
 
         ret=fn(**args)
 
-        with file(fname,mode) as fhandle:
+        with open(fname,mode) as fhandle:
             fhandle.write(handle.getvalue())
     finally:
         sys.stdout=orgstdout
@@ -151,9 +162,9 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     return dict1
 
 #fitting functions
-def fitAXb(xs,ys,yerrs):
+def fitAXb(xs,ys,yerrs,fixed_a=None,fixed_b=None):
     """Fits a linear trendline to some data"""
-    if yerrs==None:
+    if yerrs is None:
         yerrs=np.array([1]*len(xs))
     weights=yerrs**-2.
     X=np.matrix([[sum(ys*weights)],[sum(xs*ys*weights)]])
@@ -161,15 +172,22 @@ def fitAXb(xs,ys,yerrs):
         [sum(weights),sum(xs*weights)],
         [sum(xs*weights),sum(xs**2.*weights)]
         ])
-    [y0],[a]=(M.I*X).A
-    return a,y0
+    if fixed_a is not None:
+        b = ((X[0] - fixed_a*M[0,1])/M[0,0])[0,0]
+        a = fixed_a
+    elif fixed_b is not None:
+        a = ((X[1] - fixed_b*M[1,0])/M[1,1])[0,0]
+        b = fixed_b
+    else:
+        [b],[a]=(M.I*X).A
+    return a,b
 
 def fit_running_AXb(time_edges,boxcar_width,xs,ys,yerrs):
     """fits a trendline using f(x) ~ y in bins 
     of t that are boxcar_width wide"""
     
     xs,ys = pairReplace(xs,ys,np.nan,np.isinf)
-    if yerrs==None:
+    if yerrs is None:
         yerrs=np.ones(len(xs))
     weights=yerrs**-2.
     
@@ -281,6 +299,65 @@ def fitGauss(xs,ys,yerrs=None,format_str=None):
         pass
     return pars,lambda x: fn(pars,x)
 
+
+def covarianceEigensystem(xs,ys):
+    """ calculates the covariance matrix and the principle axes
+        (eigenvectors) of the data. 
+        Eigenvalues represent variance along those principle axes.
+
+        ## choose new x-axis to be evecs[0], rotation angle is
+        ##  angle between it and old x-axis, i.e.
+        ##  ehat . xhat = cos(angle)
+        angle = np.arccos(evecs[0][0])
+
+        ## evals are variance along principle axes
+        rx,ry = evals**0.5 ## in dex
+        cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+        for evec,this_eval in zip(evecs,evals):
+            dx,dy = evec*this_eval**0.5
+            ax.plot(
+                [cx,10**(np.log10(cx)+dx)],
+                [cy,10**(np.log10(cy)+dy)],
+                lw=3,ls=':',c='limegreen')
+
+        plotEllipse(
+            ax,
+            cx,cy,
+            rx,ry,
+            angle=angle*180/np.pi,
+            log=True,
+            color='limegreen')"""
+
+    if len(xs) == len(ys) == 0:
+        return np.array([[np.nan,np.nan],[np.nan,np.nan]]),np.array([np.nan,np.nan])
+    cov = np.cov([xs,ys])
+    evals,evecs = np.linalg.eig(cov)
+
+    evecs = evecs.T ## after transpose becomes [e1,e2], which makes sense...? lol
+
+    ## re-arrange so semi-major axis is always 1st
+    sort_mask = np.argsort(evals)[::-1]
+    evals,evecs = evals[sort_mask],evecs[sort_mask]
+    evecs[np.all(evecs<0,axis=1)]*=-1 ## take the positive version
+
+    return evecs,evals
+
+def getCovarianceEllipse(xs,ys):
+    evecs,evals = covarianceEigensystem(xs,ys)
+
+    ## choose new x-axis to be evecs[0], rotation angle is
+    ##  angle between it and old x-axis, i.e.
+    ##  ehat . xhat = cos(angle)
+    angle = np.arccos(evecs[0][0])
+
+    ## evals are variance along principle axes
+    rx,ry = evals**0.5 ## in dex
+    cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+    return cx,cy,rx,ry,angle,evecs
+
+
 def fitSkewGauss(xs,ys,yerrs=None):
     ## initial parameter estimate
     p0 = [np.sum(xs*ys)/np.sum(ys),(np.max(xs)-np.min(xs))/4.,np.max(ys),.5]
@@ -314,17 +391,23 @@ def fitLeastSq(fn,p0,xs,ys,yerrs=None,log_fit=0):
     
 def modelVariance(fn,xs,ys,yerrs=None):
     """takes a function and returns the variance compared to some data"""
-    if yerrs==None:
+    if yerrs is None:
         yerrs=[1]*len(xs)
     return sum([(fn(x)-ys[i])**2./yerrs[i]**2. for i,x in enumerate(xs)])
 
-def brokenPowerLaw(a1,b1,a2,b2,xoff,x):
+def brokenPowerLaw(x,a1,b1,a2,xoff):
     """A helper function to evaluate a broken power law given some
         parameters-- since lambda functions create unwanted aliases"""
-    if x < xoff:
-        return a1*x+b1
-    else:
-        return a2*x+b2
+
+    ## handle when we're passed an array, the lazy way
+    try:
+        iter(x)
+        return np.array([brokenPowerLaw(this_x,a1,b1,a2,xoff) for this_x in x])
+    except:
+        if x < xoff:
+            return a1*x+b1
+        else:
+            return a2*(x-xoff)+(a1*xoff+b1)
 
 def fit_broken_AXb(xs,ys,yerrs=None):
     """Finds the best fit broken linear trendline for a set of x and y 
@@ -340,32 +423,45 @@ def fit_broken_AXb(xs,ys,yerrs=None):
     """
     vars=[]
     models=[]
-    if yerrs==None:
+
+    xs,ys = pairFilter(xs,ys,np.isfinite)
+
+    if yerrs is None:
         yerrs=np.array([1]*len(xs))
+
     for i,xoff in enumerate(xs):
         if i==0 or i==1 or i==(len(xs)-2) or i==(len(xs)-1):
             #skip the first  and second guy, lol
             continue
-        b1,a1=fitAXb(xs[:i],ys[:i],yerrs[:i])
-        b2,a2=fitAXb(xs[i:],ys[i:],yerrs[i:])
-        params=(a1,b1,a2,b2,xoff)
+        these_xs = xs[:i]
+        ## fit a line to the first half
+        a1,b1=fitAXb(these_xs,ys[:i],yerrs[:i])
+
+        ## fit a line to the second half, 
+        ##   offset the points and pin them 
+        ##   to the end of the first line. 
+        a2,b2=fitAXb(
+            xs[i:]-xoff,
+            ys[i:],
+            yerrs[i:],
+            fixed_b=a1*xoff+b1)
+            
+        params=(a1,b1,a2,xoff)
         models+=[params]
-        model=lambda x: brokenPowerLaw(params[0],params[1],params[2],params[3],
-            params[4],x)
+        model=lambda x: brokenPowerLaw(x,*params)
         vars+=[modelVariance(model,xs,ys,yerrs)]
 
     #there is a hellish feature of python that refuses to evaluate lambda functions
     #so i can't save the models in their own list, I have to save their parameters
     #and recreate the best model
     params=models[np.argmin(vars)]
-    model=lambda x: brokenPowerLaw(params[0],params[1],params[2],params[3],
-        params[4],x)
+    model=lambda x: brokenPowerLaw(x,*params)
+
     return model,params
 
 def fitExponential(xs,ys):
     """Fits an exponential log y = ax +b => y = e^b e^(ax)"""
-    b,a = fitAXb(xs[ys>0],np.log(ys[ys>0]),yerrs=None)
-    return (b,a)
+    return fitAXb(xs[ys>0],np.log(ys[ys>0]),yerrs=None)
 
 
 #math functions (trig and linear algebra...)
@@ -412,6 +508,120 @@ def rotationMatrixZ(theta):
             [-np.sin(theta),np.cos(theta),0],
             [0,0,1]
         ])
+
+def getThetasTaitBryan(angMom):
+    """ as Euler angles but xyz vs. zxz"""
+    theta_TB = np.arctan2(angMom[1],np.sqrt(angMom[0]**2+angMom[2]**2))*180/np.pi
+    phi_TB = np.arctan2(-angMom[0],angMom[2])*180/np.pi
+
+    #new_angMom = rotateEuler(
+        #theta_TB,phi_TB,0,
+        #angMom,
+        #order='xyz',loud=False)
+    #print('old:',angMom,'new:',new_angMom)
+
+    ## RETURNS DEGREES
+    return theta_TB,phi_TB
+
+def rotateEuler(
+    theta,phi,psi,
+    pos,
+    order='xyz', ## defaults to Tait-Bryan, actually
+    recenter=False,
+    rotation_point=None,
+    loud=True,
+    inverse=False):
+
+    if rotation_point is None:
+        rotation_point = np.zeros(3)
+    pos=pos-rotation_point
+    ## if need to rotate at all really -__-
+    if theta==0 and phi==0 and psi==0:
+        return pos
+    # rotate particles by angle derived from frame number
+    theta_rad = np.pi*theta/ 180
+    phi_rad   = np.pi*phi  / 180
+    psi_rad   = np.pi*psi  / 180
+
+    c1 = np.cos(theta_rad)
+    s1 = np.sin(theta_rad)
+    c2 = np.cos(phi_rad)
+    s2 = np.sin(phi_rad)
+    c3 = np.cos(psi_rad)
+    s3 = np.sin(psi_rad)
+
+    # construct rotation matrix
+    ##  Tait-Bryan angles
+    if order == 'xyz':
+        if loud:
+            print('Using Tait-Bryan angles (xyz). Change with order=zxz.')
+        rot_matrix = np.array([
+            [c2*c3           , - c2*s3         , s2    ],
+            [c1*s3 + s1*s2*c3, c1*c3 - s1*s2*s3, -s1*c2],
+            [s1*s3 - c1*s2*c3, s1*c3 + c1*s2*s3, c1*c2 ]],
+            dtype = np.float32)
+
+    ##  classic Euler angles
+    elif order == 'zxz':
+        if loud:
+            print('Using Euler angles (zxz). Change with order=xyz.')
+        rot_matrix = np.array([
+            [c1*c3 - c2*s1*s3, -c1*s3 - c2*c3*s1, s1*s2 ],
+            [c3*s1 + c1*c2*s3, c1*c2*c3 - s1*s3 , -c1*s2],
+            [s2*s3           , c3*s2            , c2    ]])
+    else:
+        raise Exception("Bad order")
+
+    ## the inverse of a rotation matrix is its tranpose
+    if inverse:
+        rot_matrix = rot_matrix.T
+
+    ## rotate about each axis with a matrix operation
+    pos_rot = np.matmul(rot_matrix,pos.T).T
+
+    ## on 11/23/2018 (the day after thanksgiving) I discovered that 
+    ##  numpy will change to column major order or something if you
+    ##  take the transpose of a transpose, as above. Try commenting out
+    ##  this line and see what garbage you get. ridiculous.
+    ##  also, C -> "C standard" i.e. row major order. lmfao
+    pos_rot = np.array(pos_rot,order='C')
+    
+    ### add the frame_center back
+    if not recenter:
+        pos_rot+=rotation_point
+
+    ## can never be too careful that we're float32
+    return pos_rot
+
+def applyRandomOrientation(coords,vels,random_orientation):
+    ## interpret the random_orientation variable as a seed
+    np.random.seed(random_orientation)
+
+    ## position angles of random orientation vector 
+    theta = np.arccos(1-2*np.random.random())
+    phi = np.random.random()*2*np.pi
+
+    ## convert from position angles to rotation angles
+    orientation_vector = np.array([
+        np.sin(theta)*np.cos(phi),
+        np.sin(theta)*np.sin(phi),
+        np.cos(theta)])
+    new_theta,new_phi = getThetasTaitBryan(orientation_vector)
+
+    ## rotate the coordinates and velocities 
+    if coords is not None:
+        coords = rotateEuler(new_theta,new_phi,0,coords,loud=False)
+    if vels is not None:
+        vels = rotateEuler(new_theta,new_phi,0,vels,loud=False)
+
+    return orientation_vector,new_theta,new_phi,coords,vels
+
+def rotateSnapshot(which_snap,theta,phi,psi):
+    if 'Coordinates' in which_snap:
+        which_snap['Coordinates']=rotateEuler(theta,phi,psi,which_snap['Coordinates'],loud=False)
+    if 'Velocities' in which_snap:
+        which_snap['Velocities']=rotateEuler(theta,phi,psi,which_snap['Velocities'],loud=False)
+    return which_snap
 
 #list operations
 def substep(arr,N):
@@ -479,13 +689,21 @@ def findIntersection(xs,ys,ys1):
     argmin = np.argmin((ys-ys1)**2)
     return xs[argmin],ys[argmin]
 
+def getFWHM(xs,ys):
+    argmax = np.argmax(ys)
+    xl,yl = findIntersection(xs[:argmax],(ys/np.max(ys))[:argmax],0.5)
+    xr,yr = findIntersection(xs[argmax:],(ys/np.max(ys))[argmax:],0.5)
+    return (xr-xl),(xl,xr,yl,yr)
+    
+
 def boxcar_average(
     time_edges,
     ys,
     boxcar_width,
     loud=False,
     average=True, ## vs. just counting non-nan entries in a window
-    edges = True):
+    edges = True,
+    assign='right'):
 
     """
     for lists with many nans need to first run w/ average=False, then 
@@ -528,7 +746,199 @@ def boxcar_average(
     if average:
         ys = ys/N
     ys = np.append([np.nan]*(N-1),ys)
+
+    ## because conditionals should default true
+    if assign == 'right':
+        pass
+    ## shift left by a whole window width
+    elif assign == 'left':
+        ys[:-N] = ys[N:]
+        ys[-N:] = np.nan
+    ## shift left by a half window width
+    elif assign == 'center':
+        n = max(int(N/2),1)
+        ys[:-n] = ys[n:]
+        ys[-n:] = np.nan
+    else:
+        raise ValueError("unknown bin assignment %s, should be left, right, or center"%assign) 
+
     return time_edges[:],ys
+    
+def smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
+
+    if log:
+        ys = np.log10(ys)
+
+    times = np.arange(np.nanmax(xs),np.nanmin(xs)-0.01,-0.01)[::-1]
+    fn = interp1d(
+        xs,
+        ys,
+        fill_value=np.nan,
+        bounds_error=False)
+    values = fn(times)
+
+    smooth_xs,smooth_ys = boxcar_average(times,values,smooth,assign=assign)
+    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth,assign=assign)
+    smooth_xs,smooth_nan_count = boxcar_average(times,np.isnan(values),smooth,assign=assign)
+
+    ## exclude region that we filled with nans, or might have its
+    ##  average otherwise diluted
+
+    dx = smooth_xs[1]-smooth_xs[0]
+    if assign == 'center':
+        dtop_should_be = int(smooth/2/dx)
+        dbottom_should_be = int(smooth/2/dx)
+    elif assign == 'left':
+        dtop_should_be = int(smooth/dx)
+        dbottom_should_be = 0
+    elif assign == 'right':
+        dtop_should_be = 0
+        dbottom_should_be = int(smooth/dx)
+    else:
+        raise NotImplementedError("invalid assign")
+
+    if dtop_should_be !=0:
+        smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
+        smooth_ys = smooth_ys[dbottom_should_be:-dtop_should_be]
+        smooth_ys2 = smooth_ys2[dbottom_should_be:-dtop_should_be]
+        smooth_nan_count = smooth_nan_count[dbottom_should_be:-dtop_should_be]
+        
+    else:
+        smooth_xs = smooth_xs[dbottom_should_be:]
+        smooth_ys = smooth_ys[dbottom_should_be:]
+        smooth_ys2 = smooth_ys2[dbottom_should_be:]
+        smooth_nan_count = smooth_nan_count[dbottom_should_be:]
+
+    ## TODO
+    ## this is hard-coded for double-smoothing
+    ##  with the same window. one day i may regret this
+    nan_mask = smooth_nan_count  > 0
+    ## if there is an extra window's worth of nans
+    ##  we must have smoothing this before (or maybe
+    ##  we're smoothing a running scatter)
+    ##  let's get rid of all the nan's and hope that there
+    ##  aren't any that were in the middle, just at the edges
+    ##  from not having enough points in the window :\
+    if np.sum(nan_mask!=0) == (int(smooth/dx)):
+        nan_mask = smooth_nan_count == 0
+        smooth_xs = smooth_xs[nan_mask]
+        smooth_ys = smooth_ys[nan_mask]
+        smooth_ys2 = smooth_ys2[nan_mask]
+
+    ## need to resample what we had to make sure points are evenly spaced
+    if len(np.unique(np.diff(smooth_xs))) != 1:
+        ## evenly spaced times
+        times = np.arange(smooth_xs.max(),smooth_xs.min()-0.01,-0.01)[::-1]
+
+        ## replace ys
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys = fn(times)
+
+        ## replace ys2
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys2,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys2 = fn(times)
+        
+        ## replace smooth_xs
+        smooth_xs = times
+
+    ## have to skip first window's width of points
+    sigmas = (smooth_ys2-smooth_ys**2)**0.5
+
+
+    if log:
+        lowers = 10**(smooth_ys-sigmas)
+        uppers = 10**(smooth_ys+sigmas)
+        smooth_ys = 10**smooth_ys
+        sigmas = sigmas ## dex
+        ys = 10**ys
+    else:
+        lowers = smooth_ys-sigmas
+        uppers = smooth_ys+sigmas
+    
+    return smooth_xs,smooth_ys,sigmas,lowers,uppers
+
+def find_first_window(xs,ys,bool_fn,window,last=False):
+    ## averages boolean over window,
+    ##  by taking the floor, it requires that 
+    ##  all times in the window fulfill the boolean
+    bool_xs,bool_ys = boxcar_average(
+        xs,
+        bool_fn(xs,ys),
+        window) 
+
+    bool_ys[np.isfinite(ys)] = np.floor(bool_ys[np.isfinite(ys)]).astype(float)
+    bool_ys[np.isnan(ys)] = np.nan
+
+    ## no window matches
+    if np.nansum(bool_ys) == 0:
+        return np.nan,np.nan
+
+    ## find the first instance of true
+    rindex = np.nanargmax(bool_ys==1)
+
+    if last:
+        ## nightmare code that finds the last instance
+        ##  of a true in a time series
+
+        offset = None
+        while offset != 0:
+            ## find the next time the time series has a false
+            next_false = np.nanargmax(bool_ys[rindex:]==0)
+
+            ## find the next time there's a true after that false
+            ##  3 cases since we're starting on a false:
+            ##  1) there are no more trues -> offset=0
+            ##  2) there are only trues following this false -> offset=1, will next be 0
+            ##  3) there are trues and falses -> offset = distance to next True
+            offset = np.nanargmax(bool_ys[rindex+next_false:])
+
+            ## if that false eventually has a true after it, let's
+            ##  move there and start the process over again.
+            if offset > 0:
+                rindex += offset + next_false 
+        
+    ## finds the point a window's width away from the right edge
+    lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
+
+    return bool_xs[lindex],bool_xs[rindex]
+
+def find_last_instance(xs,ys,bool_fn):
+    bool_ys = bool_fn(xs,ys)
+    if np.nansum(bool_ys) == 0:
+        return np.nan,np.nan
+    rev_index = np.argmin(np.logical_not(bool_ys[::-1]))
+    return xs[xs.size-rev_index-(rev_index==0)],ys[xs.size-rev_index-(rev_index==0)]
+    
+def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
+
+    ## calculate the slope of the curve
+    slopes = np.diff(ys)/np.diff(xs)
+    xs = xs[1:]
+
+    ## smooth the slope if requested
+    if smooth is not None:
+        ## x could also be uniform and this will work
+        xs,slopes,foo,bar,foo = smooth_x_varying_curve(xs,slopes,smooth)
+    
+    xs = xs[1:]
+    ## find where slope changes sign
+    zeros = xs[np.diff(slopes>0).astype(bool)]
+
+    if ax is not None:
+        ax.plot(xs,slopes[1:])
+        ax.axhline(0,ls='--',c='k')
+        #for zero in zeros:
+            #ax.axvline(zero)
+
+    return zeros
     
 ###### DIRECTORY STUFF ######
 def add_directory_tree(datadir):
@@ -536,12 +946,12 @@ def add_directory_tree(datadir):
     if not os.path.isdir(datadir):
         directories=datadir.split('/')
         directories_to_make=[]
-        for i in xrange(len(directories)):
+        for i in range(len(directories)):
             trialdir='/'.join(directories[:-i])
             if os.path.isdir(trialdir):
                 i-=1
                 break
-        for j in xrange(i):
+        for j in range(i):
             toadd='/'.join(directories[:-j-1])
             directories_to_make+=[toadd]
         directories_to_make+=[datadir]
@@ -600,22 +1010,15 @@ def extractRectangularVolumeIndices(rs,rcom,radius,height):
    return np.logical_and(np.logical_and(x_indices,y_indices),z_indices)
 
 def extractCylindricalVolumeIndices(coords,r,h,rcom=None):
-    if rcom==None:
+    if rcom is None:
         rcom = np.array([0,0,0])
     gindices = np.sum((coords[:,:2])**2.,axis=1) < r**2.
     gzindices = (coords[:,2])**2. < h**2.
     indices = np.logical_and(gindices,gzindices)
     return indices
 
-def extractSphericalVolumeIndices(rs,rcom,radius2,rotationAngle=None):
-    if rotationAngle != None : 
-        rs = np.dot(rotationMatrix(rotationAngle),rs.T).T
-        rcom = np.dot(rotationMatrix(rotationAngle),rcom)
-    
-    indices = np.sum((rs - rcom)**2.,axis=1) < radius2
-    if rotationAngle!=None:
-        return indices,rs,rcom
-    return indices
+def extractSphericalVolumeIndices(rs,rcom,radius):
+    return np.sum((rs - rcom)**2.,axis=1) < radius**2
 
 ## FIRE helper functions
 def getSpeedOfSound(U_code):
@@ -776,3 +1179,38 @@ try:
 except ImportError:
     print("Couldn't import numba. Missing:")
     print("abg_python.all_utils.get_cylindrical_velocities")
+
+def getVcom(masses,velocities):
+    assert np.sum(masses) > 0 
+    return np.sum(masses[:,None]*velocities,axis=0)/np.sum(masses)
+
+def iterativeCoM(coords,masses,n=4,r0=np.array([0,0,0])):
+    rcom = r0
+    radius = 1e10
+    for i in range(n):
+        mask = extractSphericalVolumeIndices(coords,rcom,radius)
+        rcom = np.sum(coords[mask]*masses[mask][:,None],axis=0)/np.sum(masses[mask])
+        print(radius,rcom)
+        radius = 1000/3**i
+    return rcom
+
+def getAngularMomentum(vectors,masses,velocities):
+    return np.sum(np.cross(vectors,masses[:,None]*velocities),axis=0)
+
+def getAngularMomentumSquared(vectors,masses,velocities):
+    ltot = np.sum(# sum in quadrature |lx|,|ly|,|lz|
+        np.sum( # sum over particles 
+            np.abs(np.cross( # |L| = |(r x mv )|
+                vectors,
+                masses[:,None]*velocities))
+            ,axis=0)**2
+        )**0.5 # msun - kpc - km/s units of L
+
+    return ltot**2
+
+    Li = np.cross(vectors,masses[:,None]*velocities)
+    L2i = np.sum(Li*Li,axis=1)
+
+    return np.sum(L2i)
+
+

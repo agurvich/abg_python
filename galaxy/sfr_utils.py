@@ -143,14 +143,14 @@ class SFR_plotter(object):
             ax.axvline(xs[bursty_index],c=color,ls='--',alpha=0.65)
 
         if plot_grayBand:
-            factor = 3
+            factor = 2
             ## should we plot a band showing the running average of the
             ##  the SFR +- a factor of sqrt(3)?
             if renormed:
                 ax.fill_between(
                     xs,
-                    np.ones(xs.size)/factor**0.5,
-                    np.ones(xs.size)*factor**0.5,
+                    np.ones(xs.size)/factor,
+                    np.ones(xs.size)*factor,
                     lw=0,
                     color='gray',
                     alpha=0.25)
@@ -159,7 +159,7 @@ class SFR_plotter(object):
                     ax,
                     want_redshift_xs=redshift_xs,
                     color='gray',
-                    factor=3)
+                    factor=factor)
     
 
         if near is not None:
@@ -193,7 +193,7 @@ class SFR_plotter(object):
         window_size=0.3,
         want_redshift_xs=0,
         color=None,
-        factor=3):
+        factor=2): ## approx 0.3 dex
 
         color = self.plot_color if color is None else color
 
@@ -214,8 +214,8 @@ class SFR_plotter(object):
             ## if we already divided by this function then we just want a constant window
             ax.fill_between(
                 xs[1:],
-                avg_long/factor**0.5,
-                avg_long*factor**0.5,
+                avg_long/factor,
+                avg_long*factor,
                 lw=0,
                 color=color,
                 alpha=0.25)
@@ -245,7 +245,8 @@ class SFR_helper(SFR_plotter):
         **kwargs):
         """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
 
-        sfr_string = self.get_sfr_string(DT)
+
+        sfr_string = self.get_sfr_string(0.001)
         ### begin wrapped
         @metadata_cache(
             "SFR_%s"%sfr_string,[
@@ -256,7 +257,8 @@ class SFR_helper(SFR_plotter):
             use_metadata=use_metadata,
             save_meta=save_meta,
             assert_cached=assert_cached,
-            loud=loud)
+            loud=loud,
+            force_from_file=True)
         def compute_SFH(
             self,
             radial_thresh=None):
@@ -278,11 +280,11 @@ class SFR_helper(SFR_plotter):
                     self.snapdir,
                     finsnap,
                     datadir=os.path.dirname(self.datadir),
-                    data_name=self.data_name,
+                    datadir_name=self.datadir_name,
                     ahf_path=self.ahf_path,
                     ahf_fname=self.ahf_fname)
                 print(temp_fin_gal,'loaded to compute SFR archaeologically')
-
+                return temp_fin_gal.get_SFH(radial_thresh=radial_thresh)
 
             ## do we need to extract the sub_star_snap? if 
             ##  finsnap is self.snapnum maybe not...
@@ -301,10 +303,10 @@ class SFR_helper(SFR_plotter):
             smasses = all_utils.get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
 
             ## calculate the star formation history
-            SFTs,timemax = temp_fin_gal.current_time_Gyr - star_snap['AgeGyr'],temp_fin_gal.current_time_Gyr
+            SFTs,timemax = star_snap['TimeGyr'] - star_snap['AgeGyr'],star_snap['TimeGyr']
 
             ## make sure our last bin ends at the current time
-            time_edges = np.arange(temp_fin_gal.current_time_Gyr,0,-DT)[::-1]
+            time_edges = np.arange(star_snap['TimeGyr'],0,-DT)[::-1]
 
             SFRs,SFH_time_edges = arch_method(
                 smasses,
@@ -332,7 +334,19 @@ class SFR_helper(SFR_plotter):
 
             return SFH_time_edges, SFRs, SFR_metals, DT
 
-        return compute_SFH(self,**kwargs)
+        return_value = list(compute_SFH(self,**kwargs))
+
+        return_value[-1] = DT
+        foo,return_value[1] = all_utils.boxcar_average(
+            return_value[0],
+            return_value[1],
+            DT)
+
+        ## update the attributes of the instance
+        self.SFRs = return_value[1]
+        self.SFH_dt = return_value[-1]
+
+        return return_value
 
     def downsample_SFH(
         self,
@@ -414,7 +428,7 @@ class SFR_helper(SFR_plotter):
         assert_cached=False,
         loud=True,
         **kwargs):
-        """ thresh=0.5, ## dex of scatter
+        """ thresh=0.3, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within"""
 
         ### begin wrapped
@@ -430,40 +444,147 @@ class SFR_helper(SFR_plotter):
             loud=loud)
         def compute_bursty_regime(
             self,
-            thresh=0.3, ## dex of scatter
+            thresh=None, ## dex of scatter
             window_size=0.3, ## size of window to compute scatter within
+            mode=None,
+            thresh_window=1.5, ## size of window must remain below threshold for
             ):
+                
+            if thresh is None:
+                thresh = 0.3#np.log10(2)
+
+            if self.snapnum != self.finsnap:
+                from abg_python.galaxy.gal_utils import Galaxy
+                ## have to open a whole new galaxy object!!
+                temp_fin_gal = Galaxy(
+                    self.name,
+                    self.snapdir,
+                    self.finsnap,
+                    datadir=os.path.dirname(self.datadir),
+                    datadir_name=self.datadir_name,
+                    ahf_path=self.ahf_path,
+                    ahf_fname=self.ahf_fname)
+                return temp_fin_gal.get_bursty_regime(
+                    thresh=thresh,
+                    window_size=window_size,
+                    numerator_time=numerator_time,loud=False)
 
             ## ensure that we have the 1 Myr SFH loaded
-            self.get_SFH(DT=0.001,loud=False)
+            try:
+                self.get_SFH(
+                    DT=0.001,
+                    loud=False,
+                    use_metadata=True,
+                    assert_cached=True)
+            except:
+                self.get_SFH(
+                    DT=0.001,
+                    loud=False,
+                    save_meta=save_meta,
+                    use_metadata=use_metadata,
+                    assert_cached=assert_cached)
 
 
-            adjusted_sfrs = self.SFRs + self.SFRs[self.SFRs>0].min()/10
+            adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
+ 
+            if mode == 'peaktrough':
 
-            ## calculate the relative scatter as sigma/y
-            xs,sfh_long = all_utils.boxcar_average(
+                rel_scatters = np.zeros(adjusted_sfrs.size)
+                per_ls = np.zeros(adjusted_sfrs.size)
+                per_rs = np.zeros(adjusted_sfrs.size)
+                medians = np.zeros(adjusted_sfrs.size)
+                
+                this_window_size = 0.05 #window_size
+                window_size_n = int(this_window_size/self.SFH_dt/2)
+
+                for i in range(adjusted_sfrs.size):
+                    window = adjusted_sfrs[
+                        max(0,i-window_size_n):
+                        min(adjusted_sfrs.size-1,i+window_size_n)]
+
+                    median = np.median(window)
+                    per_l,per_r = np.quantile(
+                        window/median,
+                        [0.1,0.9])
+
+                    rel_scatters[i] = (per_r - per_l)
+                    #rel_scatters[i] = (per_r / per_l)
+                    per_ls[i] = per_l
+                    per_rs[i] = per_r
+                    medians[i] = median
+                xs,rel_scatters = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    rel_scatters,
+                    0.3,
+                    assign='center')
+
+                self.SFH_scatter_per_ls = per_ls
+                self.SFH_scatter_per_rs = per_rs
+                self.SFH_scatter_medians = medians
+
+            elif mode == 'anna':
+                ## calculate scatter using 10 Myr running average in 
+                ##  window_size sized window
+                xs,adjusted_sfrs = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs,
+                    0.01,
+                    loud=True)
+
+                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs,
+                    0.5,#window_size,
+                    loud=True,
+                    assign='center')
+
+                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    adjusted_sfrs**2,
+                    0.5,#window_size,
+                    loud=True,
+                    assign='center')
+
+                ## <std>/<SFR>
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
+            else:
+                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs),
+                    window_size,
+                    loud=True,
+                    assign='center')
+
+                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                    self.SFH_time_edges,
+                    np.log10(adjusted_sfrs)**2,
+                    window_size,
+                    loud=True,
+                    assign='center')
+
+                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
+
+            ## find the first 300 Myr window that is consistently below the threshold
+            #print(thresh, thresh_window,rel_scatters)
+            l_window, r_window = all_utils.find_first_window(
                 self.SFH_time_edges,
-                np.log10(adjusted_sfrs),
-                window_size,
-                loud=True)
+                rel_scatters,
+                lambda x,y: y < thresh,
+                thresh_window,
+                last=True)
 
-            xs2,sfh_long_2 = all_utils.boxcar_average(
-                self.SFH_time_edges,
-                np.log10(adjusted_sfrs)**2,window_size)
+            #print(mode,l_window,r_window,rel_scatters)
+            tindex = np.nan
+            bursty_redshift = np.nan
+            if np.isfinite(l_window):
+                tindex = np.argmin((l_window-self.SFH_time_edges)**2)
+                bursty_redshift = approximateRedshiftFromGyr(
+                    self.header['HubbleParam'],
+                    self.header['Omega0'],
+                    np.array([l_window]) )[0]
 
-            rel_scatters = (sfh_long_2-sfh_long**2)**0.5/np.abs(sfh_long)
-
-            ## have to reverse the rel_scatters to find the "last point of crossing" 
-            ##  after which the rel_scatter doesn't cross the threshold. 
-            tindex = np.argmax(rel_scatters[::-1] > thresh)
-            tindex = rel_scatters.size-tindex-1
-
-            bursty_redshift = approximateRedshiftFromGyr(
-                self.header['HubbleParam'],
-                self.header['Omega0'],
-                np.array([xs[tindex]]))[0]
-
-            return tindex, xs[tindex], bursty_redshift, rel_scatters
+            #print(mode,tindex,l_window,r_window,bursty_redshift,rel_scatters)
+            return tindex, l_window, bursty_redshift, rel_scatters
         
         return compute_bursty_regime(self,**kwargs)
 

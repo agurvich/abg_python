@@ -1,6 +1,8 @@
 import numpy as np 
 from abg_python.all_utils import *
 
+import h5py
+
 
 ### Constants
 G = 4.301e-9 #km^2 Mpc MSun^-1 s^-2
@@ -78,7 +80,7 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
 def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs):
 
     ## many zs..., uniformly in log(1+z) from z=0 to z=15
-    zs = 10**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
+    zs = 10**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,10**4]),endpoint=True)-1
 
     ## standard FIRE cosmology...
     #HubbleParam = 0.7
@@ -114,7 +116,9 @@ def getAgesGyrs(open_snapshot):
     cur_time = open_snapshot['Time']
     HubbleParam = open_snapshot['HubbleParam']
     Omega0 = open_snapshot['Omega0']
-    return convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+    ages = convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
+    ages[ages<0] = 0 ## why does this happen? only noticed once, m12i_res7100_md@526
+    return ages
 
 def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     if snapshot_handle==None:
@@ -132,6 +136,46 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
+
+## rockstar file opening
+def load_rockstar(
+    snapdir,snapnum,
+    rockstar_path=None,
+    extra_names_to_read=None,
+    fname=None,
+    which_host=0):
+
+
+    ## does not allow for one to get main_halo indexed values out
+    extra_names_to_read = [] if extra_names_to_read is None else extra_names_to_read
+
+    if rockstar_path is None:
+        rockstar_path = '../halo/rockstar_dm/'
+        rockstar_path = os.path.join(snapdir,rockstar_path)
+
+    fname = 'halo_%03d.hdf5'%snapnum if fname is None else fname
+
+
+    if which_host == 0:
+        which_host = 'host'
+    elif which_host == 1:
+        which_host = 'host2'
+    
+    path = os.path.join(rockstar_path,'catalog_hdf5',fname)
+
+    with h5py.File(path,'r') as handle:
+        main_host_index = handle[which_host+'.index'][0]
+        ## in comoving kpc (NOT comoving kpc/h)
+        rcom = handle['position'][main_host_index]
+        scalefactor = handle['snapshot:scalefactor'][()]
+        #vcom = handle['velocity'][main_host_index]
+
+        ## in physical kpc? lmao
+        rvir = handle['radius'][main_host_index]
+        extra_values = [handle[key] for key in extra_names_to_read]
+
+    return tuple(np.append([rcom*scalefactor,rvir],extra_values))
+        
 
 ## AHF file opening
 def load_AHF(
@@ -214,7 +258,7 @@ def load_AHF(
     length_unit_fact = 1/hubble*(1/(1+current_redshift))
 
     rvir = row[names_to_read.index('Rvir')]*length_unit_fact
-    return_val = [scom, rvir]
+    return_val = np.array([scom, rvir],dtype=object)
 
     ## for everything that comes after Rvir
     for name in names_to_read[names_to_read.index('Rvir')+1:]:
@@ -223,7 +267,36 @@ def load_AHF(
         else:
             unit_fact = 1
             print(name,'does not have units')
-        return_val = np.append(return_val,row[names_to_read.index(name)]*unit_fact)
+        return_val = np.append(
+            return_val,
+            np.array(
+                row[names_to_read.index(name)]*unit_fact,
+                dtype=object))
 
     return return_val
 
+def addRedshiftAxis(ax,
+    HubbleParam,
+    Omega0,zs=None):
+    if zs is None:
+        zs = np.array([0,0.1,0.25,0.5,1,2,4])[::-1]
+    #0**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
+    ## standard FIRE cosmology... #HubbleParam = 0.7 #Omega0 = 0.272
+    scale_factors = 1./(1+zs)
+    close_times = convertStellarAges(
+        HubbleParam,
+        Omega0,
+        1e-16,
+        scale_factors)
+
+    ax1 = ax.twiny()
+    ax1.set_xticks(close_times)
+
+    ax1.set_xlabel('Redshift')
+    #ax.set_xlim(0,close_times[-1])
+    #ax1.set_xlim(0,close_times[-1])
+    ax.set_xlim(0,14)
+    ax1.set_xlim(0,14)
+
+    ax1.set_xticklabels(["%g"%red for red in zs])
+    return ax1

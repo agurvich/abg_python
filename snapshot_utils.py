@@ -1,4 +1,4 @@
-import h5py,sys,os
+import h5py,sys,os,copy
 import numpy as np
 from abg_python.all_utils import getTemperature
 from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
@@ -38,7 +38,7 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
             unit_fact*=ascale
         if pkey in ['Density']:
             unit_fact*=(hinv/((ascale*hinv)**3))
-        if pkey in ['Velocity']:
+        if pkey in ['Velocities']:
             unit_fact*=ascale**0.5
     return unit_fact
 
@@ -50,7 +50,7 @@ def openSnapshot(
     fnames = None,
     chimes_keys = [],
     abg_subsnap = 0,
-    snapdir_name='',
+    snapdir_name='snapdir',
     loud = 0,
     no_header_keys = 0):
     """
@@ -112,6 +112,7 @@ def openSnapshot(
 
     ## save the ordering of the files if necessary
     new_dictionary['fnames']=fnames
+    new_dictionary['ParticleType'] = ptype
     
     ## need these keys to calculate the temperature
     ##  create this list IFF I want temperature but NOT these keys in the dictionary
@@ -129,7 +130,7 @@ def openSnapshot(
         if fname[-5:] != '.hdf5':
             ## this is some weird broken file, idk, like 
             ##  .snapshot_296.1.hdf5.VsOrnF which I encountered once
-            fnames.pop(i)
+            fnames.pop(i-popped)
             popped+=1
 
     for i,fname in enumerate(sorted(fnames)):
@@ -275,36 +276,139 @@ try:
     ## pandas dataframe stuff
     def openSnapshotToDF(snapdir,snapnum,parttype,**kwargs):
         ## can't keep the header keys in there and add them to the dataframe
-        snap = openSnapshot(snapdir,snapnum,parttype,no_header_keys=1,**kwargs)
+        snap = openSnapshot(snapdir,snapnum,parttype,**kwargs)
+        return convertSnapToDF(snap)
+
+    def convertSnapToDF(snap,npart_key='Coordinates',keys_to_extract=None):
+
+        copy_snap = copy.copy(snap)
+
+        ## figure out how many particles there are
+        if npart_key not in snap:
+            raise KeyError(
+                "%s is not in snap, pass npart_key,"%npart_key+
+                " the name of any particle array in snap.")
+        npart = snap[npart_key].shape[0]
+
+        ## filter out header keys and anything not requested
+        for key in snap.keys():
+            value = snap[key]
+            if (len(np.shape(value)) == 0 or
+                np.shape(value)[0] != npart or
+                (keys_to_extract is not None and
+                    key not in keys_to_extract)):
+                copy_snap.pop(key)
 
         ## handle multidimensional array data, if it's been requested
-        if 'Coordinates' in snap:
-            coords = snap.pop('Coordinates')
-            snap['xs'],snap['ys'],snap['zs']=coords.T
+        if 'Coordinates' in copy_snap:
+            coords = copy_snap.pop('Coordinates')
+            copy_snap['coord_xs'],copy_snap['coord_ys'],copy_snap['coord_zs']=coords.T
 
-        if 'Velocities' in snap:
-            vels = snap.pop('Velocities')
-            snap['vxs'],snap['vys'],snap['vzs']=vels.T
+        if 'Velocities' in copy_snap:
+            vels = copy_snap.pop('Velocities')
+            copy_snap['vxs'],copy_snap['vys'],copy_snap['vzs']=vels.T
 
-        if 'Metallicity' in snap:
-            metallicity = snap.pop('Metallicity')
+        if 'Metallicity' in copy_snap:
+            metallicity = copy_snap.pop('Metallicity')
 
             ## flatten the various metallicity arrays
             for i,zarray in enumerate(metallicity.T):
-                snap['met%d'%i]=zarray
+                copy_snap['met%d'%i]=zarray
         
         ## are the particle IDs in the snap? then index by them
         if 'ParticleIDs' in snap:
-            ids = snap.pop('ParticleIDs')
-            snap_df = pd.DataFrame(snap,index=ids)
+            ids = copy_snap.pop('ParticleIDs')
+            index = [ids]
+            if 'ParticleChildIDsNumber' in snap:
+                child_ids = copy_snap.pop('ParticleChildIDsNumber')
+                index.append(child_ids)
+            snap_df = pd.DataFrame(copy_snap,index=index)
         else:
             print("You didn't ask for IDs, so I'm not indexing by them")
-            snap_df = pd.DataFrame(snap)
+            snap_df = pd.DataFrame(copy_snap)
+
+        snap_df = snap_df.sort_index()
 
         return snap_df
+
+    def index_match_snapshots_with_dataframes(
+        prev_sub_snap,
+        next_sub_snap,
+        extra_keys_to_extract=None):
+        """
+        keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+        """
+        
+        init=time.time()
+        print('Creating a merged DF')
+        keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+        if extra_keys_to_extract is not None:
+            keys_to_extract += list(extra_keys_to_extract)
+
+        ## convert snapshot dictionaries to pandas dataframes
+        prev_df_snap = convertSnapToDF(prev_sub_snap,
+            keys_to_extract=keys_to_extract)
+        
+        ## apparently index operations go faster if you sort by index
+        prev_df_snap.sort_index(inplace=True)
+        
+        next_df_snap = convertSnapToDF(next_sub_snap,
+            keys_to_extract=keys_to_extract)
+        
+        ## apparently index operations go faster if you sort by index
+        next_df_snap.sort_index(inplace=True)
+        
+        
+        ## remove particles that do not exist in the previous snapshot, 
+        ##  difficult to determine which particle they split from
+        next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
+        
+        ## merge rows of dataframes based on 
+        prev_next_merged_df_snap = pd.merge(
+            prev_df_snap,
+            next_df_snap_reduced,
+            how='inner',
+            on=prev_df_snap.index,
+            suffixes=('','_next'),
+            copy=False).set_index('key_0')
+        
+        ## remove particles that do not exist in the next snapshot, 
+        ##  difficult to tell if they turned into stars or were merged. 
+        prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
+        
+        return prev_next_merged_df_snap
+
+    def make_interpolated_snap(t,time_merged_df,t0,t1):
+        interp_snap = {}
+        for key in time_merged_df.keys():
+            if '_next' in key:
+                continue
+            elif key in ['coord_xs','coord_ys','coord_zs']:
+                continue
+            interp_snap[key] = linear_interpolate(
+                getattr(time_merged_df,key),
+                getattr(time_merged_df,key+'_next'),
+                t0,t1,
+                t).values
+        
+        ## handle coordinates explicitly
+        coords = np.zeros((time_merged_df.shape[0],3))
+        for i,key in enumerate(['coord_xs','coord_ys','coord_zs']):
+            coords[:,i] = linear_interpolate(
+                getattr(time_merged_df,key),
+                getattr(time_merged_df,key+'_next'),
+                t0,t1,
+                t).values
+            
+        interp_snap['Coordinates'] = coords
+        return interp_snap
+
 except ImportError:
     print("Couldn't import pandas. Missing:")
     print("abg_python.snapshot_utils.openSnapshotToDF")
+    print("abg_python.snapshot_utils.convertSnapshotToDF")
+    print("abg_python.index_match_snapshots_with_dataframes")
+    print("abg_python.make_interpolated_snap")
 
 ## thanks Alex Richings!
 def read_chimes(filename, chimes_species): 

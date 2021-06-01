@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np 
 import os
 
-import multiprocessing
 import h5py
 
 import copy 
@@ -27,8 +26,15 @@ class Draw_helper(object):
         thetax=None,thetay=None,thetaz=None,
         indices=None,
         axs=None,
+        radius=None,
+        full_snap=False,
         **kwargs):
-        coords = self.sub_snap['Coordinates']
+        if not full_snap:
+            coords = self.sub_snap['Coordinates']
+        else:
+            coords = self.snap['Coordinates']
+        if radius is not None:
+            indices = np.sum(coords**2,axis=1)<radius**2
         return self.drawGalaxy(
             coords,
             thetax,thetay,thetaz,
@@ -39,8 +45,12 @@ class Draw_helper(object):
         self,
         thetax=None,thetay=None,thetaz=None,
         indices=None,axs=None,
+        radius=None,
         **kwargs):
         coords = self.sub_star_snap['Coordinates']
+
+        if radius is not None:
+            indices = np.sum(coords**2,axis=1)<radius**2
        
         return self.drawGalaxy(
             coords,
@@ -88,11 +98,11 @@ class Draw_helper(object):
         **kwargs):
 
         frame_width=self.sub_radius
-        frame_depth=cylinder if cylinder else self.sub_radius
+        frame_half_thickness=cylinder if cylinder else self.sub_radius
         frame_center=np.zeros(3)
 
         indices = extractRectangularVolumeIndices(self.sub_snap['Coordinates'],
-            frame_center,frame_width,frame_width if frame_depth is None else frame_depth)
+            frame_center,frame_width,frame_width if frame_half_thickness is None else frame_half_thickness)
 
         pos = self.sub_snap['Coordinates']# want to rotate about frame_center
 
@@ -141,22 +151,21 @@ class FIREstudio_helper(object):
         self,
         ax,
         assert_cached=False,
+        use_metadata=True,
+        save_meta=True,
         edgeon=False,
-        frame_depth=None,
+        frame_half_thickness=None,
         frame_half_width=15,
         min_weight=-0.5,
         max_weight=1.6,
         min_quantity=2,
         max_quantity=7,
+        quick=False,
+        cmap='viridis',
         **kwargs):
 
-        frame_depth = frame_half_width if frame_depth is None else frame_depth
+        frame_half_thickness = frame_half_width if frame_half_thickness is None else frame_half_thickness 
 
-        kwargs.update(
-            {'min_weight':min_weight,
-            'max_weight':max_weight,
-            'min_quantity':min_quantity,
-            'max_quantity':max_quantity})
 
         ## attempt to import FIRE_studio
         self.initialize_FIREstudio()
@@ -168,7 +177,7 @@ class FIREstudio_helper(object):
             snapdir=self.snapdir,
             gas_snapdict=self.sub_snap if not assert_cached else None,
             star_snapdict=self.sub_star_snap if not assert_cached else None,
-            frame_depth=frame_depth,
+            frame_half_thickness=frame_half_thickness,
             frame_half_width=frame_half_width,
             **kwargs)
 
@@ -178,29 +187,41 @@ class FIREstudio_helper(object):
         if edgeon:
             gasStudio.set_ImageParams(
                 theta = 90,
-                aspect_ratio = frame_depth/frame_half_width)
+                aspect_ratio = frame_half_thickness/frame_half_width)
+
+        kwargs.update(
+            {'min_weight':min_weight,
+            'max_weight':max_weight,
+            'min_quantity':min_quantity,
+            'max_quantity':max_quantity})
 
         gasStudio.render(
             ax,
+            quantity_name='LogTemperature',
             assert_cached=assert_cached,
-            quantity_adjustment_function=np.log10,
+            #quantity_adjustment_function=np.log10,
             weight_adjustment_function=lambda x: np.log10(x*1e10/1e6/gasStudio.Acell),
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            quick=quick,
+            cmap=cmap,
             **kwargs)
 
         ## free up any memory associated with that object
-        del gasStudio
-        return ax
+        return ax,gasStudio
 
     def star_render(
         self,
         ax,
         assert_cached=False,
         frame_half_width=15,
-        frame_depth=None,
+        frame_half_thickness=None,
         edgeon=False,
+        quick=False,
+        master_loud=False,
         **kwargs):
 
-        frame_depth = frame_half_width if frame_depth is None else frame_depth
+        frame_half_thickness = frame_half_width if frame_half_thickness is None else frame_half_thickness
 
         starStudio = self.firestudio_StarStudio(
             datadir=os.path.join(self.datadir,'firestudio'),
@@ -209,8 +230,9 @@ class FIREstudio_helper(object):
             snapdir=self.snapdir,
             gas_snapdict=self.sub_snap if not assert_cached else None,
             star_snapdict=self.sub_star_snap if not assert_cached else None,
-            frame_depth=frame_depth,
+            frame_half_thickness=frame_half_thickness,
             frame_half_width=frame_half_width,
+            master_loud=master_loud,
             **kwargs)
             
             ## manually set the aspect ratio to an integer number of the disk
@@ -219,32 +241,31 @@ class FIREstudio_helper(object):
         if edgeon:
             starStudio.set_ImageParams(
                 theta = 90,
-                aspect_ratio =frame_depth/frame_half_width)
+                aspect_ratio =frame_half_thickness/frame_half_width)
  
         print(starStudio.npix_x,starStudio.npix_y,'pixels input')
 
-        starStudio.render(ax,assert_cached=assert_cached,**kwargs)
+        starStudio.render(ax,assert_cached=assert_cached,quick=quick,**kwargs)
 
         ## free up any memory associated with that object
-        del starStudio
-        return ax
+        return ax,starStudio
 
     def renderPatch(self,ax,
         frame_half_width,frame_center,
-        frame_depth=None,
+        frame_half_thickness=None,
         savefig=0,
         noaxis=0,
         snap=None,
         **kwargs):
         """Renders a patch of the galaxy at frame_center, of dimensions
-            frame_width x frame_depth"""
+            frame_width x frame_half_thickness"""
 
         snap = self.sub_snap if snap is None else snap
         self.firestudio_renderGalaxy(
             ax,
             self.snapdir,self.snapnum,
             frame_half_width = frame_half_width,
-            frame_depth = frame_width if frame_depth is None else frame_depth,
+            frame_half_thickness = frame_width if frame_half_thickness is None else frame_half_thickness,
             frame_center = frame_center,
             extract_galaxy=False,
             datadir = self.datadir,
@@ -255,14 +276,14 @@ class FIREstudio_helper(object):
 
     def starRenderPatch(self,ax,
         frame_width,frame_center,
-        frame_depth=None,savefig=0,noaxis=0,**kwargs):
+        frame_half_thickness=None,savefig=0,noaxis=0,**kwargs):
         raise Exception("Not tested!")
 
         self.firestudio_renderStellarGalaxy(
             ax,
             self.snapdir,self.snapnum,
             frame_width = frame_width,
-            frame_depth = frame_width if frame_depth is None else frame_depth,
+            frame_half_thickness = frame_width if frame_half_thickness is None else frame_half_thickness,
             frame_center = frame_center,
             extract_galaxy=False,
             datadir = self.datadir,
@@ -284,8 +305,9 @@ def plotSideBySide(
     else:
         fig = axs[0].get_figure()
         ax1,ax2=axs
-    print(axs,ax1,ax2)
     xs,ys,zs = (rs[indices]-rcom).T
+    rs = np.sqrt(xs**2+ys**2+zs**2)
+
     twoDHist(ax1,xs,ys,bins=200,weights=weights,**kwargs)
     if 'cbar' in kwargs:
         kwargs.pop('cbar')
@@ -298,11 +320,11 @@ def plotSideBySide(
 
 def fauxrenderPatch(sub_snap,ax,
     frame_center,frame_width,
-    frame_depth=None,savefig=0,noaxis=0,
+    frame_half_thickness=None,savefig=0,noaxis=0,
     theta=0,phi=0,psi=0,**kwargs):
 
     indices = extractRectangularVolumeIndices(sub_snap['p'],
-        frame_center,frame_width,frame_width if frame_depth is None else frame_depth)
+        frame_center,frame_width,frame_width if frame_half_thickness is None else frame_half_thickness)
 
     pos = sub_snap['p'] - frame_center # want to rotate about frame_center
     pos_rot = rotateEuler(theta,phi,psi,pos) +frame_center # add back the offset post rotation...?
@@ -331,13 +353,16 @@ def twoDHist(
         from matplotlib.colors import LogNorm
         norm=LogNorm(vmin=vmin,vmax=vmax)
     cmap=plt.get_cmap('afmhot')
+
     h,xedges,yedges=np.histogram2d(
         xs,ys,
         weights=weights,
         bins=bins)
+    
     ax.imshow(h.T,cmap=cmap,origin='lower',
         norm=norm,
         extent=[min(xedges),max(xedges),min(yedges),max(yedges)])
+
     if cbar:
         addColorbar(
             ax,cmap,
@@ -346,6 +371,7 @@ def twoDHist(
             logflag = 0,
             fontsize=12,
             cmap_number=0)
+
     return h,xedges,yedges
 
 def rotateEuler(

@@ -1,4 +1,6 @@
 ## from builtin
+import os
+
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
@@ -7,8 +9,12 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from abg_python.all_utils import pairFilter
+from abg_python.all_utils import pairFilter,covarianceEigensystem
 from scipy.interpolate import interp1d
+
+latex_pagewidth=6.9738480697 ## in #7.125
+latex_columnwidth=3.32 ## in
+
 
 """
 try:
@@ -29,11 +35,61 @@ except:
 ## stupid way of handling black faceolor... 
 GLOBAL_linecolor='k'
 
+def add_many_to_legend(
+    ax,
+    line_labels,
+    line_kwargss=None,
+    make_new_legend=False,
+    **legend_kwargs):
+    """ use this for markers because matplotlib won't fix their bug!"""
+
+    
+    if line_kwargss is None:
+        line_kwargss = [{} for i in len(line_labels)]
+
+    legend = ax.get_legend()
+    ## add the current legend to the tracked artists
+    ##  and then pretend we weren't passed one
+    if make_new_legend and legend is not None:
+        ax.add_artist(legend)
+        legend=None
+
+    if legend is not None:
+        lines = legend.get_lines()
+        labels = [text.get_text() for text in legend.get_texts()]
+    else:
+        lines,labels=[],[]
+
+    if legend_kwargs is None:
+        legend_kwargs = {}
+
+    ## make the new line
+    for i,label in enumerate(line_labels):
+        line_kwargs = line_kwargss[i]
+        line = Line2D([0],[0],**line_kwargs)
+
+        if label not in labels:
+            lines.append(line)
+            labels.append(label)
+
+    ## for backwards compatibility...
+    ax.legend(lines,labels,**legend_kwargs)
+
+    return ax
+
+
+
+    
+        
 def add_to_legend(
     ax,
     label='',
     shape='line',
     loc=0,
+    ls='-',
+    c='k',
+    alpha=1,
+    lw=None,
     legend_kwargs=None,
     make_new_legend=False,
     **kwargs):
@@ -41,7 +97,9 @@ def add_to_legend(
     legend = ax.get_legend()
     ## add the current legend to the tracked artists
     ##  and then pretend we weren't passed one
+    prev_loc = None
     if make_new_legend and legend is not None:
+        prev_loc = legend._loc
         ax.add_artist(legend)
         legend=None
 
@@ -61,9 +119,18 @@ def add_to_legend(
         ##  the legend it loses memory of the marker
         if 'ls' in kwargs and kwargs['ls'] == '':
             ax.markers = []
+        line_kwargs = {}
+
+        if lw is not None:
+            line_kwargs['lw'] = lw
+
         line = Line2D(
         [0],[0],
-        **kwargs)
+        ls=ls,
+        c=c,
+        alpha=alpha,
+        **line_kwargs
+        )
     else:
         raise NotImplementedError
 
@@ -77,6 +144,12 @@ def add_to_legend(
     for line in lines:
         if line.get_linestyle() == 'None':
             print(line.get_marker(),'marker')
+
+    if prev_loc is not None and loc == prev_loc:
+        loc+=1
+
+    ## for backwards compatibility...
+    legend_kwargs.update(kwargs)
     ax.legend(lines,labels,loc=loc,**legend_kwargs)
 
     return ax
@@ -94,6 +167,48 @@ def plotCircle(
     """
     return ax.add_artist(
         plt.Circle((x,y),radius,fill=fill,lw=lw,**kwargs))
+
+def plotEllipse(
+    ax,
+    x,y,
+    semi_major,
+    semi_minor,
+    angle=0,
+    fill=False,
+    lw=3,
+    log=False,
+    **kwargs):
+    from matplotlib.patches import Ellipse
+    from matplotlib.transforms import ScaledTranslation
+
+    if log:
+        # use the axis scale tform to figure out how far to translate 
+        circ_offset = ScaledTranslation(x,y,ax.transScale)
+
+        # construct the composite tform
+        circ_tform = circ_offset + ax.transLimits + ax.transAxes
+
+        # create the circle centred on the origin, apply the composite tform
+        circ = Ellipse(
+            (0,0),
+            2*semi_major,
+            2*semi_minor,
+            angle=angle,
+            fill=fill,lw=lw,
+            transform=circ_tform,
+            **kwargs)
+        ax.add_artist(circ)
+
+    else:
+        return ax.add_artist(
+            Ellipse(
+                (x,y),
+                semi_major,
+                semi_minor,
+                angle=angle,
+                fill=fill,
+                lw=lw,
+                **kwargs))
 
 def addColorbar(
     ax,cmap,
@@ -151,7 +266,10 @@ def addColorbar(
         if xlabel.get_text() != '':
             print("addColorbar does not support finding xaxis text, this will look bad")
         thickness = 20./cur_size[1] * fig.dpi/100
-        ax1 = fig.add_axes([fig_x0,.125-thickness - offset/cur_size[1],width, thickness])
+        ax1 = fig.add_axes([fig_x0,fig_y0 - thickness - offset/cur_size[1],width, thickness])
+
+    if type(cmap) == str:
+        cmap = plt.get_cmap(cmap)
 
     cb1 = matplotlib.colorbar.ColorbarBase(
         ax1, cmap=cmap,
@@ -164,7 +282,8 @@ def addColorbar(
     cb1.set_label(label,fontsize=fontsize)
 
     cb1.set_ticks(ticks)
-    cb1.set_ticklabels(tick_labels)
+    if tick_labels is not None:
+        cb1.set_ticklabels(tick_labels)
     cb1.ax.tick_params(labelsize=fontsize)
     return cb1,ax1
 
@@ -508,16 +627,17 @@ def bufferAxesLabels(
     
     fig = axs.flatten()[0].get_figure()
     if share_ylabel is not None:
+        bbox = ax.get_position()
         fig.text(
-            label_offset,0.5,
+            0-label_offset,0.5,
             share_ylabel,
-            rotation=90,va='center',ha='center',fontsize=16)
+            rotation=90,va='center',ha='right',fontsize=13)
 
     if share_xlabel is not None:
         fig.text(
-            0.5,label_offset,
+            0.5,label_offset-0.05,
             share_xlabel,
-            va='center',ha='center',fontsize=16)
+            va='center',ha='center',fontsize=13)
 
 
 def nameAxes(
@@ -599,20 +719,25 @@ def nameAxes(
     if subfontsize is not None:
         subtextkwargs['fontsize']=subfontsize
 
+    bbox = ax.get_position()
     if swap_annotate_side:
-        x_pos = 1-0.01
+        x_pos = 1-0.01/bbox.width
         halign = 'right'
     else:
-        x_pos = 0.01
+        x_pos = 0.01/bbox.width
         halign = 'left'
+
     if supertitle:
-        ax.text(x_pos,.96,supertitle,transform=ax.transAxes,
+
+        y_pos = 1-(0.01/bbox.height)
+        ax.text(x_pos,y_pos,supertitle,transform=ax.transAxes,
             verticalalignment='top',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        ax.text(x_pos,.01,subtitle,transform=ax.transAxes,
+        y_pos = (0.01/bbox.height)
+        ax.text(x_pos,y_pos,subtitle,transform=ax.transAxes,
             verticalalignment='bottom',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
@@ -641,7 +766,8 @@ def plot_histogram_contour_log(
     xedges,yedges,
     plot_histogram=True,
     plot_points=False,
-    contour_kwargs=None):
+    contour_kwargs=None,
+    plot_ellipse=True):
 
     ## initialize contour_kwargs, controls what contours are plotted, 
     ##  their linestyles (as an array), and their color (mainly... I'm sure there 
@@ -670,7 +796,8 @@ def plot_histogram_contour_log(
 
     from palettable.colorbrewer.sequential import Oranges_3,Greens_3,Blues_3
     from matplotlib.colors import LinearSegmentedColormap
-    new_cmap = LinearSegmentedColormap.from_list(1,[(1,1,1)]+Oranges_3.mpl_colors)
+    color = (1,1,1) if 'k' in GLOBAL_linecolor else(0,0,0)
+    new_cmap = LinearSegmentedColormap.from_list(1,[color]+Oranges_3.mpl_colors)
 
     if plot_histogram:
         ax.pcolor(
@@ -685,10 +812,37 @@ def plot_histogram_contour_log(
     if plot_points:
         ax.plot(10**xs,10**ys,'.',markeredgewidth=0,c='g')
 
+    evecs,evals = covarianceEigensystem(xs,ys)
+
+    ## choose new x-axis to be evecs[0], rotation angle is
+    ##  angle between it and old x-axis, i.e.
+    ##  ehat . xhat = cos(angle)
+    angle = np.arccos(evecs[0][0])
+
+    ## evals are variance along principle axes
+    rx,ry = evals**0.5 ## in dex
+    cx,cy = 10**np.mean(xs),10**np.mean(ys) ## in linear space
+
+    if plot_ellipse:
+        ## doesn't work for log
+        for evec,this_eval in zip(evecs,evals):
+            dx,dy = evec*this_eval**0.5
+            ax.plot(
+                [cx,10**(np.log10(cx)+dx)],
+                [cy,10**(np.log10(cy)+dy)],
+                lw=3,ls=':',c='limegreen')
+
+        plotEllipse(
+            ax,
+            cx,cy,
+            rx,ry,
+            angle=angle*180/np.pi,
+            log=True,
+            color='limegreen')
 
     return_value = plot_percentile_contours(ax,10**X,10**Y,h,**contour_kwargs)
 
-    return h,return_value
+    return h,rx,ry,evecs,return_value
 
 def plot_percentile_contours(
     ax,
@@ -787,3 +941,152 @@ def plot_percentiles_shaded_region(ax,xs,yss,color,percentiles=None):
 
     ## half-width of shaded region in log space
     return (np.log10(top_qs/bottom_qs))/2.
+
+def set_matplotlib_params(matplotlib):
+    matplotlib.rcParams['legend.frameon'] = False
+ 
+    matplotlib.rcParams["xtick.direction"] = 'in'
+    matplotlib.rcParams["ytick.direction"] = 'in'
+
+    # Make the x and y ticks bigger                                                    
+    matplotlib.rcParams['xtick.labelsize'] = 11
+    matplotlib.rcParams['xtick.major.size'] = 5
+    matplotlib.rcParams['xtick.major.width'] = .5
+    matplotlib.rcParams['ytick.labelsize'] = 11
+    matplotlib.rcParams['ytick.major.size'] = 5
+    matplotlib.rcParams['ytick.major.width'] = .5
+                                                                                       
+    # Make the axes linewidths bigger                                                  
+    matplotlib.rcParams['axes.linewidth'] = 1
+
+    matplotlib.rcParams['lines.linewidth'] = 1.5
+
+    matplotlib.rcParams['figure.facecolor'] = 'white'
+    matplotlib.rcParams['axes.facecolor'] = 'white'
+
+    matplotlib.rcParams['axes.edgecolor'] = 'black'
+    matplotlib.rcParams['axes.labelcolor'] = 'black'
+    matplotlib.rcParams['text.color'] = 'black'
+
+    matplotlib.rcParams['xtick.color'] = 'black'
+    matplotlib.rcParams['ytick.color'] = 'black'
+
+    ## font family 
+    ##  math
+    matplotlib.rcParams['text.usetex'] = False
+    matplotlib.rcParams['mathtext.fontset'] = 'stix'
+
+    matplotlib.rcParams['font.size'] = 10
+    matplotlib.rcParams['axes.labelsize'] = 11
+    matplotlib.rcParams['legend.fontsize'] = 11
+
+    ##  outside math
+    matplotlib.rcParams['font.family'] = 'STIXGeneral'
+    #matplotlib.rcParams['font.serif'] = 'Computer Modern Roman'
+    #matplotlib.rcParams['font.sans-serif'] = 'Computer Modern Sans serif'
+    #matplotlib.rcParams['font.monospace'] = 'Computer Modern Typewriter'
+
+    matplotlib.rcParams['figure.figsize'] = [latex_pagewidth/2,latex_pagewidth/2]
+    matplotlib.rcParams['figure.dpi'] = 120
+
+    matplotlib.rcParams['figure.subplot.bottom'] = 0
+    matplotlib.rcParams['figure.subplot.top'] = 1
+    matplotlib.rcParams['figure.subplot.left'] = 0
+    matplotlib.rcParams['figure.subplot.right'] = 1
+
+    matplotlib.rcParams['figure.subplot.hspace'] = 0
+    matplotlib.rcParams['figure.subplot.wspace'] = 0
+
+def set_matplotlib_params_black_talk(matplotlib):
+    matplotlib.rcParams['legend.frameon'] = False
+
+    matplotlib.rcParams["xtick.direction"] = 'in'
+    matplotlib.rcParams["ytick.direction"] = 'in'
+
+    # Make the x and y ticks bigger                                                    
+    matplotlib.rcParams['xtick.major.size'] = 5
+    matplotlib.rcParams['xtick.major.width'] = 1
+    matplotlib.rcParams['ytick.major.size'] = 5
+    matplotlib.rcParams['ytick.major.width'] = 1
+                                                                                       
+    # Make the axes linewidths bigger                                                  
+    matplotlib.rcParams['axes.linewidth'] = 1
+
+    matplotlib.rcParams['lines.linewidth'] = 1.5
+
+    matplotlib.rcParams['figure.facecolor'] = 'k'
+    matplotlib.rcParams['axes.facecolor'] = 'black'
+
+    matplotlib.rcParams['axes.edgecolor'] = 'white'
+    matplotlib.rcParams['axes.labelcolor'] = 'white'
+    matplotlib.rcParams['text.color'] = 'white'
+
+    matplotlib.rcParams['xtick.color'] = 'white'
+    matplotlib.rcParams['ytick.color'] = 'white'
+
+    matplotlib.rcParams['xtick.labelsize'] = 20
+    matplotlib.rcParams['ytick.labelsize'] = 20
+    matplotlib.rcParams['axes.labelsize'] = 20
+
+    matplotlib.rcParams['font.size'] = 16
+    matplotlib.rcParams['legend.fontsize'] = 16
+
+    ## font family 
+    ##  math
+    matplotlib.rcParams['text.usetex'] = False
+    matplotlib.rcParams['mathtext.fontset'] = 'stix'
+
+
+    ##  outside math
+    matplotlib.rcParams['font.family'] = 'STIXGeneral'
+    #matplotlib.rcParams['font.serif'] = 'Computer Modern Roman'
+    #matplotlib.rcParams['font.sans-serif'] = 'Computer Modern Sans serif'
+    #matplotlib.rcParams['font.monospace'] = 'Computer Modern Typewriter'
+
+    matplotlib.rcParams['figure.figsize'] = [latex_pagewidth/2,latex_pagewidth/2]
+    matplotlib.rcParams['figure.dpi'] = 120
+
+    matplotlib.rcParams['figure.subplot.bottom'] = 0
+    matplotlib.rcParams['figure.subplot.top'] = 1
+    matplotlib.rcParams['figure.subplot.left'] = 0
+    matplotlib.rcParams['figure.subplot.right'] = 1
+
+    matplotlib.rcParams['figure.subplot.hspace'] = 0
+    matplotlib.rcParams['figure.subplot.wspace'] = 0
+
+    global GLOBAL_linecolor
+    GLOBAL_linecolor='white'
+
+def ffmpeg_frames(
+    framedir,
+    frame_heads,
+    savename=None,
+    framerate=15,
+    extension='.mp4',
+    outdir=None,
+    copy=True):
+
+    savename = '' if savename is None else savename
+
+    if outdir is None:
+        outdir = os.path.dirname(framedir)
+    
+    for frame_head in frame_heads:
+        cmd = 'ffmpeg -framerate %d'%framerate
+        cmd += ' -i %s'%os.path.join(framedir,frame_head)
+        cmd += '_%03d.png'
+        cmd += ' -q:v 1'
+        cmd += ' %s%s -y'%(os.path.join(outdir,frame_head),extension)
+        print(cmd)
+        os.system(cmd)
+
+        ## copy the movie to ~/movies
+        if copy:
+            src = os.path.join(outdir,frame_head+extension)
+            dst = os.path.join(
+                os.environ['HOME'],
+                'movies',
+                savename + ('_'*(savename!='')) + frame_head+extension)
+            cmd = 'cp %s %s'%(src,dst)
+            print(cmd)
+            os.system(cmd)

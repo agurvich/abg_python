@@ -13,10 +13,11 @@ from abg_python.distinct_colours import get_distinct
 import abg_python.all_utils as all_utils
 import abg_python.cosmo_utils as cosmo_utils 
 
-from abg_python.galaxy.cosmoExtractor import diskFilterDictionary,offsetRotateSnapshot
+from abg_python.galaxy.cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from abg_python.galaxy.movie_utils import Draw_helper,FIREstudio_helper
 from abg_python.galaxy.sfr_utils import SFR_helper
 from abg_python.galaxy.metadata_utils import metadata_cache,Metadata,MultiMetadata
+from abg_python.galaxy.firefly_utils import Firefly_helper
 
 ## mapping between particle type and what I called them
 sub_snap_dict = {
@@ -31,15 +32,53 @@ snap_dict = {
     4:'star_snap'
 }
 
+h_official_names = {'h206':'A1','h29':'A2','h113':'A4','h2':'A8'}
+
+elvis_partners = {
+    'Romeo':('Juliet',0),
+    'Juliet':('Romeo',1),
+
+    'Romulus':('Remus',0),
+    'Remus':('Romulus',1),
+
+    'Thelma':('Louise',0),
+    'Louise':('Thelma',1)}
+
+def get_elvis_snapdir_name(savename):
+
+    print(savename)
+    this_name = None
+
+    ## check each of the partners and see if they're in the savename
+    ##  savename should be of the form ex.: Romeo_res3500
+    for partner in elvis_partners.keys():
+        if partner in savename:
+            ## which one do we want and what resolution
+            this,resolution = savename.split('_')
+            ## get the matching partner and figure which_host we are
+            that,which_host = elvis_partners[this]
+
+            ## ensure RomeoJuliet not JulietRomeo
+            if which_host == 0:
+                this_name = this+that
+            else:
+                this_name = that+this
+
+            ## format the final name
+            this_name = 'm12_elvis_%s_%s'%(this_name,resolution)
+
+    ## if we didn't do anything in the loop above, just return the savename
+    this_name = savename if this_name is None else this_name
+
+    return this_name
+
 ## function to determine what the "main" halo is
 def halo_id(name):
-    if 'm10v_res250' in name:
-        return 2
-    else:
-        return 0 
+    return 0 
 
 ## bread and butter galaxy class
 class Galaxy(
+    Firefly_helper,
     Draw_helper,
     FIREstudio_helper,
     SFR_helper):
@@ -83,8 +122,6 @@ class Galaxy(
         kwargs['color'] = self.plot_color
         add_to_legend(*args,**kwargs)
 
-        return ax
-
     ## GALAXY
     def __init__(
         self,
@@ -98,9 +135,28 @@ class Galaxy(
         multi_thread = 1,
         ahf_path = None,
         ahf_fname = None,
-        save_header_to_table=True,
+        save_header_to_table = True,
+        meta_name = None,
+        suite_name = None,
         **metadata_kwargs 
         ):
+
+        if meta_name is None:
+            meta_name = 'meta_Galaxy'
+
+        if suite_name is None:
+            if 'metal_diffusion' in snapdir:
+                self.suite_name = 'metal_diffusion'
+            elif 'HL000' in snapdir:
+                self.suite_name = 'xiangcheng'
+            elif 'core' in snapdir:
+                self.suite_name = 'core'
+            elif 'cr_heating_fix' in snapdir:
+                self.suite_name = 'cr_heating_fix'
+            else: ## set myself up for failure below
+                self.suite_name = 'unknown'
+        else:
+            self.suite_name = suite_name
 
         ## bind input
         self.snapnum = snapnum
@@ -118,25 +174,33 @@ class Galaxy(
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
 
         ## append _md to the name for my own sanity
-        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            self.name = self.name + '_md'
+        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            #self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
         pretty_name = self.name.split('_')
-        pretty_name = [
+        pretty_name = np.array([
             strr if 'res' not in strr else '' 
-            for strr in pretty_name] 
+            for strr in pretty_name])
+        pretty_name = pretty_name[pretty_name!= '']
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
+        if self.pretty_name in ['h2','h206','h29','h113']:
+            self.pretty_name += '-%s'%h_official_names[self.pretty_name]
+
         if type(plot_color) is int:
-            plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
+            try:
+                plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
+            except:
+                plot_color="C%d"%((plot_color-9)%13)
+
         self.plot_color = plot_color
         
         ## handle datadir creation
         if datadir is None:
-            self.datadir = "/home/abg6257/projects/data/"
+            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
         else:
             self.datadir = datadir
 
@@ -154,6 +218,11 @@ class Galaxy(
         self.metadatadir = os.path.join(self.datadir,'metadata')
         if not os.path.isdir(self.metadatadir):
             os.makedirs(self.metadatadir)
+
+        ## handle plotdir creation
+        self.plotdir = os.path.join(self.datadir,'plots')
+        if not os.path.isdir(self.plotdir):
+            os.makedirs(self.plotdir)
 
         ## are we just trying to open this simulation's constant header info?
         if self.snapnum is None:
@@ -183,7 +252,7 @@ class Galaxy(
             ##  first entry is saved to metadata
             self.metapath = os.path.join(
                 self.metadatadir,
-                'meta_Galaxy_%03d.hdf5'%self.snapnum)
+                '%s_%03d.hdf5'%(meta_name,self.snapnum))
             self.metadata = Metadata(
                 self.metapath,
                 **metadata_kwargs)
@@ -194,8 +263,7 @@ class Galaxy(
                     self.snapdir,
                     self.snapnum,
                     0, ## dummy particle index, not used if header_only is True
-                    header_only=1,
-                    cosmological=True)
+                    header_only=True)
 
                 ## save the header to our catalog of simulation headers
                 ##  so that we can open the header in scenarios where
@@ -203,138 +271,202 @@ class Galaxy(
                 if save_header_to_table:
                     try:
                         self.saveHeaderToCatalog()
-                    except ValueError:
+                    except (ValueError,OSError):
+                        ## OSError is when parallel processes try to write to header at the same time...
+                        ##  Value Error is probably when the simulation is already in the file?
                         pass
 
 
-            except IOError:
-                print("Couldn't find snapshot",self.snapnum,"in",self.snapdir)
+            except IOError as e:
                 return 
 
             ## simulation timing
             ##  load snapshot times to convert between snapnum and time_Gyr
-            try:
-                self.createSnapshotTimes()
-                self.current_time_Gyr = self.snap_gyrs[self.snapnums==self.snapnum][0]
-                self.current_redshift = self.snap_zs[self.snapnums==self.snapnum][0]
-            except:
-                print("Couldn't load or create snapshot times, opening the header.")
-                self.current_redshift = self.header['Redshift']
-                self.current_time_Gyr = cosmo_utils.convertReadsnapTimeToGyr(self.header)
+            self.current_redshift = self.header['Redshift']
+            self.current_time_Gyr = self.header['TimeGyr']
 
-            ## attempt to read halo location and properties from AHF
-            if ahf_fname is None:
-                ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
+        
+        if self.header['cosmological']:
+            ## opens the halo file to find the halo center and virial radius
+            self.load_halo_file()
+        else:
+            self.scom = np.zeros(3)
+            self.rvir = 300 ## what should i do here...
+            self.rstar_half = None
 
-            if ahf_path is None:
-                ## system blind if you put the soft link in
-                ahf_path = os.path.join(
-                    os.environ['HOME'],'halo_files',
-                    "%s","%s")
+        ## have we already calculated it and cached it?
+        if self.rstar_half is None:
+            for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
+                if hasattr(self.metadata,attr):
+                    self.rstar_half = getattr(self.metadata,attr)
+                    break
 
-                if 'metal_diffusion' in self.snapdir:
-                    ahf_path = ahf_path%('metal_diffusion',self.snapdir_name)
-                elif 'HL000' in self.snapdir_name:
-                    ahf_path = ahf_path%('xiangcheng',self.snapdir_name)
-                elif 'core' in self.snapdir:
-                    ahf_path = ahf_path%('core',self.snapdir_name)
-                else: ## set myself up for failure below
-                    ahf_path = ahf_path%('foo',self.snapdir_name)
-
-            ## check if this first guess at the ahf_fname and ahf_path
-            ##  is right
-            if not os.path.isfile(os.path.join(ahf_path,ahf_fname)):
-                print("Couldn't find halo file in",ahf_path,"with name",ahf_fname)
-                ## try looking in the simulation directory
-                ahf_path = os.sep.join(
-                    self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
-                    +['halo','ahf']) ## look in <simdir>/halo/ahf
-
-                ## okay no smooth halo file but there is a halo/ahf directory at least
-                if (os.path.isdir(ahf_path) and (
-                    not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
-
-                    ## let's scan through the files in the directory and try and 
-                    ##  find an AHF halo file that corresponds to just this snapshot. 
-                    fnames = []
-                    snap_string = "%03d"%self.snapnum
-
-                    for fname in os.listdir(ahf_path):
-                        if (snap_string in fname and 
-                            'AHF_halos' in fname):
-                            fnames+=[fname]
-                    if len(fnames) == 1:
-                        fname = fnames[0]
-                    else:
-                        raise IOError("can't find a halo file (or found too many)",fnames)
-                else:
-                    raise IOError("can't find a halo file with",ahf_path,'and',ahf_fname)
-                
-
-            self.ahf_path = ahf_path
-            self.ahf_fname = ahf_fname
-
-            ## now that we've attempted to identify an AHF file lets open 
-            ##  this puppy up
-            try:
-                self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
-                    self.snapdir,
-                    self.snapnum,
-                    self.current_redshift,
-                    ahf_path = ahf_path,
-                    fname=ahf_fname,
-                    hubble = self.header['HubbleParam'])
-
-            ## TODO make sure there's some proper error handling in cosmo_utils.load_AHF
-            ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves in our first extraction
-            except ValueError:
-                self.scom, self.rvir = cosmo_utils.load_AHF(
-                    self.snapdir,
-                    self.snapnum,
-                    self.current_redshift,
-                    extra_names_to_read = [],
-                    ahf_path = ahf_path,
-                    fname=ahf_fname,
-                    hubble = self.header['HubbleParam'])
-
-                self.rstar_half = None
-                ## have we already calculated it and cached it?
-                for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
-                    if hasattr(self.metadata,attr):
-                        print('using cached',attr,'for rstar_half')
-                        self.rstar_half = getattr(self.metadata,attr)
-                        break
-
-                ## I guess not
-                if self.rstar_half is None:
-                    print("No rstar 1/2 in AHF or metadata files, we will need to calculate it ourselves.")
+            ## I guess not
+            if self.rstar_half is None:
+                print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
         self.finsnap = all_utils.getfinsnapnum(self.snapdir)
 
-    def createSnapshotTimes(self,snaptimes='snapshot_times'):
+    def load_halo_file(self,halo_fname=None,halo_path=None):
 
+        if halo_path == 'None' or halo_fname == 'None':
+            self.scom,self.rvir,self.rstar_half = None,None,None
+            print(
+                'Make sure to set:',
+                'scom',
+                'rvir',
+                'rstar_half',
+                'attributes manually')
+        else:
+            try:
+                if 'elvis' in self.snapdir:
+                    raise IOError("No AHF files for Elvis runs")
+                self.load_ahf(ahf_fname=halo_fname,ahf_path=halo_path)
+            except IOError:
+                try:
+                    
+                    if 'elvis' in self.snapdir:
+                        which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
+                        if which_host[:len(self.pretty_name)] == self.pretty_name:
+                            which_host = 0 
+                        else:
+                            if which_host[-len(self.pretty_name):] != self.pretty_name:
+                                raise IOError("invalid name, should be one of %s"%which_host)
+                            which_host = 1
+                    else:
+                        which_host = 0
+
+                    self.load_rockstar(
+                        rockstar_fname=halo_fname,
+                        rockstar_path=halo_path,
+                        which_host=which_host)
+                except IOError:
+                    print("Couldn't find AHF nor Rockstar halo files")
+                    raise
+
+    def load_ahf(self,**kwargs):
+
+        ## automatically search for the ahf_path and ahf_fname
+        self.ahf_path, self.ahf_fname = self.auto_search_ahf(**kwargs)
+    
+        ## now that we've attempted to identify an AHF file lets open 
+        ##  this puppy up
+        try:
+            ## first try and read the stellar half-mass radius (default args)
+            self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
+                hubble = self.header['HubbleParam'])
+
+        except ValueError:
+            ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves 
+            self.scom, self.rvir = cosmo_utils.load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                extra_names_to_read = [],
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
+                hubble = self.header['HubbleParam'])
+
+            self.rstar_half = None
+
+        return self.scom,self.rvir,self.rstar_half
+            
+    def auto_search_ahf(self,ahf_fname=None,ahf_path=None):
+        ## attempt to read halo location and properties from AHF
+        if ahf_fname is None:
+            ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
+
+        if ahf_path is None:
+            ## system blind if you put the soft link in
+            ahf_path = os.path.join(
+                os.environ['HOME'],'halo_files',
+                "%s","%s")
+
+            ahf_path = ahf_path%(self.suite_name,self.snapdir_name)
+
+        ## check if this first guess at the ahf_fname and ahf_path
+        ##  is right
+        if (not os.path.isfile(os.path.join(ahf_path,ahf_fname)) and 
+            ahf_path != 'None' and 
+            ahf_fname != 'None'):
+            ## try looking in the simulation directory
+            ahf_path = os.sep.join(
+                self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
+                +['halo','ahf']) ## look in <simdir>/halo/ahf
+
+            ## okay no smooth halo file but there is a halo/ahf directory at least
+            if (os.path.isdir(ahf_path) and (
+                not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
+
+                ## let's scan through the files in the directory and try and 
+                ##  find an AHF halo file that corresponds to just this snapshot. 
+                fnames = []
+                snap_string = "%03d"%self.snapnum
+
+                for fname in os.listdir(ahf_path):
+                    if (snap_string in fname and 
+                        'AHF_halos' in fname):
+                        fnames+=[fname]
+                if len(fnames) == 1:
+                    fname = fnames[0]
+                else:
+                    raise IOError("can't find a halo file (or found too many)",fnames)
+
+        return ahf_path, ahf_fname
+
+    def load_rockstar(self,rockstar_fname=None,rockstar_path=None,which_host=0):
+
+        self.scom,self.rvir = cosmo_utils.load_rockstar(
+            self.snapdir,
+            self.snapnum,
+            fname=rockstar_fname,
+            rockstar_path=rockstar_path,
+            which_host=which_host)
+        self.rstar_half=None
+
+        return self.scom,self.rvir,self.rstar_half
+
+    def get_snapshotTimes(self,snaptimes='snapshot_times',assert_cached=False): 
         ## try looking in the simulation directory for a snapshot_times.txt file
-        snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
+        #snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
         ## try loading from the datadir
-        data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
 
-        for pathh in [
-            snap_FIRE_SN_times,
-            data_FIRE_SN_times]:
+        #for pathh in [
+            #snap_FIRE_SN_times,
+            #data_FIRE_SN_times]:
 
-            if os.path.isfile(pathh):
-                (self.snapnums,
-                    self.snap_sfs,
-                    self.snap_zs,
-                    self.snap_gyrs,
-                    self.dTs) = np.genfromtxt(pathh,unpack=1)
-                return
+        ## TODO
+        ## ignore the snapshot times that are saved in the FIRE
+        ##  directory because I can't re-derive them :\
+        ##  using the stated cosmology and convertStellarAges
+        ##  better to consistently rederive age using stated cosmology
+        ##  and the provided redshift, as is done in openSnapshot
         
         ## if we didn't manage to find an existing snapshot times file
         ##  we'll try and make one ourself using the available snapshots
         ##  in the snapdir
+
+        data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
+
+        if os.path.isfile(data_FIRE_SN_times):
+            (self.snapnums,
+                self.snap_sfs,
+                self.snap_zs,
+                self.snap_gyrs,
+                self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
+            return
+
+
+        if assert_cached:
+            raise AssertionError("User asserted that the snapshot times should be saved to disk.")
+
         finsnap = all_utils.getfinsnapnum(self.snapdir)
         print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
 
@@ -351,8 +483,7 @@ class Galaxy(
                     self.snapdir,
                     snapnum,
                     0, ## dummy particle index, ignored for header_only = True
-                    header_only=True,
-                    cosmological=True)
+                    header_only=True)
 
                 ## save each one to a list
                 snapnums += [snapnum]
@@ -367,6 +498,7 @@ class Galaxy(
             except IOError:
                 print("snapshot %d doesn't exist, skipping..."%snapnum)
                 continue
+
 
         ## write out our snapshot_times.txt to datadir
         np.savetxt(
@@ -437,9 +569,14 @@ class Galaxy(
         extract_DM = True, ## do we want the DM particles? 
         **kwargs):
         """
-        radius = None,
-        use_saved_subsnapshots = True,
-        force = False,
+        radius = None -- radius of final sub_snap extraction, *not* orient_radius, 
+            which is fixed to 5*rstarhalf
+        use_saved_subsnapshots = True -- save/load hdf5 cache files. if want to overwrite, set to True
+            and force=True
+        force = False -- force extraction, despite existing extractions attached to instance or
+            in cache files. 
+        force_theta_TB = None -- force orientation
+        force_phi_TB = None -- force orientation
         """
         
         if orient_stars:
@@ -451,12 +588,11 @@ class Galaxy(
             group_name,
             ['sub_radius',
             'orient_stars',
-            'thetay',
-            'thetaz',
-            'sphere_lz',
-            'sphere_ltot',
+            'theta_TB',
+            'phi_TB',
             'rvir',
-            'rstar_half'],
+            'rstar_half',
+            'rgas_half'],
             use_metadata=False,
             save_meta=save_meta,
             loud=1)
@@ -465,9 +601,18 @@ class Galaxy(
             orient_stars=True,
             radius=None,
             use_saved_subsnapshots=True,
-            force=False):
+            force=False,
+            force_theta_TB=None,
+            force_phi_TB=None):
 
             ## handle default remappings
+
+            if self.scom is None:
+                self.load_stars()
+                self.scom = all_utils.iterativeCoM(
+                    self.star_snap['Coordinates'],
+                    self.star_snap['Masses'],
+                    n=4)
 
             if radius is None:
                 radius = self.rvir ## radius of the sub-snapshot
@@ -476,7 +621,8 @@ class Galaxy(
                 ##  rather than relying on the output of AHF
                 if self.rstar_half is None:
                     self.load_stars()
-                    self.rstar_half = self.calculate_rstar_half() 
+                    self.rstar_half = self.calculate_half_mass_radius() 
+
 
                 ## radius to calculate angular momentum
                 ##  to orient on 
@@ -518,38 +664,42 @@ class Galaxy(
             else:
                 try:
                     assert use_saved_subsnapshots
-                    print("Using the saved sub-snapshots")
+                    print("Using the saved sub-snapshots for",self)
 
                     self.sub_snap = openSnapshot(
                         None,None,
                         0, ## gas index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_star_snap = openSnapshot(
                         None,None,
                         4, ## star index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
                     self.sub_dark_snap = openSnapshot(
                         None,None,
                         1, ## high-res DM index
                         fnames = [fname], ## directly load from a specific file
-                        cosmological=True,
                         abg_subsnap=1)
 
-                    ## check if the extraction radius is what we want, to 5 decimal places
-                    if np.round(radius,5) != np.round(self.sub_snap['scale_radius'],5):
+                    ## check if the extraction radius is what we want, to 4 decimal places
+                    if np.round(radius,4) != np.round(self.sub_snap['scale_radius'],4):
+                        ## delete it because it is GARBAGE
+                        os.remove(fname)
+                        already_saved = False
                         raise ValueError("scale_radius is not the same",
-                            radius,
-                            self.sub_snap['scale_radius'])
+                            radius-self.sub_snap['scale_radius'],
+                            radius,self.sub_snap['scale_radius'])
 
-                    ## check if halo center is the same to 5 decimal places
-                    if (np.round(self.scom,5) != np.round(self.sub_snap['scom'],5)).any():
+                    ## check if halo center is the same to 4 decimal places
+                    if (np.round(self.scom,4) != np.round(self.sub_snap['scom'],4)).any():
+                        ## delete it because it is GARBAGE
+                        os.remove(fname)
+                        already_saved = False
                         raise ValueError("Halo center is not the same",
+                            self.scom -self.sub_snap['scom'],
                             self.scom ,self.sub_snap['scom'])
 
                     print("Successfully loaded a pre-extracted subsnap")
@@ -560,11 +710,10 @@ class Galaxy(
                     if extract_DM:
                         which_dark_snap = self.sub_dark_snap
 
-                except (AttributeError,AssertionError,ValueError,IOError) as error:
+                except (AttributeError,AssertionError,ValueError,IOError,KeyError,TypeError) as error:
                     message = "Failed to open saved sub-snapshots"
-                    message+= ' %s'%error.__class__  
-                    if hasattr(error,'message'):
-                        message+= ' %s'%error.message
+                    #message+= ' %s'%error.__class__  
+                    message+= ' %s'%repr(error)
                     print(message)
 
                     ## have to load the full snapshots...
@@ -582,16 +731,17 @@ class Galaxy(
                     if extract_DM:
                         which_dark_snap = self.dark_snap
                 
-
             ## pass the snapshots into the rotation routine
-            sub_snaps = diskFilterDictionary(
+            sub_snaps = extractDiskFromSnapdicts(
                 which_star_snap,
                 which_snap,
                 radius, ## radius to extract particles within
                 orient_radius, ## radius to orient on
                 scom=self.scom,
                 dark_snap=which_dark_snap, ## dark_snap = None will ignore dark matter particles
-                orient_stars=orient_stars)
+                orient_stars=orient_stars,
+                force_theta_TB=force_theta_TB,
+                force_phi_TB=force_phi_TB)
 
             ## unpack the return value
             if not extract_DM:
@@ -613,23 +763,17 @@ class Galaxy(
                 not already_saved):
                 self.outputSubsnapshot()
 
-            ## read out the angular momentum from the sub_snap
-            ##  to return it below
-            if orient_stars:
-                lz = self.sub_star_snap['star_lz']
-                ltot = self.sub_star_snap['star_ltot']
-            else:
-                lz = self.sub_snap['lz']
-                ltot = self.sub_snap['ltot']
+            if not hasattr(self,'rgas_half'):
+                self.rgas_half = self.calculate_half_mass_radius(
+                    which_snap=self.sub_snap) 
 
             return (self.sub_radius,
                 self.orient_stars,
-                self.sub_snap['thetay'],
-                self.sub_snap['thetaz'],
-                lz,
-                ltot,
+                self.sub_snap['theta_TB'],
+                self.sub_snap['phi_TB'],
                 self.rvir,
-                self.rstar_half)
+                self.rstar_half,
+                self.rgas_half)
 
         return_value = extract_halo_inner(
             self,
@@ -660,41 +804,113 @@ class Galaxy(
 
     def load_stars(self,**kwargs):
         print("Loading star particles of",self)
-        self.star_snap = openSnapshot(
-            self.snapdir,
-            self.snapnum,4,
-            cosmological=True,
-            **kwargs)
+        if not hasattr(self,'star_snap'):
+            self.star_snap = openSnapshot(
+                self.snapdir,
+                self.snapnum,4,
+                **kwargs)
 
     def load_gas(self,**kwargs):
         print("Loading gas particles of",self)
         self.snap = openSnapshot(
             self.snapdir,
             self.snapnum,0,
-            cosmological=True,
             **kwargs)
 
     def load_dark_matter(self,**kwargs):
         print("Loading dark matter particles of",self)
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
-            cosmological=True,
             **kwargs)
 
-    def calculate_rstar_half(self):
-        print("Calculating the stellar half mass radius")
+    def calculate_half_mass_radius(
+        self,
+        which_snap=None,
+        geometry='spherical',
+        within_radius=None):
+
+        within_radius = self.rvir if within_radius is None else within_radius
 
         ## find the stars within the virial radius
-        coords = self.star_snap['Coordinates']-self.scom
-        radii = np.sum(coords**2,axis=1)**0.5
-        halo_indices = radii < self.rvir
-        
-        edges = np.linspace(0,self.rvir/2,5000,endpoint=True)
-        h,edges = np.histogram(radii[halo_indices],bins=edges,weights = self.star_snap['Masses'][halo_indices])
+        if which_snap is None:
+            which_snap = self.star_snap
+
+        if 'overwritten' in which_snap.keys() and which_snap['overwritten']:
+            coords = which_snap['Coordinates']
+        else:
+            coords = which_snap['Coordinates']-self.scom
+
+        masses = which_snap['Masses']
+
+        edges = np.linspace(0,within_radius,5000,endpoint=True)
+
+        if geometry in ['cylindrical','scale_height']:
+            radii = np.sum(coords[:,:2]**2,axis=1)**0.5
+        elif geometry == 'spherical':
+            print("Calculating the half mass radius")
+            radii = np.sum(coords**2,axis=1)**0.5
+
+        within_mask = radii <= within_radius
+
+        ## let's co-opt this method to calculate a scale height as well
+        if geometry == 'scale_height':
+            ## take the z-component
+            radii = np.abs(coords[:,-1])
+            edges = np.linspace(0,10*within_radius,5000,endpoint=True)
+
+        h,edges = np.histogram(
+            radii[within_mask],
+            bins=edges,
+            weights = masses[within_mask])
+
         h/=1.0*np.sum(h)
         cdf = np.cumsum(h)
 
         return all_utils.findIntersection(edges[1:],cdf,0.5)[0]
+    
+    def get_simple_radius_and_height(
+        self,
+        component='gas',
+        save_meta=True,
+        use_metadata=True,
+        loud=True,
+        **kwargs):
+
+        if component not in ['gas','stars']:
+            raise ValueError("Invalid component %s must be gas or star."%component)
+
+        group_name = 'SimpleGeom_%s'%component
+
+        @metadata_cache(
+            group_name,
+            ['%s_simple_r'%component,
+            '%s_simple_h'%component],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud)
+        def compute_simple_radius_and_height(self,component):
+
+            if component == 'gas':
+                which_snap = self.sub_snap
+            elif component == 'stars':
+                which_snap = self.sub_star_snap
+
+            ## calculate the cylindrical half-mass radius using mass 
+            ##  within 20% virial radius
+            radius = self.calculate_half_mass_radius(
+                which_snap=which_snap,
+                geometry='cylindrical',
+                within_radius=0.2*self.rvir)
+
+            ## calculate the half-mass height w/i cylinder
+            ##  of radius previously calculated
+            height = self.calculate_half_mass_radius(
+                which_snap=which_snap,
+                geometry='scale_height',
+                within_radius=radius)
+                
+            return radius,height
+        return compute_simple_radius_and_height(self,component,**kwargs)
 
     ## load and save things to object
     def outputSubsnapshot(
@@ -715,12 +931,21 @@ class Galaxy(
             os.makedirs(subsnapdir)
 
 
-        ## get keys directly from the parent snapshot:
-        with h5py.File(self.snap['fnames'][0],'r') as handle:
+        outpath = os.path.join(subsnapdir,'snapshot_%03d.hdf5'%self.snapnum)
+
+        ## if we haven't already created a subsnapshot, read keys from the 
+        ##  parent snapshot
+        if not os.path.isfile(outpath):
+            fname = self.snap['fnames'][0]
+        else: 
+            ## actually a subsnapshot already exists, let's use that one
+            fname = outpath
+            
+        ## read keys from existing snapshot
+        with h5py.File(fname,'r') as handle:
             header_keys = list(handle['Header'].attrs.keys())
             pkeyss = [list(handle['PartType%d'%ptype].keys()) for ptype in ptypes]
 
-        outpath = os.path.join(subsnapdir,'snapshot_%03d.hdf5'%self.snapnum)
         extra_keyss = []
         with h5py.File(outpath,'w') as handle:
             ## make header
@@ -767,15 +992,15 @@ class Galaxy(
                     abg_pgroup[key]=this_sub_snap[key]
         print('Finished, output sub-snapshot to:',outpath)
         
-    def overwrite_full_snaps_with_rotated_versions(self,extractDM):
+    def overwrite_full_snaps_with_rotated_versions(self,extract_DM):
         ## which snaps to offset and rotate?
         snaps = [self.snap,self.star_snap] 
         if extract_DM:
             snaps += [self.dark_snap]
 
         ## get the extraction parameters
-        thetay,thetaz,scom,vscom,orient_stars = (
-            self.sub_snap['thetay'],self.sub_snap['thetaz'],
+        theta_TB,phi_TB,scom,vscom,orient_stars = (
+            self.sub_snap['theta_TB'],self.sub_snap['phi_TB'],
             self.sub_snap['scom'],self.sub_snap['vscom'],
             self.sub_snap['orient_stars'])
 
@@ -786,7 +1011,7 @@ class Galaxy(
                 snap = offsetRotateSnapshot(
                     snap,
                     scom,vscom,
-                    thetay,thetaz,
+                    theta_TB,phi_TB,
                     orient_stars)
 
                 ## snapdict holds ptype -> "snap"/"star_snap"/"dark_snap"
@@ -931,11 +1156,13 @@ class ManyGalaxy(Galaxy):
         load_snapnums=None,
         population_kwargs=None,
         name_append='',
+        suite_name='metal_diffusion',
         **galaxy_kwargs):
         """ a wrapper that will allow one to open multiple galaxies at the same time,
             most useful for creating and accessing MultiMetadata instances while 
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
+
 
         ## snapdir is sometimes None if an instance is 
         ##  created just to access the metadata and cached
@@ -949,24 +1176,29 @@ class ManyGalaxy(Galaxy):
         self.name = name+name_append
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
+        self.suite_name = suite_name
+
+        ## save this for any Galaxy instances we create as well
+        galaxy_kwargs['suite_name'] = suite_name
 
 
         ## append _md to the datadir_name for my own sanity
-        if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            self.name = self.name + '_md'
+        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
+            #self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
         pretty_name = self.name.split('_')
-        pretty_name = [
+        pretty_name = np.array([
             strr if 'res' not in strr else '' 
-            for strr in pretty_name] 
+            for strr in pretty_name])
+        pretty_name = pretty_name[pretty_name!= '']
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
 
         ## handle datadir creation
         if datadir is None:
-            self.datadir = "/home/abg6257/projects/data/"
+            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
         else:
             self.datadir = datadir
 
@@ -974,7 +1206,7 @@ class ManyGalaxy(Galaxy):
         if not os.path.isdir(self.datadir):
             os.makedirs(self.datadir)
 
-        if name not in datadir and name!='temp':
+        if name not in self.datadir and name!='temp':
             self.datadir = os.path.join(self.datadir,self.datadir_name)
 
         if not os.path.isdir(self.datadir):
@@ -985,6 +1217,11 @@ class ManyGalaxy(Galaxy):
         if not os.path.isdir(self.metadatadir):
             os.makedirs(self.metadatadir)
 
+        ## handle plotdir creation
+        self.plotdir = os.path.join(self.datadir,'plots')
+        if not os.path.isdir(self.plotdir):
+            os.makedirs(self.plotdir)
+
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
             self.finsnap = all_utils.getfinsnapnum(self.snapdir)
@@ -993,6 +1230,11 @@ class ManyGalaxy(Galaxy):
         else:
             ## filler values
             self.finsnap=self.minsnap=None
+
+        try:
+            self.get_snapshotTimes(assert_cached=True)
+        except AssertionError:
+            print("No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
 
         ## for anything else you'd like to pass to future loaded galaxies
         self.galaxy_kwargs = galaxy_kwargs
@@ -1012,9 +1254,12 @@ class ManyGalaxy(Galaxy):
 
             ## define convenient access patterns
             def __getattr__(self,attr):
-                return np.array(
-                    [getattr(gal,attr) for gal 
-                    in self.galaxies])
+                if 'galaxies' in self.__dict__.keys():
+                    return np.array(
+                        [getattr(gal,attr) for gal 
+                        in self.galaxies])
+                else:
+                    return getattr(self,attr) ## might fail but that's what we want
 
             def __getitem__(self,index):
                 return self.galaxies[index]
@@ -1024,29 +1269,46 @@ class ManyGalaxy(Galaxy):
 
     def find_galaxy_population(
         self,
-        N=10,
         cursnap=600,
+        N=10,
         objects=False, ## do we want to return functioning Galaxy instances or just their snapnums?
-        DTMyr=50):
+        DTMyr=50,
+        loud=True):
         """ Finds evenly spaced snapshots by iteratively loading snapshots in reverse"""
 
-        ## initialize the search at our current snapshot
         found = 1
-        return_list = [self.loadAtSnapshot(cursnap)]
-        cur_time = return_list[0].current_time_Gyr
+        return_list = [cursnap]
+
+        def get_time_from_snapnum(snapnum):
+            
+            if not hasattr(self,'snap_gyrs'):
+                gal = self.loadAtSnapshot(cursnap)
+                this_time = gal.current_time_Gyr
+            else:
+                this_time = self.snap_gyrs[self.snapnums==snapnum][0]
+            return this_time
+
+
+        ## initialize the search at our current snapshot
+
+        cur_time = get_time_from_snapnum(cursnap)
         new_snap = cursnap-1
+
         while found < N:
-            new_galaxy = self.loadAtSnapshot(new_snap)
-            if (cur_time - new_galaxy.current_time_Gyr)*1000 > DTMyr:
-                cur_time = new_galaxy.current_time_Gyr
-                return_list +=[new_galaxy]
+            new_time = get_time_from_snapnum(new_snap)
+            if loud:
+                print(new_snap,'%.2f'%((cur_time - new_time)*1000),end='\t')
+            if (cur_time - new_time)*1000 > DTMyr:
+                cur_time = new_time
+                return_list +=[new_snap]
                 found+=1
             new_snap-=1
+
         if not objects:
             ## return only the snapnums
-            return [galaxy.snapnum for galaxy in return_list[::-1]]
-        else: 
             return return_list[::-1]
+        else: 
+            return [self.loadAtSnapshot(snapnum) for snapnum in return_list[::-1]]
 
     def loadAtSnapshot(self,snapnum,**kwargs):
         """ Create a Galaxy instance at snapnum using the stored 
