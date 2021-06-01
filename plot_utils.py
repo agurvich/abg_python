@@ -56,6 +56,11 @@ def add_to_legend(
 
     ## make the new line
     if shape == 'line':
+        ## this is wild, but have to handle when plotting
+        ##  markers, apparently when you read the line from 
+        ##  the legend it loses memory of the marker
+        if 'ls' in kwargs and kwargs['ls'] == '':
+            ax.markers = []
         line = Line2D(
         [0],[0],
         **kwargs)
@@ -68,6 +73,10 @@ def add_to_legend(
 
     if loc in legend_kwargs:
         loc = legend_kwargs.pop('loc')
+
+    for line in lines:
+        if line.get_linestyle() == 'None':
+            print(line.get_marker(),'marker')
     ax.legend(lines,labels,loc=loc,**legend_kwargs)
 
     return ax
