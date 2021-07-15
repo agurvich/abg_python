@@ -1,17 +1,28 @@
+import numpy as np 
+import copy
+
+from scipy.spatial.distance import cdist as cdist
+
+
 def findArrayClosestIndices(xs,ys):
-    try:
-        assert len(xs) < len(ys)
-    except:
+    """ Finds the indices of the elements of the superset ys 
+        that most closely match the elements of the subset xs """
+
+    if len(xs) >= len(ys):
+        ## why is this true? why can't the pidgeonhole 
+        ##  principle hold true here and I just end up w/ multiple
+        ##  xs that have the same y index?
         raise ValueError(
             "Ys (%d)"%len(ys),
             "should be some large sample that",
             "Xs (%d) is subsampling!"%len(xs))
 
     dists = cdist(
-        xs.reshape(-1,1),
-        ys.reshape(-1,1))
+        np.array(xs).reshape(-1,1),
+        np.array(ys).reshape(-1,1))
 
     indices = np.argmin(dists,axis=1)
+
     return indices
 
 def findIntersection(xs,ys,ys1):
@@ -42,7 +53,7 @@ def manyFilter(bool_fn,*args):
     for arg in args:
         mask = np.logical_and(bool_fn(arg),mask)
 
-    return [arg[mask] for arg in args]
+    return tuple([arg[mask] for arg in args])
 
 def pairReplace(xs,ys,value,bool_fn):
     """filters both x and y corresponding pairs by
@@ -59,15 +70,7 @@ def pairReplace(xs,ys,value,bool_fn):
     return xs,ys
 
 def pairFilter(xs,ys,bool_fn):
-    """filters both x and y corresponding pairs by
-        bool_fn"""
-
-    new_xs = xs[bool_fn(ys)]
-    new_ys = ys[bool_fn(ys)]
-
-    new_ys = new_ys[bool_fn(new_xs)]
-    new_xs = new_xs[bool_fn(new_xs)]
-    return new_xs,new_ys
+    return manyFilter(bool_fn,xs,ys)
 
 def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
     if dict1 is None:
@@ -76,11 +79,12 @@ def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
         if key in key_exceptions:
             continue
         try:
+            ## shape might fail if it's a constant so we wrap in a try
             if np.shape(dict0[key])[0]==indices.shape[0]:
                 dict1[key]=dict0[key][indices]
-            ## should only be center of mass and center of mass velocity
             else:
-                raise Exception("Save this array verbatim")
+                ## get to the else branch by raising an exception 
+                raise KeyError("Save this array verbatim")
         except:
             dict1[key]=dict0[key]
     if free_mem:
