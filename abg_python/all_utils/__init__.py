@@ -1,12 +1,12 @@
 ## unify namespaces for each of the sub-files here
-from system_utils import *
-from function_utils import *
-from selection_utils import *
-from array_utils import *
-from smooth_utils import *
-from math_utils import *
-from physics_utils import *
-from fitting_utils import *
+from .system_utils import *
+from .function_utils import *
+from .selection_utils import *
+from .array_utils import *
+from .smooth_utils import *
+from .math_utils import *
+from .physics_utils import *
+from .fitting_utils import *
 
 ## define some constants
 # Code mass -> g , (code length)^-3 -> cm^-3 , g -> nH
