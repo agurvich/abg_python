@@ -9,8 +9,8 @@ from .physics_utils import *
 #from .cosmo_utils import *
 from .fitting_utils import *
 #from .snapshot_utils import *
-#from .plot_utils import *
-from .color_utils import *
+#from .plot_utils import * ## need to answer test, can at least smoke test
+from .color_utils import * ## does not make sense to unit test
 
 ## define some constants
 # Code mass -> g , (code length)^-3 -> cm^-3 , g -> nH

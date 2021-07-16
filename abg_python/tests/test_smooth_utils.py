@@ -1,93 +1,61 @@
-import numpy as np
+import pytest
 
-from scipy.interpolate import interp1d
+from ..smooth_utils import *
 
-def boxcar_average(
-    time_edges,
-    ys,
-    boxcar_width,
-    loud=False,
-    average=True, ## vs. just counting non-nan entries in a window
-    assign='right'):
 
-    """
-    for lists with many nans need to first run w/ average=False, then 
-    run with ys=np.ones and average=False
-    to get divisor for each window.
+@pytest.mark.parametrize('average', [True,False])
+@pytest.mark.parametrize('assign', ['right','left','center'])
+def test_boxcar_average(average,assign):
 
-    idea is that you subtract off previous window from each window
-    https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
-    def running_mean(x, N):
-        cumsum = numpy.cumsum(numpy.insert(x, 0, 0)) 
-        return (cumsum[N:] - cumsum[:-N]) / float(N)
-    potentially accrues floating point error for many points... (>1e5?)
-    there is another solution on that page that uses scipy instead 
+    edges = np.linspace(-1,1,21,endpoint=True)
+    ys = np.ones(edges.size-1)
 
-    from scipy.ndimage.filters import uniform_filter1d
-    uniform_filter1d(x, size=N) <--- requires one to explicitly deal 
-        with edges of window
-    """
+    _, smooth_ys = boxcar_average(
+        edges,ys,
+        boxcar_width=0.3, ## 3 points per boxcar
+        average=average,
+        assign=assign,
+        loud=True)
 
-    ## apply a finite filter... no infinities allowed!
-    ys[np.logical_not(np.isfinite(ys))] = np.nan
+    npoints_per_car = 3
 
-    dts = np.unique(time_edges[1:]-time_edges[:-1])
-    if not np.allclose(dts,dts[0]): raise ValueError("ys must be uniformly spaced for this to work...")
+    if average: smooth_ys*=npoints_per_car
 
-    ## prepend a dt to the beginning if we were passed something missing an initial bin edge
-    if time_edges.shape[0] != (ys.shape[0]+1): time_edges = np.append([time_edges[0]-dts[0]],time_edges)
-
-    ## number of points per boxcar is:
-    N = int(boxcar_width//dts[0] + ((boxcar_width%dts[0])/dts[0]>=0.5))
-    if loud: print("boxcar'ing %d points/car, dt: %.2e window: %.2e"%(N,dts[0],boxcar_width))
-
-    cumsum = np.nancumsum(np.insert(ys, 0, 0).astype(np.float64)) 
-    ## cumsum[N:] is the first window, then second window + extra first point,
-    ##  then third window + extra 2 first points, etc... 
-    ys = (cumsum[N:]-cumsum[:-N])
-
-    ## allow a user to specify if they just want to take the sum
-    if average: ys = ys/N
-
-    ## tack on a window's worth of nans to the end since we couldn't
-    ##  evaluate it
-    ys = np.append([np.nan]*(N-1),ys)
-
-    ## shift the window based on centering
-    ##  because conditionals should default true
     if assign == 'right':
-        pass
-    ##  shift left by a whole window width
+        ## should be missing a window at the beginning
+        assert np.all(np.isnan(smooth_ys[:2])),smooth_ys
     elif assign == 'left':
-        ys[:-N] = ys[N:]
-        ys[-N:] = np.nan
-    ##  shift left by a half window width
+        ## should be missing a window at the end
+        assert np.all(np.isnan(smooth_ys[-2:])),smooth_ys
     elif assign == 'center':
-        n = max(int(N/2),1)
-        ys[:-n] = ys[n:]
-        ys[-n:] = np.nan
-    else: raise ValueError("unknown bin assignment %s, should be left, right, or center"%assign) 
+        ## should be missing half a window on either side
+        assert np.isnan(smooth_ys[0]),smooth_ys
+        assert np.isnan(smooth_ys[-1]),smooth_ys
+    else: raise ValueError("Bad assign %s"%assign)
 
-    return time_edges,ys
+    assert np.all(smooth_ys[np.isfinite(smooth_ys)] == npoints_per_car)
     
-def smooth_x_varying_curve(
-    xs,
-    ys,
-    boxcar_width,
-    log=False,
-    assign='center',
-    DT=0.01):
+"""
+def test_smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
 
-    if log: ys = np.log10(ys)
- 
-    new_xs,[new_ys] = uniform_resampler_helper(xs,[ys],DT)
+    if log:
+        ys = np.log10(ys)
 
-    smooth_xs,smooth_ys = boxcar_average(new_xs,new_ys,boxcar_width,assign=assign)
-    smooth_xs,smooth_ys2 = boxcar_average(new_xs,new_ys**2,boxcar_width,assign=assign)
-    smooth_xs,smooth_nan_count = boxcar_average(new_xs,np.isnan(new_ys),boxcar_width,assign=assign)
+    times = np.arange(np.nanmax(xs),np.nanmin(xs)-0.01,-0.01)[::-1]
+    fn = interp1d(
+        xs,
+        ys,
+        fill_value=np.nan,
+        bounds_error=False)
+    values = fn(times)
 
-    ## exclude region that we *just* filled with nans, 
-    ##  otherwise or its average will be diluted
+    smooth_xs,smooth_ys = boxcar_average(times,values,smooth,assign=assign)
+    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth,assign=assign)
+    smooth_xs,smooth_nan_count = boxcar_average(times,np.isnan(values),smooth,assign=assign)
+
+    ## exclude region that we filled with nans, or might have its
+    ##  average otherwise diluted
+
     dx = smooth_xs[1]-smooth_xs[0]
     if assign == 'center':
         dtop_should_be = int(smooth/2/dx)
@@ -98,13 +66,15 @@ def smooth_x_varying_curve(
     elif assign == 'right':
         dtop_should_be = 0
         dbottom_should_be = int(smooth/dx)
-    else: raise ValueError("invalid assign")
+    else:
+        raise NotImplementedError("invalid assign")
 
     if dtop_should_be !=0:
         smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
         smooth_ys = smooth_ys[dbottom_should_be:-dtop_should_be]
         smooth_ys2 = smooth_ys2[dbottom_should_be:-dtop_should_be]
         smooth_nan_count = smooth_nan_count[dbottom_should_be:-dtop_should_be]
+        
     else:
         smooth_xs = smooth_xs[dbottom_should_be:]
         smooth_ys = smooth_ys[dbottom_should_be:]
@@ -127,13 +97,34 @@ def smooth_x_varying_curve(
         smooth_ys = smooth_ys[nan_mask]
         smooth_ys2 = smooth_ys2[nan_mask]
 
-    ## it's possible that we removed nans from in the middle, so we have to do this for safety
-    smooth_xs,[smooth_ys,smooth_ys2] = uniform_resampler_helper(smooth_xs,[smooth_ys,smooth_ys2],DT)
+    ## need to resample what we had to make sure points are evenly spaced
+    if len(np.unique(np.diff(smooth_xs))) != 1:
+        ## evenly spaced times
+        times = np.arange(smooth_xs.max(),smooth_xs.min()-0.01,-0.01)[::-1]
+
+        ## replace ys
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys = fn(times)
+
+        ## replace ys2
+        fn = interp1d(
+            smooth_xs,
+            smooth_ys2,
+            fill_value=np.nan,
+            bounds_error=False)
+        smooth_ys2 = fn(times)
+        
+        ## replace smooth_xs
+        smooth_xs = times
 
     ## have to skip first window's width of points
     sigmas = (smooth_ys2-smooth_ys**2)**0.5
 
-    ## exponentiate to put everything back
+
     if log:
         lowers = 10**(smooth_ys-sigmas)
         uppers = 10**(smooth_ys+sigmas)
@@ -146,7 +137,7 @@ def smooth_x_varying_curve(
     
     return smooth_xs,smooth_ys,sigmas,lowers,uppers
 
-def find_first_window(xs,ys,bool_fn,window,last=False):
+def test_find_first_window(xs,ys,bool_fn,window,last=False):
     ## averages boolean over window,
     ##  by taking the floor, it requires that 
     ##  all times in the window fulfill the boolean
@@ -191,14 +182,14 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
 
     return bool_xs[lindex],bool_xs[rindex]
 
-def find_last_instance(xs,ys,bool_fn):
+def test_find_last_instance(xs,ys,bool_fn):
     bool_ys = bool_fn(xs,ys)
     if np.nansum(bool_ys) == 0:
         return np.nan,np.nan
     rev_index = np.argmin(np.logical_not(bool_ys[::-1]))
     return xs[xs.size-rev_index-(rev_index==0)],ys[xs.size-rev_index-(rev_index==0)]
     
-def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
+def test_find_local_minima_maxima(xs,ys,smooth=None,ax=None):
 
     ## calculate the slope of the curve
     slopes = np.diff(ys)/np.diff(xs)
@@ -220,26 +211,4 @@ def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
             #ax.axvline(zero)
 
     return zeros
-
-
-def uniform_resampler_helper(xs,arrs,DT=None):
-    new_xs = xs
-    return_value = arrs
-    if len(np.unique(np.diff(xs))) != 1: ## not uniform 
-        ## not told what what spacing to use, so we'll conserve 
-        ##  number of points.
-        if DT is None: DT = (xs.nanmax() - xs.nanmin())/xs.size 
-
-        ## create new xs to sample at
-        new_xs = np.arange(np.nanmax(xs),np.nanmin(xs)-DT,-DT)[::-1]
-
-        ## sample each of the arrays we're passed
-        return_value = [
-            interp1d(
-                xs,
-                arr,
-                fill_value=np.nan,
-                bounds_error=False)(new_xs)
-            for arr in arrs]
-
-    return new_xs,return_value
+"""
