@@ -474,6 +474,50 @@ chimes_dict = {"elec": 0,
                "CHp": 149,"CH2p": 150,"OHp": 151,"H2Op": 152,
                "H3Op": 153,"COp": 154,"HOCp": 155,"O2p": 156}
 
+def getfinsnapnum(snapdir,getmin=0):
+    if not getmin:
+        maxnum = 0
+        for snap in os.listdir(snapdir):
+            if 'snapshot' in snap and 'hdf5' in snap and snap.index('snapshot')==0:
+                snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+            elif 'snapdir' in snap:
+                snapnum = int(snap[len('snapdir_'):])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+        return maxnum
+    else:
+        minnum=1e8
+        for snap in os.listdir(snapdir):
+            if 'snapshot' in snap and 'hdf5' in snap:
+                snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
+                if snapnum < minnum:
+                    minnum=snapnum
+            elif 'snapdir' in snap:
+                snapnum = int(snap[len('snapdir_'):])
+                if snapnum < minnum:
+                    minnum=snapnum
+        return minnum
+
+def extractMaxTime(snapdir):
+    """Extracts the time variable from the final snapshot"""
+    maxsnapnum = getfinsnapnum(snapdir)
+    if 'snapshot_%3d.hdf5'%maxsnapnum in os.listdir(snapdir):
+        h5path = 'snapshot_%3d.hdf5'%maxsnapnum
+    elif 'snapdir_%03d'%maxsnapnum in os.listdir(snapdir):
+        h5path = "snapdir_%03d/snapshot_%03d.0.hdf5"%(maxsnapnum,maxsnapnum)
+    else:
+        print("Couldn't find maxsnapnum in")
+        print(os.listdir(snapdir))
+        raise Exception("Couldn't find snapshot")
+
+    with h5py.File(os.path.join(snapdir,h5path),'r') as handle:
+        maxtime = handle['Header'].attrs['Time']
+    return maxtime
+
+
+
 
 """
 Not really useful as a result of 
