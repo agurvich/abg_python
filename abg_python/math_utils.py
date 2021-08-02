@@ -2,7 +2,7 @@ import numpy as np
 
 #math functions (trig and linear algebra...)
 def vectorsToRAAndDec(vectors):
-    xs,ys,zs = vectors.T
+    xs,ys,zs = np.transpose(vectors)
     ## puts the meridian at x = 0
     ra = np.arctan2(ys,xs)
 
@@ -11,52 +11,11 @@ def vectorsToRAAndDec(vectors):
 
     return ra,dec
 
-def rotateVectorsZY(thetay,thetaz,vectors):
-    rotatedCoords=rotateVectors(rotationMatrixZ(thetaz),vectors)
-    rotatedCoords=rotateVectors(rotationMatrixY(thetay),rotatedCoords)
-    return rotatedCoords
-
-def unrotateVectorsZY(thetay,thetaz,vectors):
-    rotatedCoords=rotateVectors(rotationMatrixY(-thetay),vectors)
-    rotatedCoords=rotateVectors(rotationMatrixZ(-thetaz),rotatedCoords)
-    return rotatedCoords
-
-def rotateVectors(rotationMatrix,vectors):
-    return np.dot(rotationMatrix,vectors.T).T
-
-def rotationMatrixY(theta):
-    return np.array([
-            [np.cos(theta),0,-np.sin(theta)],
-            [0,1,0],
-            [np.sin(theta),0,np.cos(theta)]
-        ])
-
-def rotationMatrixX(theta):
-    return np.array([
-            [1,0,0],
-            [0,np.cos(theta),np.sin(theta)],
-            [0,-np.sin(theta),np.cos(theta)]
-        ])
-
-def rotationMatrixZ(theta):
-    return np.array([
-            [np.cos(theta),np.sin(theta),0],
-            [-np.sin(theta),np.cos(theta),0],
-            [0,0,1]
-        ])
-
 def getThetasTaitBryan(angMom):
-    """ as Euler angles but xyz vs. zxz"""
+    """As Euler angles but xyz vs. zxz. Returns degrees!"""
     theta_TB = np.arctan2(angMom[1],np.sqrt(angMom[0]**2+angMom[2]**2))*180/np.pi
     phi_TB = np.arctan2(-angMom[0],angMom[2])*180/np.pi
 
-    #new_angMom = rotateEuler(
-        #theta_TB,phi_TB,0,
-        #angMom,
-        #order='xyz',loud=False)
-    #print('old:',angMom,'new:',new_angMom)
-
-    ## RETURNS DEGREES
     return theta_TB,phi_TB
 
 def rotateEuler(
