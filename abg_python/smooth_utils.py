@@ -70,6 +70,29 @@ def boxcar_average(
 
     return time_edges,ys
     
+def uniform_resampler(xs,arrs,DT=None):
+    """resamples xs,[ys,...] arrays evenly by interpolation. """
+    new_xs = xs
+    return_value = arrs
+    if len(np.unique(np.diff(xs))) != 1: ## not uniform 
+        ## not told what what spacing to use, so we'll conserve 
+        ##  number of points.
+        if DT is None: DT = (np.nanmax(xs) - np.nanmin(xs))/(len(xs)-1)
+
+        ## create new xs to sample at
+        new_xs = np.arange(np.nanmax(xs),np.nanmin(xs)-DT,-DT)[::-1]
+
+        ## sample each of the arrays we're passed
+        return_value = [
+            interp1d(
+                xs,
+                arr,
+                fill_value=np.nan,
+                bounds_error=False)(new_xs)
+            for arr in arrs]
+
+    return new_xs,return_value
+    
 def smooth_x_varying_curve(
     xs,
     ys,
@@ -78,26 +101,31 @@ def smooth_x_varying_curve(
     assign='center',
     DT=0.01):
 
+    assert len(xs) == len(ys)
+
     if log: ys = np.log10(ys)
  
-    new_xs,[new_ys] = uniform_resampler_helper(xs,[ys],DT)
+    new_xs,[new_ys] = uniform_resampler(xs,[ys],DT)
 
     smooth_xs,smooth_ys = boxcar_average(new_xs,new_ys,boxcar_width,assign=assign)
     smooth_xs,smooth_ys2 = boxcar_average(new_xs,new_ys**2,boxcar_width,assign=assign)
     smooth_xs,smooth_nan_count = boxcar_average(new_xs,np.isnan(new_ys),boxcar_width,assign=assign)
 
+    ## boxcar average would've added an extra point because it expects edges
+    if len(smooth_xs) != len(smooth_ys) and len(new_xs) == len(new_ys): smooth_xs = smooth_xs[1:]
+
     ## exclude region that we *just* filled with nans, 
-    ##  otherwise or its average will be diluted
+    ##  because those points had their average diluted
     dx = smooth_xs[1]-smooth_xs[0]
     if assign == 'center':
-        dtop_should_be = int(smooth/2/dx)
-        dbottom_should_be = int(smooth/2/dx)
+        dtop_should_be = int(boxcar_width/2/dx)
+        dbottom_should_be = int(boxcar_width/2/dx)
     elif assign == 'left':
-        dtop_should_be = int(smooth/dx)
+        dtop_should_be = int(boxcar_width/dx)
         dbottom_should_be = 0
     elif assign == 'right':
         dtop_should_be = 0
-        dbottom_should_be = int(smooth/dx)
+        dbottom_should_be = int(boxcar_width/dx)
     else: raise ValueError("invalid assign")
 
     if dtop_should_be !=0:
@@ -121,14 +149,14 @@ def smooth_x_varying_curve(
     ##  let's get rid of all the nan's and hope that there
     ##  aren't any that were in the middle, just at the edges
     ##  from not having enough points in the window :\
-    if np.sum(nan_mask!=0) == (int(smooth/dx)):
+    if np.sum(nan_mask!=0) == (int(boxcar_width/dx)):
         nan_mask = smooth_nan_count == 0
         smooth_xs = smooth_xs[nan_mask]
         smooth_ys = smooth_ys[nan_mask]
         smooth_ys2 = smooth_ys2[nan_mask]
 
     ## it's possible that we removed nans from in the middle, so we have to do this for safety
-    smooth_xs,[smooth_ys,smooth_ys2] = uniform_resampler_helper(smooth_xs,[smooth_ys,smooth_ys2],DT)
+    smooth_xs,[smooth_ys,smooth_ys2] = uniform_resampler(smooth_xs,[smooth_ys,smooth_ys2],DT)
 
     ## have to skip first window's width of points
     sigmas = (smooth_ys2-smooth_ys**2)**0.5
@@ -144,17 +172,18 @@ def smooth_x_varying_curve(
         lowers = smooth_ys-sigmas
         uppers = smooth_ys+sigmas
     
+    assert len(smooth_xs) == len(smooth_ys)
     return smooth_xs,smooth_ys,sigmas,lowers,uppers
 
 def find_first_window(xs,ys,bool_fn,window,last=False):
-    ## averages boolean over window,
-    ##  by taking the floor, it requires that 
-    ##  all times in the window fulfill the boolean
+    ## averages boolean over window at time xs
     bool_xs,bool_ys = boxcar_average(
         xs,
         bool_fn(xs,ys),
         window) 
 
+    ##  by taking the floor, it requires that
+    ##   all times in the window fulfill the boolean
     bool_ys[np.isfinite(ys)] = np.floor(bool_ys[np.isfinite(ys)]).astype(float)
     bool_ys[np.isnan(ys)] = np.nan
 
@@ -168,7 +197,6 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
     if last:
         ## nightmare code that finds the last instance
         ##  of a true in a time series
-
         offset = None
         while offset != 0:
             ## find the next time the time series has a false
@@ -177,7 +205,7 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
             ## find the next time there's a true after that false
             ##  3 cases since we're starting on a false:
             ##  1) there are no more trues -> offset=0
-            ##  2) there are only trues following this false -> offset=1, will next be 0
+            ##  2) there are only trues following this false -> here offset=1, but will next be case 1)
             ##  3) there are trues and falses -> offset = distance to next True
             offset = np.nanargmax(bool_ys[rindex+next_false:])
 
@@ -186,12 +214,14 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
             if offset > 0:
                 rindex += offset + next_false 
         
-    ## finds the point a window's width away from the right edge
+    ## finds the point a window's width before from the right edge
     lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
 
     return bool_xs[lindex],bool_xs[rindex]
 
 def find_last_instance(xs,ys,bool_fn):
+    """ search the reversed array for the first time bool_fn returns True,
+        aka the last time it returns True!"""
     bool_ys = bool_fn(xs,ys)
     if np.nansum(bool_ys) == 0:
         return np.nan,np.nan
@@ -200,46 +230,24 @@ def find_last_instance(xs,ys,bool_fn):
     
 def find_local_minima_maxima(xs,ys,smooth=None,ax=None):
 
-    ## calculate the slope of the curve
+    ## approximate the slope of the curve
     slopes = np.diff(ys)/np.diff(xs)
-    xs = xs[1:]
+    xs = (xs[1:]+xs[:-1])/2
 
     ## smooth the slope if requested
     if smooth is not None:
         ## x could also be uniform and this will work
-        xs,slopes,foo,bar,foo = smooth_x_varying_curve(xs,slopes,smooth)
+        xs,slopes,_,_,_ = smooth_x_varying_curve(xs,slopes,smooth,assign='center')
     
-    xs = xs[1:]
-    ## find where slope changes sign
-    zeros = xs[np.diff(slopes>0).astype(bool)]
+    xs = (xs[1:]+xs[:-1])/2
+    ## find locations where slope changes sign
+    zeros = xs[np.diff(slopes>=0).astype(bool)]
 
+    ## sure, why not, we'll plot them
     if ax is not None:
         ax.plot(xs,slopes[1:])
         ax.axhline(0,ls='--',c='k')
-        #for zero in zeros:
-            #ax.axvline(zero)
+        for zero in zeros:
+            ax.axvline(zero)
 
     return zeros
-
-
-def uniform_resampler_helper(xs,arrs,DT=None):
-    new_xs = xs
-    return_value = arrs
-    if len(np.unique(np.diff(xs))) != 1: ## not uniform 
-        ## not told what what spacing to use, so we'll conserve 
-        ##  number of points.
-        if DT is None: DT = (xs.nanmax() - xs.nanmin())/xs.size 
-
-        ## create new xs to sample at
-        new_xs = np.arange(np.nanmax(xs),np.nanmin(xs)-DT,-DT)[::-1]
-
-        ## sample each of the arrays we're passed
-        return_value = [
-            interp1d(
-                xs,
-                arr,
-                fill_value=np.nan,
-                bounds_error=False)(new_xs)
-            for arr in arrs]
-
-    return new_xs,return_value

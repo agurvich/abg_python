@@ -15,7 +15,7 @@ def test_boxcar_average(average,assign):
         boxcar_width=0.3, ## 3 points per boxcar
         average=average,
         assign=assign,
-        loud=True)
+        loud=False)
 
     npoints_per_car = 3
 
@@ -34,181 +34,53 @@ def test_boxcar_average(average,assign):
     else: raise ValueError("Bad assign %s"%assign)
 
     assert np.all(smooth_ys[np.isfinite(smooth_ys)] == npoints_per_car)
+
+def test_uniform_resampler():
+
+    xs = [0,1,1.1,1.2,1.3,5]
+    ys = xs
+
+    uni_xs,[uni_ys,uni_ys2] = uniform_resampler(xs,[ys,ys])
+
+    ## test respacing of xs
+    assert np.all(uni_xs == np.arange(6)),uni_xs
+
+    ## test packing/unpacking of arrays and interpolation
+    assert np.all(uni_ys == np.arange(6)),uni_ys
+    assert np.all(uni_ys2 == np.arange(6)),uni_ys2
     
-"""
-def test_smooth_x_varying_curve(xs,ys,smooth,log=False,assign='center'):
+def test_smooth_x_varying_curve():
+    #xs,ys,smooth,log=False,assign='center'
+    pass
 
-    if log:
-        ys = np.log10(ys)
+@pytest.mark.parametrize('last', [False,True])
+def test_find_first_window(last):
+    #xs,ys,bool_fn,window
+    xs = np.arange(0,360)
+    ys = np.sin(2*xs/180*np.pi)
+    bool_fn = lambda x,y: y <= 0 
 
-    times = np.arange(np.nanmax(xs),np.nanmin(xs)-0.01,-0.01)[::-1]
-    fn = interp1d(
-        xs,
-        ys,
-        fill_value=np.nan,
-        bounds_error=False)
-    values = fn(times)
+    lx,rx = find_first_window(xs,ys,bool_fn,xs[10]-xs[0],last=last)
+    if not last: assert (lx == 89 and rx == 99),(lx,rx)
+    else: assert (lx ==  269 and rx == 279),(lx,rx) 
 
-    smooth_xs,smooth_ys = boxcar_average(times,values,smooth,assign=assign)
-    smooth_xs,smooth_ys2 = boxcar_average(times,values**2,smooth,assign=assign)
-    smooth_xs,smooth_nan_count = boxcar_average(times,np.isnan(values),smooth,assign=assign)
+def test_find_last_instance():
+    #xs,ys,bool_fn
+    xs = np.arange(10)
+    ys = np.mod(xs,3)
+    loc,value = find_last_instance(xs,ys,lambda x,y: y ==0)
+    assert  loc == 9 and value == 0, (loc,value)
 
-    ## exclude region that we filled with nans, or might have its
-    ##  average otherwise diluted
+@pytest.mark.parametrize('smooth', [None,10])
+def test_find_local_minima_maxima(smooth):
+    #xs,ys,smooth=None,ax=None
+    xs = np.arange(0,360)
+    ys = np.sin(2*xs/180*np.pi)
 
-    dx = smooth_xs[1]-smooth_xs[0]
-    if assign == 'center':
-        dtop_should_be = int(smooth/2/dx)
-        dbottom_should_be = int(smooth/2/dx)
-    elif assign == 'left':
-        dtop_should_be = int(smooth/dx)
-        dbottom_should_be = 0
-    elif assign == 'right':
-        dtop_should_be = 0
-        dbottom_should_be = int(smooth/dx)
-    else:
-        raise NotImplementedError("invalid assign")
+    zeros = find_local_minima_maxima(xs,ys,smooth)
 
-    if dtop_should_be !=0:
-        smooth_xs = smooth_xs[dbottom_should_be:-dtop_should_be]
-        smooth_ys = smooth_ys[dbottom_should_be:-dtop_should_be]
-        smooth_ys2 = smooth_ys2[dbottom_should_be:-dtop_should_be]
-        smooth_nan_count = smooth_nan_count[dbottom_should_be:-dtop_should_be]
-        
-    else:
-        smooth_xs = smooth_xs[dbottom_should_be:]
-        smooth_ys = smooth_ys[dbottom_should_be:]
-        smooth_ys2 = smooth_ys2[dbottom_should_be:]
-        smooth_nan_count = smooth_nan_count[dbottom_should_be:]
-
-    ## TODO
-    ## this is hard-coded for double-smoothing
-    ##  with the same window. one day i may regret this
-    nan_mask = smooth_nan_count  > 0
-    ## if there is an extra window's worth of nans
-    ##  we must have smoothing this before (or maybe
-    ##  we're smoothing a running scatter)
-    ##  let's get rid of all the nan's and hope that there
-    ##  aren't any that were in the middle, just at the edges
-    ##  from not having enough points in the window :\
-    if np.sum(nan_mask!=0) == (int(smooth/dx)):
-        nan_mask = smooth_nan_count == 0
-        smooth_xs = smooth_xs[nan_mask]
-        smooth_ys = smooth_ys[nan_mask]
-        smooth_ys2 = smooth_ys2[nan_mask]
-
-    ## need to resample what we had to make sure points are evenly spaced
-    if len(np.unique(np.diff(smooth_xs))) != 1:
-        ## evenly spaced times
-        times = np.arange(smooth_xs.max(),smooth_xs.min()-0.01,-0.01)[::-1]
-
-        ## replace ys
-        fn = interp1d(
-            smooth_xs,
-            smooth_ys,
-            fill_value=np.nan,
-            bounds_error=False)
-        smooth_ys = fn(times)
-
-        ## replace ys2
-        fn = interp1d(
-            smooth_xs,
-            smooth_ys2,
-            fill_value=np.nan,
-            bounds_error=False)
-        smooth_ys2 = fn(times)
-        
-        ## replace smooth_xs
-        smooth_xs = times
-
-    ## have to skip first window's width of points
-    sigmas = (smooth_ys2-smooth_ys**2)**0.5
-
-
-    if log:
-        lowers = 10**(smooth_ys-sigmas)
-        uppers = 10**(smooth_ys+sigmas)
-        smooth_ys = 10**smooth_ys
-        sigmas = sigmas ## dex
-        ys = 10**ys
-    else:
-        lowers = smooth_ys-sigmas
-        uppers = smooth_ys+sigmas
-    
-    return smooth_xs,smooth_ys,sigmas,lowers,uppers
-
-def test_find_first_window(xs,ys,bool_fn,window,last=False):
-    ## averages boolean over window,
-    ##  by taking the floor, it requires that 
-    ##  all times in the window fulfill the boolean
-    bool_xs,bool_ys = boxcar_average(
-        xs,
-        bool_fn(xs,ys),
-        window) 
-
-    bool_ys[np.isfinite(ys)] = np.floor(bool_ys[np.isfinite(ys)]).astype(float)
-    bool_ys[np.isnan(ys)] = np.nan
-
-    ## no window matches
-    if np.nansum(bool_ys) == 0:
-        return np.nan,np.nan
-
-    ## find the first instance of true
-    rindex = np.nanargmax(bool_ys==1)
-
-    if last:
-        ## nightmare code that finds the last instance
-        ##  of a true in a time series
-
-        offset = None
-        while offset != 0:
-            ## find the next time the time series has a false
-            next_false = np.nanargmax(bool_ys[rindex:]==0)
-
-            ## find the next time there's a true after that false
-            ##  3 cases since we're starting on a false:
-            ##  1) there are no more trues -> offset=0
-            ##  2) there are only trues following this false -> offset=1, will next be 0
-            ##  3) there are trues and falses -> offset = distance to next True
-            offset = np.nanargmax(bool_ys[rindex+next_false:])
-
-            ## if that false eventually has a true after it, let's
-            ##  move there and start the process over again.
-            if offset > 0:
-                rindex += offset + next_false 
-        
-    ## finds the point a window's width away from the right edge
-    lindex = np.argmin((bool_xs - (bool_xs[rindex] - window))**2)
-
-    return bool_xs[lindex],bool_xs[rindex]
-
-def test_find_last_instance(xs,ys,bool_fn):
-    bool_ys = bool_fn(xs,ys)
-    if np.nansum(bool_ys) == 0:
-        return np.nan,np.nan
-    rev_index = np.argmin(np.logical_not(bool_ys[::-1]))
-    return xs[xs.size-rev_index-(rev_index==0)],ys[xs.size-rev_index-(rev_index==0)]
-    
-def test_find_local_minima_maxima(xs,ys,smooth=None,ax=None):
-
-    ## calculate the slope of the curve
-    slopes = np.diff(ys)/np.diff(xs)
-    xs = xs[1:]
-
-    ## smooth the slope if requested
-    if smooth is not None:
-        ## x could also be uniform and this will work
-        xs,slopes,foo,bar,foo = smooth_x_varying_curve(xs,slopes,smooth)
-    
-    xs = xs[1:]
-    ## find where slope changes sign
-    zeros = xs[np.diff(slopes>0).astype(bool)]
-
-    if ax is not None:
-        ax.plot(xs,slopes[1:])
-        ax.axhline(0,ls='--',c='k')
-        #for zero in zeros:
-            #ax.axvline(zero)
-
-    return zeros
-"""
+    assert len(zeros) == 4, len(zeros)
+    assert zeros[0] == 45,zeros#zeros[0]
+    assert zeros[1] == 45+90,zeros#zeros[1]
+    assert zeros[2] == 45+180,zeros[2]
+    assert zeros[3] == 45+270,zeros[3]
