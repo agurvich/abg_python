@@ -22,17 +22,17 @@ def rotateEuler(
     theta,phi,psi,
     pos,
     order='xyz', ## defaults to Tait-Bryan, actually
-    recenter=False,
     rotation_point=None,
     loud=True,
     inverse=False):
 
-    if rotation_point is None:
-        rotation_point = np.zeros(3)
-    pos=pos-rotation_point
     ## if need to rotate at all really -__-
-    if theta==0 and phi==0 and psi==0:
-        return pos
+    if theta==0 and phi==0 and psi==0: return pos
+
+    if rotation_point is None: rotation_point = np.zeros(3)
+    
+    pos=pos-rotation_point
+
     # rotate particles by angle derived from frame number
     theta_rad = np.pi*theta/ 180
     phi_rad   = np.pi*phi  / 180
@@ -48,8 +48,7 @@ def rotateEuler(
     # construct rotation matrix
     ##  Tait-Bryan angles
     if order == 'xyz':
-        if loud:
-            print('Using Tait-Bryan angles (xyz). Change with order=zxz.')
+        if loud: print('Using Tait-Bryan angles (xyz). Change with order=zxz.')
         rot_matrix = np.array([
             [c2*c3           , - c2*s3         , s2    ],
             [c1*s3 + s1*s2*c3, c1*c3 - s1*s2*s3, -s1*c2],
@@ -58,8 +57,7 @@ def rotateEuler(
 
     ##  classic Euler angles
     elif order == 'zxz':
-        if loud:
-            print('Using Euler angles (zxz). Change with order=xyz.')
+        if loud: print('Using Euler angles (zxz). Change with order=xyz.')
         rot_matrix = np.array([
             [c1*c3 - c2*s1*s3, -c1*s3 - c2*c3*s1, s1*s2 ],
             [c3*s1 + c1*c2*s3, c1*c2*c3 - s1*s3 , -c1*s2],
@@ -68,8 +66,7 @@ def rotateEuler(
         raise Exception("Bad order")
 
     ## the inverse of a rotation matrix is its tranpose
-    if inverse:
-        rot_matrix = rot_matrix.T
+    if inverse: rot_matrix = rot_matrix.T
 
     ## rotate about each axis with a matrix operation
     pos_rot = np.matmul(rot_matrix,pos.T).T
@@ -82,10 +79,8 @@ def rotateEuler(
     pos_rot = np.array(pos_rot,order='C')
     
     ### add the frame_center back
-    if not recenter:
-        pos_rot+=rotation_point
+    pos_rot+=np.array(np.matmul(rot_matrix,rotation_point.T).T,order='C')
 
-    ## can never be too careful that we're float32
     return pos_rot
 
 def applyRandomOrientation(coords,vels,random_orientation):
