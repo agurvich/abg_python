@@ -9,7 +9,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from abg_python.all_utils import pairFilter,covarianceEigensystem
+from .array_utils import pairFilter,
+from .fitting_utils import covarianceEigensystem
 from scipy.interpolate import interp1d
 
 latex_pagewidth=6.9738480697 ## in #7.125

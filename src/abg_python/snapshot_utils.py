@@ -1,7 +1,9 @@
-import h5py,sys,os,copy
+import h5py
+import os
+import copy
 import numpy as np
-from abg_python.all_utils import getTemperature
-from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
+from .physics_utils import getTemperature
+from .cosmo_utils import getAgesGyrs,convertStellarAges
 
 def get_fnames(snapdir,snapnum,snapdir_name=''):
     fnames = [
