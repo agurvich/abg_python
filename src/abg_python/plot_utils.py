@@ -9,7 +9,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from .array_utils import pairFilter,
+from .array_utils import pairFilter
 from .fitting_utils import covarianceEigensystem
 from scipy.interpolate import interp1d
 
