@@ -281,6 +281,8 @@ class Galaxy(
 
 
             except IOError as e:
+                print("Couldn't find header.")
+                print(e) 
                 return 
 
             ## simulation timing

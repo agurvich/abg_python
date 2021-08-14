@@ -9,7 +9,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from abg_python.all_utils import pairFilter,covarianceEigensystem
+from .array_utils import pairFilter
+from .fitting_utils import covarianceEigensystem
 from scipy.interpolate import interp1d
 
 latex_pagewidth=6.9738480697 ## in #7.125
@@ -114,7 +115,13 @@ def add_to_legend(
 
     ## make the new line
     if shape == 'line':
+        ## this is wild, but have to handle when plotting
+        ##  markers, apparently when you read the line from 
+        ##  the legend it loses memory of the marker
+        if 'ls' in kwargs and kwargs['ls'] == '':
+            ax.markers = []
         line_kwargs = {}
+
         if lw is not None:
             line_kwargs['lw'] = lw
 
@@ -134,6 +141,10 @@ def add_to_legend(
 
     if loc in legend_kwargs:
         loc = legend_kwargs.pop('loc')
+
+    for line in lines:
+        if line.get_linestyle() == 'None':
+            print(line.get_marker(),'marker')
 
     if prev_loc is not None and loc == prev_loc:
         loc+=1
