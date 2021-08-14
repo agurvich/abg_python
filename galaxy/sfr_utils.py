@@ -502,7 +502,9 @@ class SFR_helper(SFR_plotter):
                         max(0,i-window_size_n):
                         min(adjusted_sfrs.size-1,i+window_size_n)]
 
-                    median = np.median(window)
+                    median = np.nanmedian(window)
+                    if np.isnan(median): import pdb; pdb.set_trace()
+
                     per_l,per_r = np.quantile(
                         window/median,
                         [0.1,0.9])
@@ -521,6 +523,7 @@ class SFR_helper(SFR_plotter):
                 self.SFH_scatter_per_ls = per_ls
                 self.SFH_scatter_per_rs = per_rs
                 self.SFH_scatter_medians = medians
+                self.SFH_rel_scatters = rel_scatters
 
             elif mode == 'anna':
                 ## calculate scatter using 10 Myr running average in 

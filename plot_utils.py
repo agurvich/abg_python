@@ -255,7 +255,7 @@ def addColorbar(
         xlabel = ax.xaxis.get_label()
         if xlabel.get_text() != '':
             print("addColorbar does not support finding xaxis text, this will look bad")
-        thickness = 20./cur_size[1] * fig.dpi/100
+        thickness = 15./cur_size[1] * fig.dpi/100
         ax1 = fig.add_axes([fig_x0,fig_y0 - thickness - offset/cur_size[1],width, thickness])
 
     if type(cmap) == str:
@@ -1080,3 +1080,19 @@ def ffmpeg_frames(
             cmd = 'cp %s %s'%(src,dst)
             print(cmd)
             os.system(cmd)
+
+
+def place_text(ax,percentage):
+    ylow,yhigh = ax.get_ylim()
+
+    logflag=False
+    if ax.get_yscale() == 'log':
+        ylow = np.log10(ylow)
+        yhigh = np.log10(yhigh)
+        logflag=True
+    dy = (yhigh-ylow)/100 ## percentages
+
+    foo = ylow+dy*percentage
+    if logflag: 
+        foo = 10**foo
+    return foo

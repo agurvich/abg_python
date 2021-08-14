@@ -164,10 +164,11 @@ class Firefly_helper(object):
             if reorient_angles is not None:
                 key+='_orient'
 
-            this_ParticleGroup = self.track_firefly_particles(
+            self.track_firefly_particles(
                 key,
                 coords,
                 1)
+
             self.reader.options['UIparticle'][key] = False 
             self.reader.options['color'][key] = [1.0,1.0,1.0,1.0]
             self.reader.options['sizeMult'][key] = 2.5
