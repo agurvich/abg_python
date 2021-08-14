@@ -10,7 +10,7 @@ from abg_python.snapshot_utils import openSnapshot,get_unit_conversion
 from abg_python.plot_utils import add_to_legend
 from abg_python.distinct_colours import get_distinct
 
-import abg_python.all_utils as all_utils
+from abg_python import getfinsnapnum,findIntersection,iterativeCoM
 import abg_python.cosmo_utils as cosmo_utils 
 
 from abg_python.galaxy.cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
@@ -171,7 +171,7 @@ class Galaxy(
 
         ## determine what the final snapshot of this simulation is
         ##  by checking the snapdir and sorting the files by snapnum
-        self.finsnap = all_utils.getfinsnapnum(self.snapdir)
+        self.finsnap = getfinsnapnum(self.snapdir)
 
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
@@ -468,7 +468,7 @@ class Galaxy(
         if assert_cached:
             raise AssertionError("User asserted that the snapshot times should be saved to disk.")
 
-        finsnap = all_utils.getfinsnapnum(self.snapdir)
+        finsnap = getfinsnapnum(self.snapdir)
         print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
 
         snapnums = []
@@ -610,7 +610,7 @@ class Galaxy(
 
             if self.scom is None:
                 self.load_stars()
-                self.scom = all_utils.iterativeCoM(
+                self.scom = iterativeCoM(
                     self.star_snap['Coordinates'],
                     self.star_snap['Masses'],
                     n=4)
@@ -867,7 +867,7 @@ class Galaxy(
         h/=1.0*np.sum(h)
         cdf = np.cumsum(h)
 
-        return all_utils.findIntersection(edges[1:],cdf,0.5)[0]
+        return findIntersection(edges[1:],cdf,0.5)[0]
     
     def get_simple_radius_and_height(
         self,
@@ -1231,9 +1231,9 @@ class ManyGalaxy(Galaxy):
 
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
-            self.finsnap = all_utils.getfinsnapnum(self.snapdir)
+            self.finsnap = getfinsnapnum(self.snapdir)
             ## get the minimum snapnum
-            self.minsnap = all_utils.getfinsnapnum(self.snapdir,True)
+            self.minsnap = getfinsnapnum(self.snapdir,True)
         else:
             ## filler values
             self.finsnap=self.minsnap=None

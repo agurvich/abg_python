@@ -1,12 +1,6 @@
-#from movie_maker_gasTwoColour import plot_image_grid
-#from movie_maker_gasDensity_v2 import compute_image_grid as compute_density_grid
-#from movie_maker_gasTemperature_v2 import compute_image_grid as compute_temp_grid
-#from sne_utils import findClusterExtent,drawSN
-#from all_utils import getTemperature
-
 from abg_python.distinct_colours import get_distinct
 
-from abg_python.all_utils import rotateVectors
+from abg_python import rotateVectors
 from abg_python.plot_utils import nameAxes,addColorbar
 
 import matplotlib.pyplot as plt

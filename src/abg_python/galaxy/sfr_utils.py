@@ -9,7 +9,7 @@ from abg_python.plot_utils import add_to_legend,nameAxes
 
 from abg_python.cosmo_utils import approximateRedshiftFromGyr
 
-import abg_python.all_utils as all_utils
+from abg_python import find_first_window,get_IMass,filterDictionary,findIntersection,boxcar_average
 
 from abg_python.galaxy.metadata_utils import metadata_cache
 
@@ -82,7 +82,7 @@ class SFR_plotter(object):
             except AssertionError:
                 raise ValueError("Compute the SFH first using galaxy.get_SFH(DT=0.001)")
         
-            xs,ys = all_utils.boxcar_average(
+            xs,ys = boxcar_average(
                 self.SFH_time_edges,
                 self.SFRs,
                 DT)
@@ -97,7 +97,7 @@ class SFR_plotter(object):
         ## do we need to change the y-axis values at all?
         if renormed is not None:
             ## you want us to renormalize by the running average
-            xs,long_ys = all_utils.boxcar_average(
+            xs,long_ys = boxcar_average(
                 self.SFH_time_edges,
                 self.SFRs,
                 renormed)
@@ -165,7 +165,7 @@ class SFR_plotter(object):
         if near is not None:
             ## if near, plot the bead and crop the plot
             ## find the time on the SFH that is closest to the current time
-            cur_index,ti = all_utils.findIntersection(
+            cur_index,ti = findIntersection(
                 np.arange(self.SFRs.size),
                 self.SFH_time_edges[1:],
                 self.current_time_Gyr)
@@ -203,7 +203,7 @@ class SFR_plotter(object):
             raise ValueError("Compute the SFH first using galaxy.get_SFH(DT=0.001)")
 
         ## calculate the running average to be plotted as a gray bar
-        xs,avg_long = all_utils.boxcar_average(
+        xs,avg_long = boxcar_average(
             self.SFH_time_edges, self.SFRs, window_size)
 
         if ax is not None:
@@ -294,13 +294,13 @@ class SFR_helper(SFR_plotter):
             ## apply the radial mask
             rmask = np.sum(self.sub_star_snap['Coordinates']**2,axis=1)<radial_thresh**2
 
-            star_snap = all_utils.filterDictionary(self.sub_star_snap,rmask)
+            star_snap = filterDictionary(self.sub_star_snap,rmask)
 
             ## get initial stellar masses if possible, otherwise estimate them by "undoing" the 
             ##  integrated STARBURST99 mass loss rates
             smasses = star_snap['Masses'].astype(np.float64)*1e10 # solar masses
             ages = star_snap['AgeGyr']  # gyr, as advertised
-            smasses = all_utils.get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
+            smasses = get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
 
             ## calculate the star formation history
             SFTs,timemax = star_snap['TimeGyr'] - star_snap['AgeGyr'],star_snap['TimeGyr']
@@ -337,7 +337,7 @@ class SFR_helper(SFR_plotter):
         return_value = list(compute_SFH(self,**kwargs))
 
         return_value[-1] = DT
-        foo,return_value[1] = all_utils.boxcar_average(
+        foo,return_value[1] = boxcar_average(
             return_value[0],
             return_value[1],
             DT)
@@ -514,7 +514,7 @@ class SFR_helper(SFR_plotter):
                     per_ls[i] = per_l
                     per_rs[i] = per_r
                     medians[i] = median
-                xs,rel_scatters = all_utils.boxcar_average(
+                xs,rel_scatters = boxcar_average(
                     self.SFH_time_edges,
                     rel_scatters,
                     0.3,
@@ -528,18 +528,18 @@ class SFR_helper(SFR_plotter):
             elif mode == 'anna':
                 ## calculate scatter using 10 Myr running average in 
                 ##  window_size sized window
-                xs,adjusted_sfrs = all_utils.boxcar_average(
+                xs,adjusted_sfrs = boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
                     0.01)
 
-                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                xs,boxcar_ys_300 = boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs,
                     0.5,#window_size,
                     assign='center')
 
-                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                xs,boxcar_ys2_300 = boxcar_average(
                     self.SFH_time_edges,
                     adjusted_sfrs**2,
                     0.5,#window_size,
@@ -548,13 +548,13 @@ class SFR_helper(SFR_plotter):
                 ## <std>/<SFR>
                 rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
             else:
-                xs,boxcar_ys_300 = all_utils.boxcar_average(
+                xs,boxcar_ys_300 = boxcar_average(
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs),
                     window_size,
                     assign='center')
 
-                xs,boxcar_ys2_300 = all_utils.boxcar_average(
+                xs,boxcar_ys2_300 = boxcar_average(
                     self.SFH_time_edges,
                     np.log10(adjusted_sfrs)**2,
                     window_size,
@@ -564,7 +564,7 @@ class SFR_helper(SFR_plotter):
 
             ## find the first 300 Myr window that is consistently below the threshold
             #print(thresh, thresh_window,rel_scatters)
-            l_window, r_window = all_utils.find_first_window(
+            l_window, r_window = find_first_window(
                 self.SFH_time_edges,
                 rel_scatters,
                 lambda x,y: y < thresh,

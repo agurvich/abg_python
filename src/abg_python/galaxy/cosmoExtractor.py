@@ -1,7 +1,7 @@
 import sys,getopt,os
 import numpy as np
 
-from abg_python.all_utils import filterDictionary,rotateEuler,getVcom,getAngularMomentum,getAngularMomentumSquared,extractSphericalVolumeIndices
+from abg_python import filterDictionary,rotateEuler,getVcom,getAngularMomentum,getAngularMomentumSquared,extractSphericalVolumeIndices
 from abg_python.snapshot_utils import openSnapshot
 
 ## angle calculation and rotation

@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from abg_python.all_utils import rotateEuler
+from abg_python import rotateEuler
 
 try:
     from firefly_api.reader import Reader
