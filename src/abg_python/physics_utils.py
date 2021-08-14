@@ -1,5 +1,6 @@
 import numpy as np 
 from scipy.spatial.distance import cdist as cdist
+from .selection_utils import sphericalVolumeMask
 
 def getSpeedOfSound(U_code):
     """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
@@ -135,7 +136,7 @@ def iterativeCoM(coords,masses,n=4,r0=np.array([0,0,0])):
     rcom = r0
     radius = 1e10
     for i in range(n):
-        mask = extractSphericalVolumeIndices(coords,rcom,radius)
+        mask = sphericalVolumeMask(coords,rcom,radius)
         rcom = np.sum(coords[mask]*masses[mask][:,None],axis=0)/np.sum(masses[mask])
         print(radius,rcom)
         radius = 1000/3**i

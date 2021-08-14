@@ -4,20 +4,19 @@ import h5py
 import os
 
 ## from abg_python
-from abg_python.snapshot_utils import openSnapshot,get_unit_conversion
+from ..snapshot_utils import openSnapshot,get_unit_conversion
+from ..plot_utils import add_to_legend
+from ..color_utils import get_distinct
+from ..array_utils import findIntersection
+from ..snapshot_utils import getfinsnapnum
+from ..physics_utils import iterativeCoM
+from ..cosmo_utils import load_AHF,load_rockstar
 
-
-from abg_python.plot_utils import add_to_legend
-from abg_python.distinct_colours import get_distinct
-
-from abg_python import getfinsnapnum,findIntersection,iterativeCoM
-import abg_python.cosmo_utils as cosmo_utils 
-
-from abg_python.galaxy.cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
-from abg_python.galaxy.movie_utils import Draw_helper,FIREstudio_helper
-from abg_python.galaxy.sfr_utils import SFR_helper
-from abg_python.galaxy.metadata_utils import metadata_cache,Metadata,MultiMetadata
-from abg_python.galaxy.firefly_utils import Firefly_helper
+from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
+from .movie_utils import Draw_helper,FIREstudio_helper
+from .sfr_utils import SFR_helper
+from .metadata_utils import metadata_cache,Metadata,MultiMetadata
+from .firefly_utils import Firefly_helper
 
 ## mapping between particle type and what I called them
 sub_snap_dict = {
@@ -356,7 +355,7 @@ class Galaxy(
         ##  this puppy up
         try:
             ## first try and read the stellar half-mass radius (default args)
-            self.scom, self.rvir, self.rstar_half = cosmo_utils.load_AHF(
+            self.scom, self.rvir, self.rstar_half = load_AHF(
                 self.snapdir,
                 self.snapnum,
                 self.current_redshift,
@@ -366,7 +365,7 @@ class Galaxy(
 
         except ValueError:
             ## no rstar 1/2 in this AHF file, we'll have to calculate it ourselves 
-            self.scom, self.rvir = cosmo_utils.load_AHF(
+            self.scom, self.rvir = load_AHF(
                 self.snapdir,
                 self.snapnum,
                 self.current_redshift,
@@ -424,7 +423,7 @@ class Galaxy(
 
     def load_rockstar(self,rockstar_fname=None,rockstar_path=None,which_host=0):
 
-        self.scom,self.rvir = cosmo_utils.load_rockstar(
+        self.scom,self.rvir = load_rockstar(
             self.snapdir,
             self.snapnum,
             fname=rockstar_fname,

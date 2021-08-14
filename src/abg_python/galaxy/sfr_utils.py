@@ -5,13 +5,13 @@ import os
 import matplotlib.pyplot as plt
 
 ## from abg_python
-from abg_python.plot_utils import add_to_legend,nameAxes
+from ..plot_utils import add_to_legend,nameAxes
+from ..cosmo_utils import approximateRedshiftFromGyr
+from ..array_utils import filterDictionary,findIntersection
+from ..smooth_utils import find_first_window,boxcar_average
+from ..physics_utils import get_IMass
 
-from abg_python.cosmo_utils import approximateRedshiftFromGyr
-
-from abg_python import find_first_window,get_IMass,filterDictionary,findIntersection,boxcar_average
-
-from abg_python.galaxy.metadata_utils import metadata_cache
+from .metadata_utils import metadata_cache
 
 class SFR_plotter(object):
     """------- SFR_plotter

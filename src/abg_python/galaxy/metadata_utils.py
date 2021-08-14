@@ -5,7 +5,7 @@ import numpy as np
 
 import h5py
 
-from abg_python import filter_kwargs
+from ..function_utils import filter_kwargs
 
 class Metadata(object):
     """Read in metadata for a class and reference it 
