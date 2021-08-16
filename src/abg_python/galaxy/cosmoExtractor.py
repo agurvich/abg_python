@@ -154,7 +154,7 @@ def extractDiskFromSnapdicts(
     for i,this_snap in enumerate(snaps):
         indicess[i] = sphericalVolumeMask(
             this_snap['Coordinates'],
-            np.zeros(3),radius) 
+            radius,np.zeros(3)) 
 
     sub_snaps = []
     ## create the volume filtered dictionaries, snapshots are already rotated/offset
@@ -195,7 +195,7 @@ def orientDiskFromSnapdicts(
         these_masses = snap['Masses']
 
     mask = sphericalVolumeMask(
-            these_rs,scom,radius)
+            these_rs,radius,scom)
 
     if not np.sum(mask):
         print(scom,radius)

@@ -136,7 +136,7 @@ def iterativeCoM(coords,masses,n=4,r0=np.array([0,0,0])):
     rcom = r0
     radius = 1e10
     for i in range(n):
-        mask = sphericalVolumeMask(coords,rcom,radius)
+        mask = sphericalVolumeMask(coords,radius,rcom)
         rcom = np.sum(coords[mask]*masses[mask][:,None],axis=0)/np.sum(masses[mask])
         print(radius,rcom)
         radius = 1000/3**i
