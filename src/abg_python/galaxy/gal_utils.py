@@ -156,6 +156,12 @@ class Galaxy(
         else:
             self.suite_name = suite_name
 
+        if suite_name == 'cr_heating_fix':
+            suite_name = 'metal_diffusion/cr_heating_fix'
+
+        if self.suite_name == 'cr_suite' and name == 'm12i_res7100':
+            name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+
         ## bind input
         self.snapnum = snapnum
         self.multi_thread = multi_thread
@@ -191,6 +197,13 @@ class Galaxy(
 
         if self.pretty_name in ['h2','h206','h29','h113']:
             self.pretty_name += '-%s'%h_official_names[self.pretty_name]
+
+        if suite_name == 'cr_suite':
+            self.pretty_name = self.pretty_name.split('_')[0]+'_cr'
+
+        elif suite_name == 'metal_diffusion/cr_heating_fix':
+            #self.pretty_name += '+'
+            pass
 
         if type(plot_color) is int:
             try:
@@ -1164,6 +1177,17 @@ class ManyGalaxy(Galaxy):
             (in general, this must be done consciously while making a plotting script). """
 
 
+        if suite_name == 'cr_heating_fix':
+            suite_name = 'metal_diffusion/cr_heating_fix'
+
+        if suite_name == 'cr_suite' and name == 'm12i_res7100':
+            name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+
+        self.name = name+name_append
+        self.datadir_name = self.name if datadir_name is None else datadir_name
+        self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
+        self.suite_name = suite_name
+
         if snapdir is not None:
             ## will replace name with name if not an elvis name
             ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
@@ -1179,10 +1203,6 @@ class ManyGalaxy(Galaxy):
         ## bind input
         self.snapdir = snapdir
 
-        self.name = name+name_append
-        self.datadir_name = self.name if datadir_name is None else datadir_name
-        self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
-        self.suite_name = suite_name
 
         ## save this for any Galaxy instances we create as well
         galaxy_kwargs['suite_name'] = suite_name
@@ -1201,6 +1221,9 @@ class ManyGalaxy(Galaxy):
         pretty_name = pretty_name[pretty_name!= '']
         self.pretty_name = '_'.join(pretty_name)
         self.pretty_name = self.pretty_name.replace('__','_')
+
+        if suite_name == 'cr_suite':
+            self.pretty_name = self.pretty_name.split('_')[0]+'_cr'
 
         ## handle datadir creation
         if datadir is None:
