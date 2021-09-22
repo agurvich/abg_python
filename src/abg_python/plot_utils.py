@@ -722,22 +722,22 @@ def nameAxes(
 
     bbox = ax.get_position()
     if swap_annotate_side:
-        x_pos = 1-0.01/bbox.width
+        x_pos = 1-0.05#/bbox.width
         halign = 'right'
     else:
-        x_pos = 0.01/bbox.width
+        x_pos = 0.05#/bbox.width
         halign = 'left'
 
     if supertitle:
 
-        y_pos = 1-(0.01/bbox.height)
+        y_pos = 1-0.05#(0.05/bbox.height)
         ax.text(x_pos,y_pos,supertitle,transform=ax.transAxes,
             verticalalignment='top',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        y_pos = (0.01/bbox.height)
+        y_pos = 0.05#(0.05/bbox.height)
         ax.text(x_pos,y_pos,subtitle,transform=ax.transAxes,
             verticalalignment='bottom',
             horizontalalignment=halign,
