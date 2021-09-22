@@ -4,10 +4,9 @@ import numpy as np
 from ..math_utils import rotateEuler
 
 try:
-    from firefly_api.reader import Reader
-    from firefly_api.particlegroup import ParticleGroup
-except ImportError:
-    print("missing firefly api")
+    from Firefly.data_reader import Reader,ParticleGroup
+except (ModuleNotFoundError,ImportError):
+    print("Missing Firefly, obtain it at http://github.com/ageller/Firefly or pip install Firefly-vis.")
 
 
 from matplotlib.colors import to_rgba
