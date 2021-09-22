@@ -1385,10 +1385,4 @@ class ManyGalaxy(Galaxy):
         new_kwargs.update(self.galaxy_kwargs)
         new_kwargs.update(kwargs)
 
-        return Galaxy(
-            self.name,
-            snapnum,
-            datadir=os.path.dirname(self.datadir),
-            datadir_name=self.datadir_name,
-            snapdir_name=self.snapdir_name,
-            **new_kwargs)
+        return Galaxy(self.name,snapnum,suite_name=self.suite_name,**new_kwargs)
