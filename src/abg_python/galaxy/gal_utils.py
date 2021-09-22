@@ -1385,4 +1385,4 @@ class ManyGalaxy(Galaxy):
         new_kwargs.update(self.galaxy_kwargs)
         new_kwargs.update(kwargs)
 
-        return Galaxy(self.name,snapnum,suite_name=self.suite_name,**new_kwargs)
+        return Galaxy(self.name,snapnum,**new_kwargs)
