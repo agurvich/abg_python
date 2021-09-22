@@ -100,12 +100,14 @@ cm_rainbow = matplotlib.colors.LinearSegmentedColormap.from_list("PaulT_rainbow"
 ## ------------------------------------------------------------------------------- ##
 
 ##  my favorite colors for pressure terms
-colors = get_distinct(5)
-pressure_colors = [colors[0],colors[-1],colors[1],colors[-2],colors[-3]]
-pressure_labels = ['disp','therm','bulk','total','weight']
+colors = get_distinct(6)
+cr_pressure_colors = [colors[0],colors[-2],colors[1],colors[-1],colors[-3],colors[-4]]
+pressure_labels = ['disp','therm','bulk','cr','total','weight']
 pressure_colors_dict = dict(zip(
     pressure_labels,
-    pressure_colors))
+    cr_pressure_colors))
+
+pressure_colors = [colors[0],colors[-2],colors[1],colors[-3],colors[-4]]
 
 ##  my favorite colors for gas phases
 colors = get_distinct(4)
