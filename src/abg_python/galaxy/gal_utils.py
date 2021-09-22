@@ -124,8 +124,8 @@ class Galaxy(
     def __init__(
         self,
         name,
-        snapdir,
         snapnum,
+        snapdir=None,
         datadir=None,
         datadir_name = None,
         snapdir_name = None,
@@ -135,29 +135,30 @@ class Galaxy(
         ahf_fname = None,
         save_header_to_table = True,
         meta_name = None,
-        suite_name = None,
+        suite_name = 'cr_heating_fix',
         **metadata_kwargs 
         ):
 
         if meta_name is None:
             meta_name = 'meta_Galaxy'
 
-        if suite_name is None:
-            if 'metal_diffusion' in snapdir:
-                self.suite_name = 'metal_diffusion'
-            elif 'HL000' in snapdir:
-                self.suite_name = 'xiangcheng'
-            elif 'core' in snapdir:
-                self.suite_name = 'core'
-            elif 'cr_heating_fix' in snapdir:
-                self.suite_name = 'cr_heating_fix'
-            else: ## set myself up for failure below
-                self.suite_name = 'unknown'
-        else:
-            self.suite_name = suite_name
+        #if suite_name is None:
+            #if 'metal_diffusion' in snapdir:
+                #self.suite_name = 'metal_diffusion'
+            #elif 'HL000' in snapdir:
+                #self.suite_name = 'xiangcheng'
+            #elif 'core' in snapdir:
+                #self.suite_name = 'core'
+            #elif 'cr_heating_fix' in snapdir:
+                #self.suite_name = 'cr_heating_fix'
+            #else: ## set myself up for failure below
+                #self.suite_name = 'unknown'
+        #else:
 
-        if suite_name == 'cr_heating_fix':
-            suite_name = 'metal_diffusion/cr_heating_fix'
+        self.suite_name = suite_name
+
+        if self.suite_name == 'cr_heating_fix':
+            self.suite_name = 'metal_diffusion/cr_heating_fix'
 
         if self.suite_name == 'cr_suite' and name == 'm12i_res7100':
             name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
@@ -166,6 +167,13 @@ class Galaxy(
         self.snapnum = snapnum
         self.multi_thread = multi_thread
         self.name = name
+
+        if snapdir is None: snapdir = os.path.join(
+            os.environ['HOME'],
+            'snaps',
+            suite_name,
+            name,
+            'output')
 
         ## snapdir is sometimes None if an instance is 
         ##  created just to access the metadata and cached
@@ -699,21 +707,37 @@ class Galaxy(
 
                     ## check if the extraction radius is what we want, to 4 decimal places
                     if np.round(radius,4) != np.round(self.sub_snap['scale_radius'],4):
+                        this_sim = self.snapdir.split('snaps')[1].split('/output')[0]
+                        if this_sim not in fname:
+                            raise ValueError("%s %s do not correspond"%(self.snapdir,fname))
+
+                        sub_scale_radius = self.sub_snap['scale_radius']
                         ## delete it because it is GARBAGE
                         os.remove(fname)
+                        del self.sub_snap
+                        del self.sub_star_snap
+                        del self.sub_dark_snap
                         already_saved = False
+
                         raise ValueError("scale_radius is not the same",
-                            radius-self.sub_snap['scale_radius'],
-                            radius,self.sub_snap['scale_radius'])
+                            radius-sub_scale_radius,
+                            radius,sub_scale_radius)
 
                     ## check if halo center is the same to 4 decimal places
                     if (np.round(self.scom,4) != np.round(self.sub_snap['scom'],4)).any():
+                        this_sim = self.snapdir.split('snaps')[1].split('/output')[0]
+                        if this_sim not in fname:
+                            raise ValueError("%s %s do not correspond"%(self.snapdir,fname))
+                        sub_scom = self.sub_snap['scom']
                         ## delete it because it is GARBAGE
                         os.remove(fname)
+                        del self.sub_snap
+                        del self.sub_star_snap
+                        del self.sub_dark_snap
                         already_saved = False
                         raise ValueError("Halo center is not the same",
-                            self.scom -self.sub_snap['scom'],
-                            self.scom ,self.sub_snap['scom'])
+                            self.scom - sub_scom,
+                            self.scom , sub_scom)
 
                     print("Successfully loaded a pre-extracted subsnap")
 
@@ -1162,14 +1186,14 @@ class ManyGalaxy(Galaxy):
     def __init__(
         self,
         name,
-        snapdir,
+        snapdir=None,
         datadir=None,
         datadir_name=None,
         snapdir_name=None,
         load_snapnums=None,
         population_kwargs=None,
         name_append='',
-        suite_name='metal_diffusion',
+        suite_name='cr_heating_fix',
         **galaxy_kwargs):
         """ a wrapper that will allow one to open multiple galaxies at the same time,
             most useful for creating and accessing MultiMetadata instances while 
@@ -1187,6 +1211,13 @@ class ManyGalaxy(Galaxy):
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
         self.suite_name = suite_name
+
+        if snapdir is None: snapdir = os.path.join(
+            os.environ['HOME'],
+            'snaps',
+            suite_name,
+            name,
+            'output')
 
         if snapdir is not None:
             ## will replace name with name if not an elvis name
@@ -1356,7 +1387,6 @@ class ManyGalaxy(Galaxy):
 
         return Galaxy(
             self.name,
-            self.snapdir,
             snapnum,
             datadir=os.path.dirname(self.datadir),
             datadir_name=self.datadir_name,
