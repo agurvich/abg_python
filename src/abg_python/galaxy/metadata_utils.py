@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 import h5py
+import os
 
 from ..function_utils import filter_kwargs
 
@@ -168,7 +169,7 @@ class Metadata(object):
                     else:
                         print('value already exists, but not overwriting')
 
-    def inspect_metadata(self,this_group=None):
+    def inspect_metadata(self,this_group=None,print_unloaded=True):
         unloaded_keys = []
         try:
             with h5py.File(self.metapath,'r') as handle:
@@ -190,7 +191,7 @@ class Metadata(object):
                     if (this_group is None) or (group == this_group):
                         print()
             my_set = set(unloaded_keys)-set(self.__dict__.keys())
-            if len(my_set):
+            if len(my_set) and print_unloaded:
                 print(list(my_set),'keys are unloaded')
 
             my_set = set(self.__dict__.keys())-set(unloaded_keys)
@@ -284,20 +285,49 @@ class Metadata(object):
         else:
             return np.array(handle[pathh])
     
-    def purge_metadata_key(self,group_name,key_name,force=0):
+    def purge_metadata_key(self,group_name,key_name,force=0,loud=True):
         if not force:
             raise Exception("I'm sorry Dave, I'm afraid I can't do that.")
         else:
             with h5py.File(self.metapath,'a') as handle:
                 if group_name in handle.keys() and key_name in handle[group_name].keys():
-                    if self.loud_metadata:
+                    if self.loud_metadata and loud:
                         print(handle[group_name].keys(),'...before...')
                     del handle[group_name][key_name]
-                    if self.loud_metadata:
+                    if self.loud_metadata and loud:
                         print(handle[group_name].keys(),"...after. I hope you're happy.")
                 else:
-                    if self.loud_metadata:
-                        print("This metadata doesn't have that group, or that group doesn't have that key.")
+                    raise IOError("%s doesn't have %s/%s."%(repr(self),group_name,key))
+
+    def export_to_file(self,target,group_name,keys=None,write_mode='a'):
+        if type(target) == dict:
+            raise NotImplementedError
+        
+        ## relative paths are w.r.t. to home for convenience
+        if target[0] != os.sep:
+            target = os.path.join(os.environ['HOME'],target)
+            print('Detected relative path, prepending $HOME, new target:',target)
+
+        ## make a new hdf5 file
+        with h5py.File(target,write_mode) as target_handle:
+            ## open this hdf5 file
+            with h5py.File(self.metapath,'r') as handle:
+                ## check if this group/key combo can/should be exported
+                if group_name in handle.keys():
+                    ## for the first key we need to create a home in the 
+                    ##  target file
+                    if group_name not in target_handle.keys():
+                        target_handle.create_group(group_name)
+
+                    ## loop through all keys and check if they're allowed
+                    for key in handle[group_name].keys():
+                        if keys is None or (key in keys):
+                            if self.loud_metadata:
+                                print("Copying %s/%s from"%(group_name,key),self,'to',target)
+                            ## copy the data over
+                            target_handle[group_name][key] = handle[group_name][key][()]
+                else:
+                    raise IOError("%s doesn't have %s."%(repr(self),group_name))
 
 ## creates a collection of metadata instances that can be read as a chain
 class MultiMetadata(Metadata):
@@ -352,6 +382,8 @@ def metadata_cache(
     loud=1,
     force_from_file=False,
     check_cached_only=0,
+    clean_object=False,
+    clean_metadata=False,
     **kwargs):
 
     ## overwrite loud if we're only checking if something is cached
@@ -368,7 +400,7 @@ def metadata_cache(
             ## need to declare these two as nonlocal since
             ##  we write to them and that makes python
             ##  think they will be local variables
-            nonlocal check_cached_only,force_from_file,loud
+            nonlocal check_cached_only,force_from_file,loud,clean_object,clean_metadata
 
             ## not every function I've written has these explicitly passed,
             ##  so peel them out of any kwargs for good measure
@@ -381,18 +413,45 @@ def metadata_cache(
             if 'force_from_file' in func_kwargs:
                 force_from_file = func_kwargs.pop('force_from_file')
 
+            if 'clean_object' in func_kwargs:
+                clean_object = func_kwargs.pop('clean_object')
+                
+            if 'clean_metadata' in func_kwargs:
+                clean_metadata = func_kwargs.pop('clean_metadata')
+
             ## NOTE could put something that prints ignored_kwargs
             func_kwargs,ignored_kwargs = filter_kwargs(func,func_kwargs)
 
             self = func_args[0]
+
             func_name = "%s%s%s"%(
                 func.__name__,
                 repr(func_args),
                 repr(func_kwargs))
+
+
+            if clean_object:
+                print('Clearing %s and exiting.'%func_name)
+                for key in keys:
+                    if hasattr(self,key): delattr(self,key)
+                return
+
+            if clean_metadata:
+                print('Clearing metadata of %s and exiting.'%func_name)
+                for key in keys:
+                    self.metadata.purge_metadata_key(
+                        group,
+                        key,
+                        force=force,
+                        loud=False)
+                return
+                    
             try:
                 ## does the function call want us to use the metadata?
                 ##  allow users to opt out
-                assert use_metadata
+                if not use_metadata:
+                    raise AssertionError("Told to not use metadata.")
+
                 for key in keys:
                     if not check_cached_only:
                         try:
@@ -421,7 +480,7 @@ def metadata_cache(
                 if loud and use_metadata:
                     print("cache",
                         group,func_name,
-                        "fail :[")
+                        "fail :[",e)
                 if assert_cached:
                     raise AssertionError("User asserted cached for %s - %s"%(group,func_name),keys)
                 init = time.time()
