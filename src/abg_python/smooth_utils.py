@@ -107,8 +107,16 @@ def smooth_x_varying_curve(
  
     new_xs,[new_ys] = uniform_resampler(xs,[ys],DT)
 
-    smooth_xs,smooth_ys = boxcar_average(new_xs,new_ys,boxcar_width,assign=assign)
-    smooth_xs,smooth_ys2 = boxcar_average(new_xs,new_ys**2,boxcar_width,assign=assign)
+    smooth_xs,smooth_ys = boxcar_average(new_xs,new_ys,boxcar_width,assign=assign,average=False)
+    smooth_xs,smooth_ys2 = boxcar_average(new_xs,new_ys**2,boxcar_width,assign=assign,average=False)
+    smooth_xs,smooth_finite_count = boxcar_average(
+        new_xs,
+        np.isfinite(new_ys),
+        boxcar_width,
+        assign=assign,
+        average=False)
+    smooth_ys[smooth_finite_count>0]/=smooth_finite_count[smooth_finite_count>0]
+    smooth_ys2[smooth_finite_count>0]/=smooth_finite_count[smooth_finite_count>0]
     smooth_xs,smooth_nan_count = boxcar_average(new_xs,np.isnan(new_ys),boxcar_width,assign=assign)
 
     ## boxcar average would've added an extra point because it expects edges
