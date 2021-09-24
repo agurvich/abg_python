@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.com/agurvich/abg_python.svg?branch=master)](https://travis-ci.com/agurvich/abg_python)
 [![PyPI](https://img.shields.io/pypi/v/abg_python)](https://pypi.org/project/abg_python)
+[![DOI](https://zenodo.org/badge/132956776.svg)](https://zenodo.org/badge/latestdoi/132956776)
 
 Some Python utilities common to a lot of my packages and repositories (perhaps most notably [FIREstudio](https://github.com/agurvich/FIRE_studio) and, in part, [Firefly](https://github.com/ageller/Firefly)).
 
