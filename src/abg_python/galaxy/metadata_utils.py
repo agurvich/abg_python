@@ -169,6 +169,11 @@ class Metadata(object):
                     else:
                         print('value already exists, but not overwriting')
 
+    def inspect_groups(self,substr=''):
+        for group in self.file_groups:
+            if substr in group: print(group,end='\t')
+        print()
+
     def inspect_metadata(self,this_group=None,print_unloaded=True):
         unloaded_keys = []
         try:
@@ -464,8 +469,8 @@ def metadata_cache(
                     else:
                         if not hasattr(self.metadata,"%s_%s"%(group,key)):
                             raise AttributeError("Missing: %s - %s"%(group,key))
-                        else:
-                            return
+
+                if check_cached_only: return
 
                 if len(keys) > 1:
                     return_value = tuple([getattr(self,key) for key in keys])
