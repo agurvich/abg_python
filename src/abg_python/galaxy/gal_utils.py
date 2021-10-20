@@ -43,6 +43,25 @@ elvis_partners = {
     'Thelma':('Louise',0),
     'Louise':('Thelma',1)}
 
+
+cr_heating_fixed = [
+    'm09_res30',
+    'm09_res250',
+    'm10q_res30',
+    'm10q_res250',
+    'm10v_res30 ',
+    'm10v_res250',
+    'm11b_res2100_no-swb',
+    'm11b_res2100_no-swb_v2 ',
+    'm11b_res2100',
+    'm11b_res2100_no-swb_contaminated',
+    'm11e_res7100',
+    'm12i_res7100',
+    'm12i_res57000',
+    'm12f_res7100',
+    'm12s_res113000',
+    'm12w_res57000']
+
 def get_elvis_snapdir_name(savename):
 
     this_name = None
@@ -135,7 +154,7 @@ class Galaxy(
         ahf_fname = None,
         save_header_to_table = True,
         meta_name = None,
-        suite_name = 'cr_heating_fix',
+        suite_name = 'metal_diffusion',
         **metadata_kwargs 
         ):
 
@@ -155,10 +174,11 @@ class Galaxy(
                 #self.suite_name = 'unknown'
         #else:
 
-        self.suite_name = suite_name
 
-        if self.suite_name == 'cr_heating_fix':
-            self.suite_name = 'metal_diffusion/cr_heating_fix'
+        if suite_name == 'metal_diffusion' and name in cr_heating_fixed:
+            suite_name = 'metal_diffusion/cr_heating_fix'
+
+        self.suite_name = suite_name
 
         if self.suite_name == 'cr_suite' and name == 'm12i_res7100':
             name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
@@ -174,6 +194,12 @@ class Galaxy(
             suite_name,
             name,
             'output')
+
+        if snapdir is not None:
+            ## will replace name with name if not an elvis name
+            ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
+            ##  or Juliet_res3500 w/ RomeoJuliet_res3500
+            snapdir = snapdir.replace(name,get_elvis_snapdir_name(name))
 
         ## snapdir is sometimes None if an instance is 
         ##  created just to access the metadata and cached
@@ -706,7 +732,7 @@ class Galaxy(
                         abg_subsnap=1)
 
                     ## check if the extraction radius is what we want, to 4 decimal places
-                    if np.round(radius,4) != np.round(self.sub_snap['scale_radius'],4):
+                    if not np.isclose(np.round(radius,4),np.round(self.sub_snap['scale_radius'],4)):
                         this_sim = self.snapdir.split('snaps')[1].split('/output')[0]
                         if this_sim not in fname:
                             raise ValueError("%s %s do not correspond"%(self.snapdir,fname))
@@ -719,12 +745,12 @@ class Galaxy(
                         del self.sub_dark_snap
                         already_saved = False
 
-                        raise ValueError("scale_radius is not the same",
+                        raise ValueError("virial radius is not the same",
                             radius-sub_scale_radius,
                             radius,sub_scale_radius)
 
                     ## check if halo center is the same to 4 decimal places
-                    if (np.round(self.scom,4) != np.round(self.sub_snap['scom'],4)).any():
+                    if not np.isclose(np.round(self.scom,4),np.round(self.sub_snap['scom'],4)).all():
                         this_sim = self.snapdir.split('snaps')[1].split('/output')[0]
                         if this_sim not in fname:
                             raise ValueError("%s %s do not correspond"%(self.snapdir,fname))
@@ -840,7 +866,7 @@ class Galaxy(
         return return_value
 
     def load_stars(self,**kwargs):
-        print("Loading star particles of",self)
+        print("Loading star particles of",self,'at',self.snapdir)
         if not hasattr(self,'star_snap'):
             self.star_snap = openSnapshot(
                 self.snapdir,
@@ -848,14 +874,14 @@ class Galaxy(
                 **kwargs)
 
     def load_gas(self,**kwargs):
-        print("Loading gas particles of",self)
+        print("Loading gas particles of",self,'at',self.snapdir)
         self.snap = openSnapshot(
             self.snapdir,
             self.snapnum,0,
             **kwargs)
 
     def load_dark_matter(self,**kwargs):
-        print("Loading dark matter particles of",self)
+        print("Loading dark matter particles of",self,'at',self.snapdir)
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
             **kwargs)
@@ -1200,9 +1226,9 @@ class ManyGalaxy(Galaxy):
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
 
-
-        if suite_name == 'cr_heating_fix':
+        if suite_name == 'metal_diffusion' and name in cr_heating_fixed:
             suite_name = 'metal_diffusion/cr_heating_fix'
+ 
 
         if suite_name == 'cr_suite' and name == 'm12i_res7100':
             name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
