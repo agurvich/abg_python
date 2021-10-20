@@ -277,8 +277,8 @@ class SFR_helper(SFR_plotter):
                 ## have to open a whole new galaxy object!!
                 temp_fin_gal = Galaxy(
                     self.name,
-                    self.snapdir,
                     finsnap,
+                    self.snapdir,
                     datadir=os.path.dirname(self.datadir),
                     datadir_name=self.datadir_name,
                     ahf_path=self.ahf_path,
@@ -458,8 +458,8 @@ class SFR_helper(SFR_plotter):
                 ## have to open a whole new galaxy object!!
                 temp_fin_gal = Galaxy(
                     self.name,
-                    self.snapdir,
                     self.finsnap,
+                    self.snapdir,
                     datadir=os.path.dirname(self.datadir),
                     datadir_name=self.datadir_name,
                     ahf_path=self.ahf_path,
@@ -467,7 +467,7 @@ class SFR_helper(SFR_plotter):
                 return temp_fin_gal.get_bursty_regime(
                     thresh=thresh,
                     window_size=window_size,
-                    numerator_time=numerator_time,loud=False)
+                    loud=False)
 
             ## ensure that we have the 1 Myr SFH loaded
             try:
