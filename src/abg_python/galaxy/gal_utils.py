@@ -939,7 +939,7 @@ class Galaxy(
         loud=True,
         **kwargs):
 
-        if component not in ['gas','stars']:
+        if component not in ['gas','stars','star']:
             raise ValueError("Invalid component %s must be gas or star."%component)
 
         group_name = 'SimpleGeom_%s'%component
@@ -955,7 +955,7 @@ class Galaxy(
 
             if component == 'gas':
                 which_snap = self.sub_snap
-            elif component == 'stars':
+            elif 'star' in component:
                 which_snap = self.sub_star_snap
 
             ## calculate the cylindrical half-mass radius using mass 

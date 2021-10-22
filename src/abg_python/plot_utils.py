@@ -35,6 +35,7 @@ except:
 
 ## stupid way of handling black faceolor... 
 GLOBAL_linecolor='k'
+GLOBAL_lw=1.5
 
 def add_many_to_legend(
     ax,
