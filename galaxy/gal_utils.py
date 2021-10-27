@@ -294,6 +294,10 @@ class Galaxy(
             self.rvir = 300 ## what should i do here...
             self.rstar_half = None
 
+            if 'r30r' in self.snapdir:
+                self.scom = get_idealized_center(self.name,self.snapnum)
+
+
         ## have we already calculated it and cached it?
         if self.rstar_half is None:
             for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
@@ -1333,3 +1337,24 @@ class ManyGalaxy(Galaxy):
             datadir_name=self.datadir_name,
             snapdir_name=self.snapdir_name,
             **new_kwargs)
+
+def get_idealized_center(savename,snapnum):
+
+    center_name = {
+        'm11_def_r30r':'centers_feedback_normal',
+        'm11_light_def_r30r':'centers_feedback_light',
+        'm11_extralight_def_r30r':'centers_feedback_extralight',
+    }[savename]
+
+    center_path = os.path.join(
+        os.environ['HOME'],
+        'scratch',
+        'data',
+        'jonathan_centers',
+        center_name+'.npz')
+
+    try:
+        return np.load(center_path)['centers'][snapnum]
+    except:
+        return np.load(center_path)['centers'][snapnum-1]
+    
