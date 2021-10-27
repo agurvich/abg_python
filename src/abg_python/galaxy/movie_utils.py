@@ -1,13 +1,6 @@
-#from movie_maker_gasTwoColour import plot_image_grid
-#from movie_maker_gasDensity_v2 import compute_image_grid as compute_density_grid
-#from movie_maker_gasTemperature_v2 import compute_image_grid as compute_temp_grid
-#from sne_utils import findClusterExtent,drawSN
-#from all_utils import getTemperature
-
-from abg_python.distinct_colours import get_distinct
-
-from abg_python.all_utils import rotateVectors
-from abg_python.plot_utils import nameAxes,addColorbar
+from ..color_utils import get_distinct
+from ..math_utils import rotateEuler
+from ..plot_utils import nameAxes,addColorbar
 
 import matplotlib.pyplot as plt
 import numpy as np 
@@ -74,16 +67,14 @@ class Draw_helper(object):
     def drawGalaxy(
         self,
         coords,
-        thetax=None,thetay=None,thetaz=None,
+        theta_TB=None,
+        phi_TB=None,
+        psi_TB=None,
         indices=None,
         axs=None,
         **kwargs):
-        if thetax is not None:
-            coords = rotateVectors(rotationMatrixX(thetax),coords)
-        if thetay is not None:
-            coords = rotateVectors(rotationMatrixY(thetay),coords)
-        if thetaz is not None:
-            coords = rotateVectors(rotationMatrixZ(thetaz),coords)
+        if (theta_TB is not None or phi_TB is not None or psi_TB is not None):
+            coords = rotateEuler(theta_TB,phi_TB,psi_TB,coords,loud=False)
         if indices is None:
             indices = np.ones(len(coords),dtype=bool)
         return plotSideBySide(
@@ -371,49 +362,3 @@ def twoDHist(
             logflag = 0,
             fontsize=12,
             cmap_number=0)
-
-    return h,xedges,yedges
-
-def rotateEuler(
-    theta,phi,psi,
-    pos,frame_center):
-
-    ## if need to rotate at all really -__-
-    if theta==0 and phi==0 and psi==0:
-        return pos
-    # rotate particles by angle derived from frame number
-    theta_rad = np.pi*theta/ 1.8e2
-    phi_rad   = np.pi*phi  / 1.8e2
-    psi_rad   = np.pi*psi  / 1.8e2
-
-    # construct rotation matrix
-    #print('theta = ',theta_rad)
-    #print('phi   = ',phi_rad)
-    #print('psi   = ',psi_rad)
-
-    ## explicitly define the euler rotation matrix 
-    rot_matrix = np.array([
-	[np.cos(phi_rad)*np.cos(psi_rad), #xx
-	    -np.cos(phi_rad)*np.sin(psi_rad), #xy
-	    np.sin(phi_rad)], #xz
-	[np.cos(theta_rad)*np.sin(psi_rad) + np.sin(theta_rad)*np.sin(phi_rad)*np.cos(psi_rad),#yx
-	    np.cos(theta_rad)*np.cos(psi_rad) - np.sin(theta_rad)*np.sin(phi_rad)*np.sin(psi_rad),#yy
-	    -np.sin(theta_rad)*np.cos(phi_rad)],#yz
-	[np.sin(theta_rad)*np.sin(psi_rad) - np.cos(theta_rad)*np.sin(phi_rad)*np.cos(psi_rad),#zx
-	    np.sin(theta_rad)*np.cos(psi_rad) - np.cos(theta_rad)*np.sin(phi_rad)*np.sin(psi_rad),#zy
-	    np.cos(theta_rad)*np.cos(phi_rad)]#zz
-	],dtype=np.float32)
-	    
-    ## translate the particles so we are rotating about the center of our frame
-    pos-=frame_center
-
-    ## rotate each of the vectors in the pos array
-    pos = np.dot(rot_matrix,pos.T).T
-
-    # translate particles back
-    pos+=frame_center
-
-    pos_rot = copy.copy(pos)
-    del pos
-    
-    return pos_rot

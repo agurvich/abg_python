@@ -1,7 +1,9 @@
-import h5py,sys,os,copy
+import h5py
+import os
+import copy
 import numpy as np
-from abg_python.all_utils import getTemperature
-from abg_python.cosmo_utils import getAgesGyrs,convertStellarAges
+from .physics_utils import getTemperature
+from .cosmo_utils import getAgesGyrs,convertStellarAges
 
 def get_fnames(snapdir,snapnum,snapdir_name=''):
     fnames = [
@@ -15,6 +17,11 @@ def get_fnames(snapdir,snapnum,snapdir_name=''):
     try:
         if os.path.isdir(fnames[0]):
             fnames = [os.path.join(fnames[0],fname) for fname in os.listdir(fnames[0])]
+
+        if len(fnames) == 0: 
+            ## directory existed but was empty
+            raise IndexError
+
     except IndexError:
         raise IOError("Snapshot %d not found in %s"%(snapnum,snapdir))
     
@@ -44,8 +51,8 @@ def get_unit_conversion(new_dictionary,pkey,cosmological):
 
 def openSnapshot(
     snapdir,snapnum,ptype,
-    snapshot_name='snapshot', extension='.hdf5',
-    cosmological=0,header_only=0,
+    cosmological=0,
+    header_only=0,
     keys_to_extract = None,
     fnames = None,
     chimes_keys = [],
@@ -156,7 +163,8 @@ def openSnapshot(
 
                 ## determine if this snapshot is cosmological
                 if ( new_dictionary['HubbleParam']!=1 and not cosmological):
-                    print('This is a cosmological snapshot... converting to physical units')
+                    if loud:
+                        print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
                 if not header_only:
@@ -468,6 +476,50 @@ chimes_dict = {"elec": 0,
                "CH": 145,"CH2": 146,"CH3p": 147,"CO": 148,
                "CHp": 149,"CH2p": 150,"OHp": 151,"H2Op": 152,
                "H3Op": 153,"COp": 154,"HOCp": 155,"O2p": 156}
+
+def getfinsnapnum(snapdir,getmin=0):
+    if not getmin:
+        maxnum = 0
+        for snap in os.listdir(snapdir):
+            if 'snapshot' in snap and 'hdf5' in snap and snap.index('snapshot')==0:
+                snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+            elif 'snapdir' in snap:
+                snapnum = int(snap[len('snapdir_'):])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+        return maxnum
+    else:
+        minnum=1e8
+        for snap in os.listdir(snapdir):
+            if 'snapshot' in snap and 'hdf5' in snap:
+                snapnum = int(snap[len('snapshot_'):-len('.hdf5')])
+                if snapnum < minnum:
+                    minnum=snapnum
+            elif 'snapdir' in snap:
+                snapnum = int(snap[len('snapdir_'):])
+                if snapnum < minnum:
+                    minnum=snapnum
+        return minnum
+
+def extractMaxTime(snapdir):
+    """Extracts the time variable from the final snapshot"""
+    maxsnapnum = getfinsnapnum(snapdir)
+    if 'snapshot_%3d.hdf5'%maxsnapnum in os.listdir(snapdir):
+        h5path = 'snapshot_%3d.hdf5'%maxsnapnum
+    elif 'snapdir_%03d'%maxsnapnum in os.listdir(snapdir):
+        h5path = "snapdir_%03d/snapshot_%03d.0.hdf5"%(maxsnapnum,maxsnapnum)
+    else:
+        print("Couldn't find maxsnapnum in")
+        print(os.listdir(snapdir))
+        raise Exception("Couldn't find snapshot")
+
+    with h5py.File(os.path.join(snapdir,h5path),'r') as handle:
+        maxtime = handle['Header'].attrs['Time']
+    return maxtime
+
+
 
 
 """

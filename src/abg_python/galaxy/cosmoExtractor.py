@@ -1,8 +1,11 @@
 import sys,getopt,os
 import numpy as np
 
-from abg_python.all_utils import filterDictionary,rotateEuler,getVcom,getAngularMomentum,getAngularMomentumSquared,extractSphericalVolumeIndices
-from abg_python.snapshot_utils import openSnapshot
+from ..physics_utils import getVcom,getAngularMomentum,getAngularMomentumSquared
+from ..math_utils import rotateEuler
+from ..array_utils import filterDictionary
+from ..snapshot_utils import openSnapshot
+from ..selection_utils import sphericalVolumeMask
 
 ## angle calculation and rotation
 def getThetas(angMom):
@@ -149,9 +152,9 @@ def extractDiskFromSnapdicts(
 
     #overwrite gindices/sindices/dindices
     for i,this_snap in enumerate(snaps):
-        indicess[i] = extractSphericalVolumeIndices(
+        indicess[i] = sphericalVolumeMask(
             this_snap['Coordinates'],
-            np.zeros(3),radius) 
+            radius,np.zeros(3)) 
 
     sub_snaps = []
     ## create the volume filtered dictionaries, snapshots are already rotated/offset
@@ -191,8 +194,8 @@ def orientDiskFromSnapdicts(
         these_vs = snap['Velocities']
         these_masses = snap['Masses']
 
-    mask = extractSphericalVolumeIndices(
-            these_rs,scom,radius)
+    mask = sphericalVolumeMask(
+            these_rs,radius,scom)
 
     if not np.sum(mask):
         print(scom,radius)

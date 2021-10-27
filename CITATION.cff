@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Gurvich"
+  given-names: "Alexander"
+  orcid: "https://orcid.org/0000-0002-6145-3674"
+title: "abg_python"
+version: 1.0.3
+doi: 10.5281/zenodo.5526769
+date-released: 2021-09-24
+url: "https://github.com/agurvich/abg_python"

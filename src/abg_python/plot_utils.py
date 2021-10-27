@@ -9,7 +9,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from abg_python.all_utils import pairFilter,covarianceEigensystem
+from .array_utils import pairFilter
+from .fitting_utils import covarianceEigensystem
 from scipy.interpolate import interp1d
 
 latex_pagewidth=6.9738480697 ## in #7.125
@@ -34,6 +35,7 @@ except:
 
 ## stupid way of handling black faceolor... 
 GLOBAL_linecolor='k'
+GLOBAL_lw=1.5
 
 def add_many_to_legend(
     ax,
@@ -114,7 +116,13 @@ def add_to_legend(
 
     ## make the new line
     if shape == 'line':
+        ## this is wild, but have to handle when plotting
+        ##  markers, apparently when you read the line from 
+        ##  the legend it loses memory of the marker
+        if 'ls' in kwargs and kwargs['ls'] == '':
+            ax.markers = []
         line_kwargs = {}
+
         if lw is not None:
             line_kwargs['lw'] = lw
 
@@ -134,6 +142,10 @@ def add_to_legend(
 
     if loc in legend_kwargs:
         loc = legend_kwargs.pop('loc')
+
+    for line in lines:
+        if line.get_linestyle() == 'None':
+            print(line.get_marker(),'marker')
 
     if prev_loc is not None and loc == prev_loc:
         loc+=1
@@ -255,7 +267,7 @@ def addColorbar(
         xlabel = ax.xaxis.get_label()
         if xlabel.get_text() != '':
             print("addColorbar does not support finding xaxis text, this will look bad")
-        thickness = 20./cur_size[1] * fig.dpi/100
+        thickness = 15./cur_size[1] * fig.dpi/100
         ax1 = fig.add_axes([fig_x0,fig_y0 - thickness - offset/cur_size[1],width, thickness])
 
     if type(cmap) == str:
@@ -711,22 +723,22 @@ def nameAxes(
 
     bbox = ax.get_position()
     if swap_annotate_side:
-        x_pos = 1-0.01/bbox.width
+        x_pos = 1-0.05#/bbox.width
         halign = 'right'
     else:
-        x_pos = 0.01/bbox.width
+        x_pos = 0.05#/bbox.width
         halign = 'left'
 
     if supertitle:
 
-        y_pos = 1-(0.01/bbox.height)
+        y_pos = 1-0.05#(0.05/bbox.height)
         ax.text(x_pos,y_pos,supertitle,transform=ax.transAxes,
             verticalalignment='top',
             horizontalalignment=halign,
             weight=font_weight,**subtextkwargs)
 
     if subtitle:
-        y_pos = (0.01/bbox.height)
+        y_pos = 0.05#(0.05/bbox.height)
         ax.text(x_pos,y_pos,subtitle,transform=ax.transAxes,
             verticalalignment='bottom',
             horizontalalignment=halign,
@@ -1080,3 +1092,19 @@ def ffmpeg_frames(
             cmd = 'cp %s %s'%(src,dst)
             print(cmd)
             os.system(cmd)
+
+
+def place_text(ax,percentage):
+    ylow,yhigh = ax.get_ylim()
+
+    logflag=False
+    if ax.get_yscale() == 'log':
+        ylow = np.log10(ylow)
+        yhigh = np.log10(yhigh)
+        logflag=True
+    dy = (yhigh-ylow)/100 ## percentages
+
+    foo = ylow+dy*percentage
+    if logflag: 
+        foo = 10**foo
+    return foo

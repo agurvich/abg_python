@@ -100,18 +100,20 @@ cm_rainbow = matplotlib.colors.LinearSegmentedColormap.from_list("PaulT_rainbow"
 ## ------------------------------------------------------------------------------- ##
 
 ##  my favorite colors for pressure terms
-colors = get_distinct(5)
-pressure_colors = [colors[0],colors[-1],colors[1],colors[-2],colors[-3]]
-pressure_labels = ['disp','therm','bulk','total','weight']
+colors = get_distinct(6)
+cr_pressure_colors = [colors[0],colors[-2],colors[1],colors[-1],colors[-3],colors[-4],colors[0]]
+pressure_labels = ['disp','therm','bulk','cr','total','weight','kin']
 pressure_colors_dict = dict(zip(
     pressure_labels,
-    pressure_colors))
+    cr_pressure_colors))
+
+pressure_colors = [colors[0],colors[-2],colors[1],colors[-3],colors[-4],colors[0]]
 
 ##  my favorite colors for gas phases
 colors = get_distinct(4)
-phases = ['cold','warm','hot','all']
-extended_phases = ['cold','warm','hot','all','star','dark']
-phase_colors = [colors[0],colors[2],colors[1],colors[3],'green','purple']
+extended_colors = get_distinct(12)[::3]
+extended_phases = ['cold','warm','hot','all','wnm','wim','star','dark']
+phase_colors = [colors[0],colors[2],colors[1],colors[3],extended_colors[1],extended_colors[2],'green','purple']
 phase_colors_dict = dict(zip(
     extended_phases,
     phase_colors))
@@ -125,4 +127,5 @@ hsv[-1]/=1.1
 
 phase_colors_dict['warm'] = hsv_to_rgb(hsv)
 pressure_colors_dict['total'] = hsv_to_rgb(hsv)
+phase_colors_dict['wim'] = hsv_to_rgb(hsv)
 

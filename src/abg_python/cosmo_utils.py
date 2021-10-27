@@ -1,7 +1,9 @@
-import numpy as np 
-from abg_python.all_utils import *
-
 import h5py
+import os
+
+import numpy as np 
+
+from .array_utils import findArrayClosestIndices
 
 
 ### Constants
@@ -24,18 +26,17 @@ def findCCFromHernquistA(m200,akpc):
     CC=getNFWCCFromHernquist(r200*1e6,a=akpc*1e3)
     return CC
 
-def getNFWCCFromHernquist(R200,a=300,plot=0):
+def getNFWCCFromHernquist(R200,a=300,ax=None):
     """Inverts relationship between R200, nfw concentration, 
         nfw scale radius, and hernquist scale radius for concentration"""
     cs = np.linspace(1e-2,1e3,1e5)
     hernquist_as = R200/cs * (2 * (np.log(1 + cs) - cs / (1 + cs)))**0.5
-    if plot:
-        plt.plot(cs,hernquist_as,label=r'a=$\frac{r200}{c}\sqrt{2(\log(1+c)-\frac{c}{1+c})}$',lw=3)
-        plt.plot(cs,[a]*len(cs),label='a=%.2f'%a,lw=3)
-        plt.gca().legend(loc=0)
-        plt.gca().set_xlabel('c')
-        plt.gca().set_ylabel('a (kpc)')
-        plt.show()
+    if ax is not None:
+        ax.plot(cs,hernquist_as,label=r'a=$\frac{r200}{c}\sqrt{2(\log(1+c)-\frac{c}{1+c})}$',lw=3)
+        ax.plot(cs,[a]*len(cs),label='a=%.2f'%a,lw=3)
+        ax.legend(loc=0)
+        ax.set_xlabel('c')
+        ax.set_ylabel('a (kpc)')
     return cs[np.argmin((hernquist_as-a)**2.)]
 
 def hernquist_profile(mtot,a,r,nfw=0):
