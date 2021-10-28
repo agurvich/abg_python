@@ -330,6 +330,8 @@ class Metadata(object):
                             if self.loud_metadata:
                                 print("Copying %s/%s from"%(group_name,key),self,'to',target)
                             ## copy the data over
+                            ## in 'w' mode this won't happen, in 'a' mode we don't want to overwrite
+                            if key in target_handle[group_name].keys(): continue
                             target_handle[group_name][key] = handle[group_name][key][()]
                 else:
                     raise IOError("%s doesn't have %s."%(repr(self),group_name))
