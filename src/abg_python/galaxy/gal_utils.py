@@ -375,7 +375,8 @@ class Galaxy(
                 if 'elvis' in self.snapdir:
                     raise IOError("No AHF files for Elvis runs")
                 self.load_ahf(ahf_fname=halo_fname,ahf_path=halo_path)
-            except IOError:
+            except IOError as e:
+                print(e)
                 try:
                     
                     if 'elvis' in self.snapdir:
