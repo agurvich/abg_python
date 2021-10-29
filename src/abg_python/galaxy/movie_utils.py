@@ -17,21 +17,28 @@ class Draw_helper(object):
     def drawGasGalaxy(
         self,
         thetax=None,thetay=None,thetaz=None,
-        indices=None,
+        mask=None,
         axs=None,
         radius=None,
+        height=None,
         full_snap=False,
         **kwargs):
         if not full_snap:
             coords = self.sub_snap['Coordinates']
         else:
             coords = self.snap['Coordinates']
+
+        mask = np.ones(coords.shape[0],dtype=bool)
+
         if radius is not None:
-            indices = np.sum(coords**2,axis=1)<radius**2
+            mask = np.logical_and(mask,np.sum(coords**2,axis=1)<radius**2)
+        if height is not None:
+            mask = np.logical_and(mask,np.abs(coords[:,-1])<height)
+
         return self.drawGalaxy(
             coords,
             thetax,thetay,thetaz,
-            indices,axs=axs,
+            mask,axs=axs,
             **kwargs)
     
     def drawStellarGalaxy(
