@@ -28,7 +28,7 @@ class Draw_helper(object):
         else:
             coords = self.snap['Coordinates']
 
-        mask = np.ones(coords.shape[0],dtype=bool)
+        if mask is None: mask = np.ones(coords.shape[0],dtype=bool)
 
         if radius is not None:
             mask = np.logical_and(mask,np.sum(coords**2,axis=1)<radius**2)
