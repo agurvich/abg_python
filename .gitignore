@@ -1,3 +1,4 @@
 *pyc
 *.sw*
 .vscode/settings.json
+src/*egg*/*
