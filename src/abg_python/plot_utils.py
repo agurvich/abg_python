@@ -89,12 +89,14 @@ def add_to_legend(
     shape='line',
     loc=0,
     ls='-',
-    c='k',
+    c=None,
     alpha=1,
     lw=None,
     legend_kwargs=None,
     make_new_legend=False,
     **kwargs):
+
+    if c is None: c = GLOBAL_linecolor 
 
     legend = ax.get_legend()
     ## add the current legend to the tracked artists
@@ -123,8 +125,8 @@ def add_to_legend(
             ax.markers = []
         line_kwargs = {}
 
-        if lw is not None:
-            line_kwargs['lw'] = lw
+        if lw is not None: line_kwargs['lw'] = lw
+        else: line_kwargs['lw'] = GLOBAL_lw
 
         line = Line2D(
         [0],[0],
