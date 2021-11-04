@@ -1,14 +1,8 @@
-from ..color_utils import get_distinct
 from ..math_utils import rotateEuler
-from ..plot_utils import nameAxes,addColorbar
+from ..plot_utils import nameAxes,addColorbar,plt
 
-import matplotlib.pyplot as plt
 import numpy as np 
 import os
-
-import h5py
-
-import copy 
 
 class Draw_helper(object):
     """------- Draw_helper 
@@ -44,18 +38,25 @@ class Draw_helper(object):
     def drawStellarGalaxy(
         self,
         thetax=None,thetay=None,thetaz=None,
-        indices=None,axs=None,
+        mask=None,
+        axs=None,
         radius=None,
+        height=None,
         **kwargs):
+
         coords = self.sub_star_snap['Coordinates']
 
+        if mask is None: mask = np.ones(coords.shape[0],dtype=bool)
+
         if radius is not None:
-            indices = np.sum(coords**2,axis=1)<radius**2
+            mask = np.logical_and(mask,np.sum(coords**2,axis=1)<radius**2)
+        if height is not None:
+            mask = np.logical_and(mask,np.abs(coords[:,-1])<height)
        
         return self.drawGalaxy(
             coords,
             thetax,thetay,thetaz,
-            indices,axs=axs,
+            mask,axs=axs,
             **kwargs)
  
 
