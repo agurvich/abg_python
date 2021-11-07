@@ -19,7 +19,7 @@ class Plot_ScaleHeight(object):
         **kwargs):
      
         ## handle default arguments
-        if rmax is None: rmax = self.rvir*0.1
+        if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
 
         if component == 'gas': which_snap = self.sub_snap
         else: which_snap = self.sub_star_snap
@@ -99,8 +99,8 @@ class Plot_ScaleHeight(object):
         radius,height,b_r,b_h=self.get_exponential_radius_and_height(component=component,rmax=rmax,zmax=zmax,**kwargs)
 
         ## handle default arguments
-        if rmax is None: rmax = self.rvir*0.1
-        if zmax is None: zmax = self.rvir*0.01
+        if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
+        if zmax is None: zmax = self.scale_height_rmax_rvir*self.rvir
 
         ## figure out which particles to use
         if component == 'gas': which_snap = self.sub_snap
@@ -154,6 +154,9 @@ class Plot_ScaleHeight(object):
 class ScaleHeight_helper(Plot_ScaleHeight):
     """------- ScaleHeight_helper 
     """
+
+    scale_height_rmax_rvir = 0.1
+
     def calculate_half_mass_radius(
         self,
         which_snap=None,
@@ -224,7 +227,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         loud=True,
         **kwargs):
 
-        if component not in ['gas','stars','star']:
+        if component not in ['gas','star']:
             raise ValueError("Invalid component %s must be gas or star."%component)
 
         group_name = 'SimpleGeom_%s'%component
@@ -232,15 +235,12 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         @metadata_cache(
             group_name,
             ['%s_simple_r'%component,
-            '%s_simple_h'%component,
-            'force_recalculate'], ## TODO remove this!
+            '%s_simple_h'%component],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud)
         def compute_simple_radius_and_height(self,component,rmax=None):
             
-            if rmax is None: rmax = 0.1*self.rvir
-
             if component == 'gas': which_snap = self.sub_snap
             elif 'star' in component: which_snap = self.sub_star_snap
 
@@ -263,7 +263,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 within_radius=radius,
                 mask=mask)
                 
-            return radius,height,True ## TODO remove force_recalculate!
+            return radius,height
         return compute_simple_radius_and_height(self,component,**kwargs)
 
     def get_inertia_ellipsoid(
@@ -288,8 +288,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             force_from_file=force_from_file)
         def compute_inertia_ellipsoid(self,component='gas',rmax=None):
 
-            ## handle default arguments
-            if rmax is None: rmax = self.rvir*0.05
+            if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
 
             ## figure out which particles to use
             if component == 'gas': which_snap = self.sub_snap
@@ -301,9 +300,9 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 
             masses,coords = which_snap['Masses'][rmask],which_snap['Coordinates'][rmask]
 
-            if masses.size <= 1:
-                return np.repeat(np.nan,6),np.repeat(np.nan,18).reshape(6,3),np.repeat(np.nan,2)
-            lengths,evecs = computeClumpRadius(masses,coords,fudge_factor=1)
+            if masses.size <= 1 and rmax < self.rvir*0.5:
+                return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
+            lengths,evecs = computeClumpRadius(masses,coords)
 
             e1 = evecs[0]
                  
@@ -342,8 +341,8 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             component='gas'):
 
             ## handle default arguments
-            if rmax is None: rmax = self.rvir*0.1
-            if zmax is None: zmax = self.rvir*0.01
+            if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
+            if zmax is None: zmax = self.scale_height_rmax_rvir*self.rvir
 
             ## figure out which particles to use
             if component == 'gas': which_snap = self.sub_snap
@@ -418,7 +417,7 @@ def isolate_lengths(inertia,Is=None):
     lengths[2] = np.sqrt((Is[1]- Is[2]+Is[0])/2)
     return lengths
 
-def computeClumpRadius(masses,coords,fudge_factor=1):
+def computeClumpRadius(masses,coords):
     r2 = np.sum(coords**2,axis=1)
     inertia = np.identity(3)*np.sum(r2*masses)/np.sum(masses)-np.cov(coords.T*np.sqrt(masses))/(np.sum(masses)/(masses.size-1))
  
@@ -461,8 +460,20 @@ def computeClumpRadius(masses,coords,fudge_factor=1):
     lengths[:3] = isolate_lengths(inertia,Is)
     ## find lengths along x,y,z
     lengths[3:] = isolate_lengths(inertia,None)
-    
-    ## RIP
-    lengths*=fudge_factor
+
+    ## okay hear me out on this one, the root (mass-weighted) mean square
+    ##  radius turns out to be ~1/2 the extent of a uniform distribution.
+    ##  (this is equivalent to getting "effective" lenths from
+    ##  moments of inertia)
+    ##  consider the following example:
+    ## > masses = np.ones(20)
+    ## > rs = np.arange(20)
+    ## > reff = np.sqrt(np.sum(masses*rs**2)/np.sum(masses))
+    ## reff = 11.113, in this example *i think* the length we really care about
+    ##  is 20, but ofc the inner masses are going to pull the effective radius in (especially
+    ##  the case when distrib is not uniform but centrally concentrated). 
+    ##  so multiplying by 2 gets you the "right" answer in the uniform case ("is necessary")
+    ##  so we'll do it in all cases :\ doesn't sound very convincing tbh
+    #lengths*=2
         
     return lengths,all_evecs
