@@ -676,9 +676,7 @@ class Galaxy(
                 ## manually calcualte rstar half using the star particles
                 ##  rather than relying on the output of AHF
                 if self.rstar_half is None:
-                    self.load_stars()
-                    self.rstar_half = self.calculate_half_mass_radius() 
-
+                    self.get_rstar_half(save_meta=save_meta)
 
                 ## radius to calculate angular momentum
                 ##  to orient on 
@@ -873,6 +871,27 @@ class Galaxy(
             print("Snapshot memory free")
 
         return return_value
+
+    def get_rstar_half(self,
+        use_metadata=True,
+        save_meta=False,
+        loud=False,
+        assert_cached=False,
+        force_from_file=False,
+        **kwargs):
+    
+        @metadata_cache(
+            'star_extract',
+            ['rstar_half'],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud,
+            assert_cached=assert_cached,
+            force_from_file=force_from_file)
+        def compute_rstar_half(self):
+            self.load_stars()
+            return self.calculate_half_mass_radius() 
+        return compute_rstar_half(self)
 
     def load_stars(self,**kwargs):
         print("Loading star particles of",self,'at',self.snapdir)
