@@ -72,21 +72,16 @@ def pairReplace(xs,ys,value,bool_fn):
 def pairFilter(xs,ys,bool_fn):
     return manyFilter(bool_fn,xs,ys)
 
-def filterDictionary(dict0,indices,dict1 = None,key_exceptions=[],free_mem = 0):
-    if dict1 is None:
-        dict1={}
-    for key in dict0:
-        if key in key_exceptions:
-            continue
+def filterDictionary(dict0,indices,dict1=None,key_exceptions=[]):
+    if dict1 is None: dict1={}
+    for key in list(dict0.keys()):
+        if key in key_exceptions: continue
         try:
             ## shape might fail if it's a constant so we wrap in a try
             if np.shape(dict0[key])[0]==indices.shape[0]:
                 dict1[key]=dict0[key][indices]
-            else:
-                ## get to the else branch by raising an exception 
-                raise KeyError("Save this array verbatim")
+            ## get to the else branch by raising an exception 
+            else: raise KeyError("Save this array verbatim")
         except:
             dict1[key]=dict0[key]
-    if free_mem:
-        del dict0
     return dict1
