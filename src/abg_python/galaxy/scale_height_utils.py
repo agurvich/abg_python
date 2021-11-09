@@ -186,7 +186,6 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         if geometry in ['cylindrical','scale_height']:
             radii = np.sum(coords[:,:2]**2,axis=1)**0.5
         elif geometry == 'spherical':
-            print("Calculating the half mass radius")
             radii = np.sum(coords**2,axis=1)**0.5
 
         within_mask = radii <= within_radius
@@ -210,14 +209,12 @@ class ScaleHeight_helper(Plot_ScaleHeight):
     def run_ScaleHeight_helper(self,**kwargs):
         """ Run all calculations in the ScaleHeight_helper module, contains:"""
 
-        self.get_simple_radius_and_height('gas',**kwargs)
-        self.get_simple_radius_and_height('star',**kwargs)
+        for component in self.prefix_dict.keys():
 
-        self.get_inertia_ellipsoid('gas',**kwargs)
-        self.get_inertia_ellipsoid('star',**kwargs)
-
-        self.get_exponential_radius_and_height('gas',**kwargs)
-        self.get_exponential_radius_and_height('star',**kwargs)
+            self.get_simple_radius_and_height(component,**kwargs)
+            self.get_simple_radius_and_height('ann_'+component,**kwargs)
+            self.get_inertia_ellipsoid(component,**kwargs)
+            self.get_exponential_radius_and_height(component,**kwargs)
     
     def get_simple_radius_and_height(
         self,
@@ -227,25 +224,31 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         loud=True,
         **kwargs):
 
-        if component not in ['gas','star']:
-            raise ValueError("Invalid component %s must be gas or star."%component)
-
         group_name = 'SimpleGeom_%s'%component
 
         @metadata_cache(
             group_name,
-            ['%s_simple_r'%component,
-            '%s_simple_h'%component],
+            ['%s_half_r'%component,
+            '%s_quarter_h'%component],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud)
         def compute_simple_radius_and_height(self,component,rmax=None):
-            
-            if component == 'gas': which_snap = self.sub_snap
-            elif 'star' in component: which_snap = self.sub_star_snap
 
+            annulus = False
+            ## do in an annulus
+            if 'ann_' in component:
+                annulus = True
+                component = component[4:]
+            
+            if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
+
+            ## pick particles in this phase/particle type
+            which_snap = self.particle_picker(component)
+
+            ## ignore the hot phase when fitting the total gas
+            #mask = which_snap['Temperature']<1e5 if component=='gas' else None
             mask = None
-            if component=='gas': mask = which_snap['Temperature']<1e5
 
             ## calculate the cylindrical half-mass radius using mass 
             ##  within 20% virial radius
@@ -254,13 +257,21 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 geometry='cylindrical',
                 within_radius=rmax,
                 mask=mask)
+            
+            if not annulus: rmax = radius
+            else:
+                rmax = 1.25*radius
+                new_mask = np.sum(which_snap['Coordinates'][:,:2]**2,axis=1) > (0.75*radius)**2
+                if mask is None: mask = new_mask
+                else: mask = np.logical_and(mask,new_mask)
+
 
             ## calculate the half-mass height w/i cylinder
             ##  of radius previously calculated
             height = self.calculate_half_mass_radius(
                 which_snap=which_snap,
                 geometry='scale_height',
-                within_radius=radius,
+                within_radius=rmax,
                 mask=mask)
                 
             return radius,height
@@ -290,15 +301,14 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
             if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
 
-            ## figure out which particles to use
-            if component == 'gas': which_snap = self.sub_snap
-            elif 'star' in component: which_snap = self.sub_star_snap
+            ## pick particles in this phase/particle type
+            which_snap = self.particle_picker(component)
 
             ## select only particles within rmax and those not in the halo (if gas)
-            rmask = np.sum(which_snap['Coordinates']**2,axis=1)**0.5 < rmax
-            if component=='gas': rmask = np.logical_and(rmask,which_snap['Temperature']<1e5)
+            mask = np.sum(which_snap['Coordinates']**2,axis=1)**0.5 < rmax
+            if component=='gas': mask = np.logical_and(mask,which_snap['Temperature']<1e5)
                 
-            masses,coords = which_snap['Masses'][rmask],which_snap['Coordinates'][rmask]
+            masses,coords = which_snap['Masses'][mask],which_snap['Coordinates'][mask]
 
             if masses.size <= 1 and rmax < self.rvir*0.5:
                 return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
@@ -318,7 +328,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         component='gas',
         use_metadata=True,
         save_meta=False,
-        loud=False,
+        loud=True,
         assert_cached=False,
         force_from_file=False,
         **kwargs):
@@ -344,9 +354,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
             if zmax is None: zmax = self.scale_height_rmax_rvir*self.rvir
 
-            ## figure out which particles to use
-            if component == 'gas': which_snap = self.sub_snap
-            elif 'star' in component: which_snap = self.sub_star_snap
+            which_snap = self.particle_picker(component)
             
             coords,masses = which_snap['Coordinates'],which_snap['Masses']
 
