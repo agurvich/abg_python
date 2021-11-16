@@ -32,6 +32,8 @@ def main(
     ##  in file it is just '.'
     if top_level_name is None: top_level_name = du_file_name
 
+    print('reading',du_file_name)
+
     ## read the du -b > storage.txt output
     storage = pd.read_csv(
         os.path.join(HOMEenviron,du_file_name),
@@ -76,6 +78,7 @@ def main(
 
 
     ## remove '.' from the node dictionary, store its size for labels later 
+    print('top level folder keys:',top_folders.keys())
     total_size = top_folders.pop('.')['size']
 
     ## walk the node dictionary and flatten it 
@@ -144,8 +147,9 @@ def main(
     fig.layout=go.Layout(autosize=False,width=500*6,height=2000,margin=dict(l=20, r=20, t=20, b=200))
 
     ## write output to html
-    fig.write_html(du_file_name.replace('.txt','.html'))
-
+    fig.write_html(os.path.join(
+        HOMEenviron,
+        du_file_name.replace('.txt','.html')))
 
 
 def inner_parse_strings(paths,pre_str=''):
@@ -232,4 +236,8 @@ def sankify(my_dict,level=0,origin=0,offset=0,max_size=None):
 if __name__ == '__main__':
 
     du_file_name = 'stampede_2_usage_11.15.2021.txt'
-    main(du_file_name)
+    top_level_name = 'GalaxiesOnFIRE'
+    du_file_name = 'frontera_usage_11.15.21.txt'
+    top_level_name = 'pfh-frontera-scratch'
+
+    main(du_file_name,top_level_name)
