@@ -215,6 +215,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             self.get_simple_radius_and_height('ann_'+component,**kwargs)
             self.get_inertia_ellipsoid(component,**kwargs)
             self.get_exponential_radius_and_height(component,**kwargs)
+            self.get_angmom_radius_and_height(component,**kwargs)
     
     def get_simple_radius_and_height(
         self,
@@ -398,6 +399,63 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             
 
         return compute_exponential_radius_and_scale_height(self,component=component,**kwargs)
+
+    def get_angmom_radius_and_height(
+        self,
+        component='gas',
+        use_metadata=True,
+        save_meta=False,
+        loud=True,
+        assert_cached=False,
+        force_from_file=False,
+        **kwargs):
+    
+        @metadata_cache(
+            '%s_angmom_scale_height'%component,
+            ['%s_angmom_radius'%component,
+            '%s_angmom_height'%component,
+            '%s_angmom_vector'%component],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud,
+            assert_cached=assert_cached,
+            force_from_file=force_from_file)
+        def compute_angmom_radius_and_height(self,component='gas',rmax=None,):
+    
+            if rmax is None: rmax = self.scale_height_rmax_rvir*self.rvir
+                
+            ## apply component cut
+            which_snap = self.particle_picker(component)
+            
+            coords = which_snap['Coordinates']
+            r2s = np.sum(coords**2,axis=1)
+
+            ## for applying radial cut
+            rmask = r2s<(rmax**2)
+
+            ## unpack snapshot values we need
+            coords = coords[rmask]
+            masses = which_snap['Masses'][rmask]
+            mtot = np.sum(masses)
+            vels = which_snap['Velocities'][rmask]
+            r2s = r2s[rmask]
+
+            ## calculate angular momentum vector for this component
+            angmom = np.sum(np.cross(coords,vels*masses[:,None]),axis=0)
+            angmom /= np.linalg.norm(angmom)
+
+            ## find (squared) lengths along this axis 
+            l_parallel2s = np.sum(coords*angmom,axis=1)**2
+
+            ## find (squared) perpendicular lengths (and apply radial cut)
+            l_perp2s = r2s-l_parallel2s
+            
+            ## mass weighted RMS height/radius
+            height = np.sqrt(np.sum(l_parallel2s*masses)/mtot)
+            radius = np.sqrt(np.sum(l_perp2s*masses)/mtot)
+
+            return radius,height,angmom
+        return compute_angmom_radius_and_height(self,component=component)
 
     ## handle programatic function docstrings
     append_function_docstring(run_ScaleHeight_helper,get_simple_radius_and_height)
