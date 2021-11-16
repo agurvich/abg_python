@@ -184,8 +184,13 @@ class Galaxy(
 
         self.suite_name = suite_name
 
-        if self.suite_name == 'cr_suite' and name == 'm12i_res7100':
-            name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+        if self.suite_name == 'cr_suite':
+            if name == 'm12i_res7100':
+                name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+            else:
+                name +='/cr_700'
+            name=name.replace('cr_700/cr_700','cr_700')
+            
 
         ## bind input
         self.snapnum = snapnum
@@ -717,7 +722,8 @@ class Galaxy(
             ##  them from disk
             else:
                 try:
-                    assert use_saved_subsnapshots
+                    if not use_saved_subsnapshots: raise AssertionError("Told not to use saved sub-snapshots")
+
                     print("Using the saved sub-snapshots for",self)
 
                     self.sub_snap = openSnapshot(
@@ -1169,8 +1175,12 @@ class ManyGalaxy(Galaxy):
             suite_name = 'metal_diffusion/cr_heating_fix'
  
 
-        if suite_name == 'cr_suite' and name == 'm12i_res7100':
-            name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+        if suite_name == 'cr_suite':
+            if name == 'm12i_res7100':
+                name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
+            else:
+                name +='/cr_700'
+            name=name.replace('cr_700/cr_700','cr_700')
 
         self.name = name+name_append
         self.datadir_name = self.name if datadir_name is None else datadir_name
