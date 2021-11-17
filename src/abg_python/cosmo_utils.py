@@ -185,7 +185,8 @@ def load_AHF(
     hubble = 0.702,
     ahf_path=None,
     extra_names_to_read = None,
-    fname = None):
+    fname = None,
+    return_full_halo_file = False):
 
     if extra_names_to_read is None:
         extra_names_to_read = ['Rstar0.5']
@@ -224,18 +225,31 @@ def load_AHF(
             cols+=[names.index(name)]
 
     if 'snum' not in names_to_read:
-        row = np.genfromtxt(
-            path,
-            skip_header=0,
-            max_rows = 2,
-            usecols=cols,
-            comments='@')[1]
+        
+        if return_full_halo_file: 
+            print('returning:',names_to_read)
+            output = np.genfromtxt(
+                path,
+                skip_header=1,
+                usecols=cols,
+                comments='@')
+            return output
+        else:
+            row = np.genfromtxt(
+                path,
+                skip_header=0,
+                max_rows = 2,
+                usecols=cols,
+                comments='@')[1]
     else:
         output = np.genfromtxt(
             path,
             delimiter='\t',
             usecols=cols,
             skip_header=1)
+        if return_full_halo_file: 
+            print('returning:',names_to_read)
+            return output
 
         index = output[:,0]==snapnum
 

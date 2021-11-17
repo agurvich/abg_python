@@ -481,6 +481,25 @@ class Galaxy(
                     raise IOError("can't find a halo file (or found too many)",fnames)
 
         return ahf_path, ahf_fname
+    
+    def get_ahf_file_output(self):
+        try: return load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
+                hubble = self.header['HubbleParam'],
+                return_full_halo_file=True).T
+        except: return load_AHF(
+                self.snapdir,
+                self.snapnum,
+                self.current_redshift,
+                ahf_path = self.ahf_path,
+                fname = self.ahf_fname,
+                hubble = self.header['HubbleParam'],
+                return_full_halo_file=True,
+                extra_names_to_read=[]).T
 
     def load_rockstar(self,rockstar_fname=None,rockstar_path=None,which_host=0):
 
@@ -680,8 +699,9 @@ class Galaxy(
 
                 ## manually calcualte rstar half using the star particles
                 ##  rather than relying on the output of AHF
-                if self.rstar_half is None:
-                    self.get_rstar_half(save_meta=save_meta)
+                if self.rstar_half is None: self.get_rstar_half(
+                    save_meta=save_meta,
+                    force_from_file=True)
 
                 ## radius to calculate angular momentum
                 ##  to orient on 
@@ -881,7 +901,7 @@ class Galaxy(
     def get_rstar_half(self,
         use_metadata=True,
         save_meta=False,
-        loud=False,
+        loud=True,
         assert_cached=False,
         force_from_file=False,
         **kwargs):
@@ -896,7 +916,7 @@ class Galaxy(
             force_from_file=force_from_file)
         def compute_rstar_half(self):
             self.load_stars()
-            return self.calculate_half_mass_radius() 
+            return self.calculate_half_mass_radius(),
         return compute_rstar_half(self)
 
     def load_stars(self,**kwargs):
