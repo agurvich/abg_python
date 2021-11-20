@@ -543,6 +543,16 @@ class Galaxy(
                 self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
             return
 
+        data_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
+
+        if os.path.isfile(data_FIRE_SN_times):
+            (self.snapnums,
+                self.snap_sfs,
+                self.snap_zs,
+                self.snap_gyrs,
+                self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
+            return
+
 
         if assert_cached:
             raise AssertionError("User asserted that the snapshot times should be saved to disk.")
