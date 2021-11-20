@@ -1110,3 +1110,26 @@ def place_text(ax,percentage):
     if logflag: 
         foo = 10**foo
     return foo
+
+try: import palettable
+except: print("palettable colormaps are not installed")
+try:
+    from pfh_colormaps import load_my_custom_color_tables
+    load_my_custom_color_tables()
+except:
+    print("don't have phil's colormaps")
+
+def get_cmap(cmap_name):
+    try: cmap = plt.get_cmap(cmap_name)
+    except:
+        ## perhaps i was passed a palettable cmap path
+        ## split the cmap path into its components
+        cmap_name = cmap_name.split(".")
+
+        ## iteratively getattr to achieve zen
+        cmap = palettable
+        for name in cmap_name: cmap = getattr(cmap,name)
+
+        ## extract the matplotlib colormap object
+        cmap = cmap.mpl_colormap
+    return cmap
