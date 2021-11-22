@@ -27,7 +27,6 @@ class Plot_ScaleHeight(object):
         if mask is None:
             ## select only particles within rmax and those not in the halo (if gas)
             mask = np.sum(which_snap['Coordinates']**2,axis=1)**0.5 < rmax
-            if component=='gas': mask = np.logical_and(mask,which_snap['Temperature']<1e5)
 
         ## draw galaxy background
         if component == 'gas': fig,ax1,ax2 = self.drawGasGalaxy(mask=mask)
@@ -112,9 +111,6 @@ class Plot_ScaleHeight(object):
         redges = np.logspace(np.log10(rmax)-2,np.log10(rmax),40)
 
         mask = rs < redges[-1]
-
-        ## apply a hot temperature cut to gas
-        if component=='gas': mask = np.logical_and(mask,which_snap['Temperature']<1e5)
 
         h,_ = np.histogram(
             rs[mask],
@@ -206,20 +202,23 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
         return findIntersection(edges[1:],cdf,0.5)[0]
 
-    def run_ScaleHeight_helper(self,**kwargs):
+    def run_ScaleHeight_helper(self,rmax_rvirs=None,**kwargs):
         """ Run all calculations in the ScaleHeight_helper module, contains:"""
 
-        for component in self.prefix_dict.keys():
+        if rmax_rvirs is None: rmax_rvirs = np.linspace(0.05,1,20)
 
-            self.get_simple_radius_and_height(component,**kwargs)
-            self.get_simple_radius_and_height('ann_'+component,**kwargs)
-            self.get_inertia_ellipsoid(component,**kwargs)
-            self.get_exponential_radius_and_height(component,**kwargs)
-            self.get_angmom_radius_and_height(component,**kwargs)
+        for rmax_rvir in rmax_rvirs:
+            for component in list(self.prefix_dict.keys())+['cold_gas+warm_gas']:
+                self.get_simple_radius_and_height(component,rmax_rvir=rmax_rvir,**kwargs)
+                self.get_simple_radius_and_height('ann_'+component,rmax_rvir=rmax_rvir,**kwargs)
+                self.get_inertia_ellipsoid(component,rmax_rvir=rmax_rvir,**kwargs)
+                self.get_exponential_radius_and_height(component,rmax_rvir=rmax_rvir,**kwargs)
+                self.get_angmom_radius_and_height(component,rmax_rvir=rmax_rvir,**kwargs)
     
     def get_simple_radius_and_height(
         self,
         component='gas',
+        rmax_rvir=0.1,
         save_meta=True,
         use_metadata=True,
         loud=True,
@@ -229,8 +228,8 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
         @metadata_cache(
             group_name,
-            ['%s_half_r'%component,
-            '%s_quarter_h'%component],
+            ['%s_half_r_%.2f_rvir'%(component,rmax_rvir),
+            '%s_quarter_h_%.2f_rvir'%(component,rmax_rvir)],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud)
@@ -247,8 +246,6 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             ## pick particles in this phase/particle type
             which_snap = self.particle_picker(component)
 
-            ## ignore the hot phase when fitting the total gas
-            #mask = which_snap['Temperature']<1e5 if component=='gas' else None
             mask = None
 
             ## calculate the cylindrical half-mass radius using mass 
@@ -276,11 +273,12 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 mask=mask)
                 
             return radius,height
-        return compute_simple_radius_and_height(self,component,**kwargs)
+        return compute_simple_radius_and_height(self,component,rmax=rmax_rvir*self.rvir,**kwargs)
 
     def get_inertia_ellipsoid(
         self,
         component='gas',
+        rmax_rvir=0.1,
         use_metadata=True,
         save_meta=False,
         loud=True,
@@ -289,10 +287,10 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         **kwargs):
     
         @metadata_cache(
-            "%s_inertia_ellipsoid"%component,
-            ["%s_lengths"%component,
-            "%s_evecs"%component,
-            "%s_angles_rad"%component],
+            "%s_inertia_ellipsoid_%.2f_rvir"%(component,rmax_rvir),
+            ["%s_lengths_%.2f_rvir"%(component,rmax_rvir),
+            "%s_evecs_%.2f_rvir"%(component,rmax_rvir),
+            "%s_angles_rad_%.2f_rvir"%(component,rmax_rvir)],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud,
@@ -307,7 +305,6 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
             ## select only particles within rmax and those not in the halo (if gas)
             mask = np.sum(which_snap['Coordinates']**2,axis=1)**0.5 < rmax
-            if component=='gas': mask = np.logical_and(mask,which_snap['Temperature']<1e5)
                 
             masses,coords = which_snap['Masses'][mask],which_snap['Coordinates'][mask]
 
@@ -322,11 +319,12 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
             return lengths,evecs,angles_rad
             
-        return compute_inertia_ellipsoid(self,component=component,**kwargs)
+        return compute_inertia_ellipsoid(self,component=component,rmax=rmax_rvir*self.rvir,**kwargs)
     
     def get_exponential_radius_and_height(
         self,
         component='gas',
+        rmax_rvir=0.1,
         use_metadata=True,
         save_meta=False,
         loud=True,
@@ -335,11 +333,11 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         **kwargs):
     
         @metadata_cache(
-            "%s_exponential_scale_height"%component,
-            ["%s_exponential_radius"%component,
-            "%s_exponential_height"%component,
-            "%s_radius_norm"%component,
-            "%s_height_norm"%component],
+            "%s_exponential_scale_height_%.2f_rvir"%(component,rmax_rvir),
+            ["%s_exponential_radius_%.2f_rvir"%(component,rmax_rvir),
+            "%s_exponential_height_%.2f_rvir"%(component,rmax_rvir),
+            "%s_radius_norm_%.2f_rvir"%(component,rmax_rvir),
+            "%s_height_norm_%.2f_rvir"%(component,rmax_rvir)],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud,
@@ -363,9 +361,6 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             redges = np.logspace(np.log10(rmax)-2,np.log10(rmax),40)
 
             mask = rs < redges[-1]
-
-            ## apply a hot temperature cut to gas
-            if component=='gas': mask = np.logical_and(mask,which_snap['Temperature']<1e5)
 
             h,_ = np.histogram(
                 rs[mask],
@@ -398,11 +393,12 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             return -1/a_r,-1/a_h,np.exp(b_r),np.exp(b_h)
             
 
-        return compute_exponential_radius_and_scale_height(self,component=component,**kwargs)
+        return compute_exponential_radius_and_scale_height(self,component=component,rmax=rmax_rvir*self.rvir,**kwargs)
 
     def get_angmom_radius_and_height(
         self,
         component='gas',
+        rmax_rvir=0.1,
         use_metadata=True,
         save_meta=False,
         loud=True,
@@ -411,10 +407,10 @@ class ScaleHeight_helper(Plot_ScaleHeight):
         **kwargs):
     
         @metadata_cache(
-            '%s_angmom_scale_height'%component,
-            ['%s_angmom_radius'%component,
-            '%s_angmom_height'%component,
-            '%s_angmom_vector'%component],
+            '%s_angmom_scale_height_%.2f_rvir'%(component,rmax_rvir),
+            ['%s_angmom_radius_%.2f_rvir'%(component,rmax_rvir),
+            '%s_angmom_height_%.2f_rvir'%(component,rmax_rvir),
+            '%s_angmom_vector_%.2f_rvir'%(component,rmax_rvir)],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud,
@@ -455,7 +451,7 @@ class ScaleHeight_helper(Plot_ScaleHeight):
             radius = np.sqrt(np.sum(l_perp2s*masses)/mtot)
 
             return radius,height,angmom
-        return compute_angmom_radius_and_height(self,component=component)
+        return compute_angmom_radius_and_height(self,rmax=rmax_rvir*self.rvir,component=component,**kwargs)
 
     ## handle programatic function docstrings
     append_function_docstring(run_ScaleHeight_helper,get_simple_radius_and_height)
