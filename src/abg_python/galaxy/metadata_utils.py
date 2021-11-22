@@ -206,28 +206,47 @@ class Metadata(object):
             if self.loud_metadata:
                 print("Couldn't find a metadata file...",self.metapath)
 
-    def purge_metadata_group(self,group_name,loud=False,force=0):
+    def purge_metadata_group(self,group_name,key_name=None,loud=False,force=0):
         if not force:
             raise Exception("I'm sorry Dave, I'm afraid I can't do that.")
         else:
             with h5py.File(self.metapath,'a') as handle:
                 if group_name == 'Header':
-                    for key in handle.attrs.keys():
-                        del handle.attrs[key]
-                if group_name in handle.keys():
+                    if key_name is None:
+                        ## delete all the keys
+                        for key in handle.attrs.keys():
+                            del handle.attrs[key]
+                    ## delete only the specified key
+                    else: del handle.attrs[key_name]
+                    return
+                
+                ## take advantage of h5py group syntax to delete only
+                ##  the specified key
+                if key_name is not None: group_name = "%s/%s"%(group_name,key_name)
+
+                if group_name in handle:
                     if self.loud_metadata or loud:
-                        print(handle.keys(),'...before...')
+                        print(np.array([
+                            (key,len(handle[key])) for key in handle.keys()]),
+                            '...before...')
                     del handle[group_name]
                     if self.loud_metadata or loud:
-                        print(handle.keys(),"...after. I hope you're happy.")
+                        print(np.array([
+                            (key,len(handle[key])) for key in handle.keys()]),
+                            "...after. I hope you're happy.")
                 else:
                     if self.loud_metadata or loud:
                         print("This metadata doesn't have %s."%group_name)
 
-            ## now get it out of the instance itself
-            for key in list(self.__dict__.keys()):
-                if key[:len(group_name)] == group_name:
+            if key_name is not None: 
+                group_name = group_name.replace('/','_')
+                if group_name in self.__dict__.keys():
                     self.__dict__.pop(key)
+            else:
+                ## now get the whole group out of the instance
+                for key in list(self.__dict__.keys()):
+                    if key[:len(group_name)] == group_name:
+                        self.__dict__.pop(key)
 
     def lazy_load_from_file(self,key,load_entire_group=False):
         if key in self.file_keys:
@@ -289,20 +308,6 @@ class Metadata(object):
                 return np.array(handle[pathh])
         else:
             return np.array(handle[pathh])
-    
-    def purge_metadata_key(self,group_name,key_name,force=0,loud=True):
-        if not force:
-            raise Exception("I'm sorry Dave, I'm afraid I can't do that.")
-        else:
-            with h5py.File(self.metapath,'a') as handle:
-                if group_name in handle.keys() and key_name in handle[group_name].keys():
-                    if self.loud_metadata and loud:
-                        print(handle[group_name].keys(),'...before...')
-                    del handle[group_name][key_name]
-                    if self.loud_metadata and loud:
-                        print(handle[group_name].keys(),"...after. I hope you're happy.")
-                else:
-                    raise IOError("%s doesn't have %s/%s."%(repr(self),group_name,key))
 
     def export_to_file(self,target,group_name,keys=None,write_mode='a'):
         if type(target) == dict:
@@ -446,7 +451,7 @@ def metadata_cache(
             if clean_metadata:
                 print('Clearing metadata of %s and exiting.'%func_name)
                 for key in keys:
-                    self.metadata.purge_metadata_key(
+                    self.metadata.purge_metadata_group(
                         group,
                         key,
                         force=force,
