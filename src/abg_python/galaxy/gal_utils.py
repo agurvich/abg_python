@@ -2,6 +2,8 @@
 import numpy as np 
 import h5py
 import os
+import multiprocessing
+import itertools
 
 ## from abg_python
 from ..snapshot_utils import openSnapshot,get_unit_conversion
@@ -1180,6 +1182,35 @@ class Galaxy(
 ###### MANY GALAXY FUNCTIONS
 class ManyGalaxy(Galaxy):
     """ """
+    
+    def purge_metadata(
+        self,
+        group_name,
+        key_name=None,
+        snaplow=None,
+        snaphigh=None,
+        force=False,
+        loud=True,
+        mps=1):
+
+        if snaplow is None: snaplow = self.minsnap
+        if snaphigh is None: snaphigh = self.finsnap
+
+        argss = zip(
+            itertools.repeat(self),
+            np.arange(snaplow,snaphigh+1),
+            itertools.repeat(group_name),
+            itertools.repeat(key_name),
+            itertools.repeat(force),
+            itertools.repeat(loud))
+
+        if mps > 1:
+            with multiprocessing.Pool(multiprocessing.cpu_count()) as my_pool:
+                my_pool.starmap(purge_metadata_group_wrapper,argss)
+                my_pool.close()
+                my_pool.join()
+        else:
+            for args in argss: purge_metadata_group_wrapper(*args)
 
     def __repr__(self):
         return "%s many-galaxy wrapper"%(self.name)
@@ -1411,3 +1442,14 @@ def get_idealized_center(savename,snapnum):
         return np.load(center_path)['centers'][snapnum]
     except:
         return np.load(center_path)['centers'][snapnum-1]
+
+
+## MPS wrapper functions
+
+def purge_metadata_group_wrapper(many_galaxy,snapnum,group_name,key_name,force,loud):
+    galaxy = many_galaxy.loadAtSnapshot(snapnum)
+    galaxy.metadata.purge_metadata_group(
+        group_name=group_name,
+        key_name=key_name,
+        force=force,
+        loud=loud)
