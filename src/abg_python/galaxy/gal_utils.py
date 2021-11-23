@@ -659,6 +659,7 @@ class Galaxy(
         overwrite_full_snaps_with_rotated_versions = False,
         free_mem = True, ## delete the full snapshot from RAM
         extract_DM = True, ## do we want the DM particles? 
+        loud=True,
         **kwargs):
         """
         radius = None -- radius of final sub_snap extraction, *not* orient_radius, 
@@ -687,7 +688,7 @@ class Galaxy(
             'rgas_half'],
             use_metadata=False,
             save_meta=save_meta,
-            loud=1)
+            loud=loud)
         def extract_halo_inner(
             self,
             orient_stars=True,
@@ -756,7 +757,7 @@ class Galaxy(
                 try:
                     if not use_saved_subsnapshots: raise AssertionError("Told not to use saved sub-snapshots")
 
-                    print("Using the saved sub-snapshots for",self)
+                    if loud: print("Using the saved sub-snapshots for",self)
 
                     self.sub_snap = openSnapshot(
                         None,None,
@@ -810,7 +811,7 @@ class Galaxy(
                             self.scom - sub_scom,
                             self.scom , sub_scom)
 
-                    print("Successfully loaded a pre-extracted subsnap")
+                    if loud: print("Successfully loaded a pre-extracted subsnap")
 
                     ## pass these sub-snapshots into the rotation routine
                     which_snap = self.sub_snap
@@ -822,7 +823,7 @@ class Galaxy(
                     message = "Failed to open saved sub-snapshots"
                     #message+= ' %s'%error.__class__  
                     message+= ' %s'%repr(error)
-                    print(message)
+                    if loud: print(message)
 
                     ## have to load the full snapshots...
                     if 'snap' not in self.__dict__:
@@ -906,7 +907,7 @@ class Galaxy(
 
             if 'snap' in self.__dict__.keys():
                 del self.snap
-            print("Snapshot memory free")
+            if loud: print("Snapshot memory free")
 
         return return_value
 
