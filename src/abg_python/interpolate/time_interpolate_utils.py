@@ -47,6 +47,7 @@ def single_threaded_control_flow(
     return_values = []
 
     for i,(pair,pair_times) in enumerate(zip(snap_pairs,snap_pair_times)):     
+        if not i%10: print(i,pair,pair_times)
         ## determine if the galaxies in the pair are actually
         ##  changed, and if so, open their data from the disk.
         prev_galaxy,next_galaxy,changed = load_gals_from_disk(
@@ -161,14 +162,16 @@ def index_match_snapshots_with_dataframes(
     ## convert snapshot dictionaries to pandas dataframes
     prev_df_snap = convertSnapToDF(
         prev_sub_snap,
-        keys_to_extract=keys_to_extract)
+        keys_to_extract=keys_to_extract,
+        spherical_coordinates=True)
     
     ## apparently index operations go faster if you sort by index
     prev_df_snap.sort_index(inplace=True)
     
     next_df_snap = convertSnapToDF(
         next_sub_snap,
-        keys_to_extract=keys_to_extract)
+        keys_to_extract=keys_to_extract,
+        spherical_coordinates=True)
     
     ## apparently index operations go faster if you sort by index
     next_df_snap.sort_index(inplace=True)
@@ -199,10 +202,10 @@ def index_match_snapshots_with_dataframes(
     ## remove particles that do not exist in the next snapshot, 
     ##  difficult to tell if they turned into stars or were merged. 
     prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
-    
+
     return prev_next_merged_df_snap
 
-def make_interpolated_snap(t,time_merged_df,t0,t1):
+def make_interpolated_snap(t,time_merged_df,t0,t1,velocity_interpolate=True,spherical=True):
     interp_snap = {}
 
     ## create a new snapshot with linear interpolated values
@@ -210,7 +213,11 @@ def make_interpolated_snap(t,time_merged_df,t0,t1):
     for key in time_merged_df.keys():
         if '_next' in key:
             continue
-        elif key in ['coord_xs','coord_ys','coord_zs']:
+        elif key in [
+            'coord_xs','coord_ys','coord_zs',
+            'vxs','vys','vzs',
+            'coord_rs','coord_thetas','coord_phis',
+            'vrs','vthetas','vphis']:
             continue
         interp_snap[key] = linear_interpolate(
             getattr(time_merged_df,key),
@@ -218,16 +225,48 @@ def make_interpolated_snap(t,time_merged_df,t0,t1):
             t0,t1,
             t).values
     
-    ## handle coordinates separately
-    ## TODO add {velocity correction}:
-    ##  xt = x0 + (x1 - x0)f_t + {(1-f_t)(v0 (t-t0) + 1/2 (v1-v0)/(t1-t0) (t-t0)^2) } 
     coords = np.zeros((time_merged_df.shape[0],3))
-    for i,key in enumerate(['coord_xs','coord_ys','coord_zs']):
-        coords[:,i] = linear_interpolate(
-            getattr(time_merged_df,key),
-            getattr(time_merged_df,key+'_next'),
-            t0,t1,
-            t).values
+    rtp_coords = np.zeros((time_merged_df.shape[0],3))
+    #vels = np.zeros((time_merged_df.shape[0],3))
+
+    ckeys = ['coord_xs','coord_ys','coord_zs'] if not spherical else ['coord_rs','coord_thetas','coord_phis']
+    vkeys = ['vxs','vys','vzs'] if not spherical else ['vrs','vthetas','vphis']
+
+    delta_t = (t-t0)
+    time_frac = delta_t/(t1-t0)
+    for i,(coord_key,vel_key) in enumerate(zip(ckeys,vkeys)):
+
+
+        first_coords = getattr(time_merged_df,coord_key)
+        next_coords = getattr(time_merged_df,coord_key+'_next')
+
+        first_vels = getattr(time_merged_df,vel_key)
+        next_vels = getattr(time_merged_df,vel_key+'_next')
+        vbar = (first_vels+next_vels)/2.
+
+        
+        dcoord = next_coords - first_coords
+
+        if spherical:
+            vbar = vbar/rtp_coords[:,0]
+            ## handle partial windings, change sign as necessary
+            if i == 2:
+                dcoord[(dcoord>0) & (vbar < 0)]-=2*np.pi
+                dcoord[(dcoord<0) & (vbar > 0)]+=2*np.pi
+
+            ## handle full windings
+            if i > 0: 
+                nwindings = ((vbar.values*(t1-t0))/(2*np.pi)).astype(int)
+                dcoord += nwindings*2*np.pi
+
+        rtp_coords[:,i] = (first_coords + dcoord*time_frac).values
+
+    if not spherical: coords = rtp_coords
+    else: 
+        ## cast spherical coordinates to cartesian coordinates
+        coords[:,0] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.cos(rtp_coords[:,2])
+        coords[:,1] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.sin(rtp_coords[:,2])
+        coords[:,2] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
         
     interp_snap['Coordinates'] = coords
 

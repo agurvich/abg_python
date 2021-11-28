@@ -2,6 +2,8 @@ import h5py
 import os
 import copy
 import numpy as np
+
+from .math_utils import get_cylindrical_velocities,get_cylindrical_coordinates,get_spherical_coordinates,get_spherical_velocities
 from .physics_utils import getTemperature
 from .cosmo_utils import getAgesGyrs,convertStellarAges
 
@@ -287,7 +289,12 @@ try:
         snap = openSnapshot(snapdir,snapnum,parttype,**kwargs)
         return convertSnapToDF(snap)
 
-    def convertSnapToDF(snap,npart_key='Coordinates',keys_to_extract=None):
+    def convertSnapToDF(
+        snap,
+        npart_key='Coordinates',
+        keys_to_extract=None,
+        spherical_coordinates=False,
+        cylindrical_coordinates=False):
 
         copy_snap = copy.copy(snap)
 
@@ -306,6 +313,28 @@ try:
                 (keys_to_extract is not None and
                     key not in keys_to_extract)):
                 copy_snap.pop(key)
+        
+        if spherical_coordinates:
+            (copy_snap['coord_rs'],
+            copy_snap['coord_thetas'],
+            copy_snap['coord_phis']) = get_spherical_coordinates(copy_snap['Coordinates'])
+
+            (copy_snap['vrs'],
+            copy_snap['vthetas'],
+            copy_snap['vphis']) = get_spherical_velocities(
+                copy_snap['Velocities'],
+                copy_snap['Coordinates'])
+
+        if cylindrical_coordinates:
+            (copy_snap['coord_rs'],
+            copy_snap['coord_phis'],
+            copy_snap['coord_zs']) = get_cylindrical_coordinates(copy_snap['Coordinates'])
+
+            (copy_snap['vRs'],
+            copy_snap['vphis'],
+            copy_snap['vzs']) = get_cylindrical_velocities(
+                copy_snap['Velocities'],
+                copy_snap['Coordinates'])
 
         ## handle multidimensional array data, if it's been requested
         if 'Coordinates' in copy_snap:

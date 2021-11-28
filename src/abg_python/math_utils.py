@@ -118,10 +118,7 @@ try:
     @jit(nopython=True)
     def get_cylindrical_velocities(vels,coords):
         this_coords_xy = coords[:,:2]
-        this_radii_xy = np.sqrt(
-            np.array([
-                np.linalg.norm(this_coords_xy[pi,:]) for
-                pi in range(len(this_coords_xy))])**2)
+        this_radii_xy = np.sqrt(np.sum(this_coords_xy[:,:2]**2,axis=1))
 
         rhats = np.zeros((len(this_coords_xy),2))
         rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
@@ -134,14 +131,61 @@ try:
 
         vzs = vels[:,2]
 
-        vphis = np.sqrt(
-            np.array([
-                np.linalg.norm(vels[i,:]) for
-                i in range(len(vels))
-            ])**2 -
-            vrs**2 -
-            vzs**2)
+        vphis = np.sqrt(np.sum(vels**2,axis=1) - vrs**2 - vzs**2)
+
         return vrs,vphis,vzs
+
+    @jit(nopython=True)
+    def get_cylindrical_coordinates(coords):
+    
+        rs = np.sqrt(np.sum(coords[:,:2]**2,axis=1))
+
+        phis = np.arctan2(coords[:,1],coords[:,0])
+        phis[phis < 0 ]+=2*np.pi
+
+        return rs,phis,coords[:,2]
+
+    @jit(nopython=True)
+    def get_spherical_velocities(vels,coords):
+
+        ## phi is shared between cylindrical and spherical coordinates
+        ##  this avoids having to dot each velocity with that particle's
+        ##  phi hat vector
+        _,vphis,_ = get_cylindrical_velocities(vels,coords)
+
+
+        rs = np.sqrt(np.sum(coords**2,axis=1))
+
+        rhats = np.zeros(coords.shape)
+        rhats[:,0] = coords[:,0]/rs
+        rhats[:,1] = coords[:,1]/rs
+        rhats[:,2] = coords[:,2]/rs
+
+        vrs = np.sum(rhats*vels,axis=1)
+
+        ## vtheta is the remaining velocity
+        vthetas = np.sqrt(
+            np.sum(vels**2,axis=1) - 
+            vrs**2 -
+            vphis**2)
+
+        return vrs,vthetas,vphis
+
+    @jit(nopython=True)
+    def get_spherical_coordinates(coords):
+    
+        rs = np.sqrt(np.sum(coords**2,axis=1))
+
+        phis = np.arctan2(coords[:,1],coords[:,0])
+        phis[phis < 0 ]+=2*np.pi
+
+        ## reciprocal from what you might expect, z/R, because measured from the pole
+        thetas = np.arctan2(np.sqrt(np.sum(coords[:,:2]**2,axis=1)),coords[:,2])
+
+        return rs,thetas,phis
+
+
 except ImportError:
     print("Couldn't import numba. Missing:")
-    print("abg_python.all_utils.get_cylindrical_velocities")
+    print("abg_python.math_utils.get_cylindrical_velocities")
+    print("abg_python.math_utils.get_spherical_velocities")
