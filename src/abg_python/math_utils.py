@@ -225,7 +225,7 @@ except ImportError:
 
 ## quaternion helper functions:
 ## https://stackoverflow.com/questions/4870393/rotating-coordinate-system-via-a-quaternion
-def q_mult(q1, q2):
+def old_q_mult(q1, q2):
     """ rip """
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
@@ -234,6 +234,47 @@ def q_mult(q1, q2):
     y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
     z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
     return np.array([w, x, y, z])
+
+def q_mult(q1,q2):
+    outer = np.outer(q1,q2)
+    vector_components = np.cross(np.identity(3),outer[1:,1:])
+    q3 = np.zeros(4)
+
+    signs = np.identity(4)
+    signs[1:,1:]*=-1
+    
+    q3[0] = np.trace(signs*outer)
+    outer[1:,1:] = vector_components
+    q3[1:] = np.sum(outer,axis=0)[1:]+outer[1:,0]
+    return q3
+
+def multi_q_mult(q1,q2s):
+    q1s = q1.reshape(1,4)
+    outers = np.tensordot(q1s[None,:],q2s[None,:],axes=(0,0))
+    outers = np.moveaxis(outers,2,1)[0]
+
+    vector_componentss = np.cross(np.identity(3)[None,:],outers[:,1:,1:])
+    
+    q3s = np.zeros((q2s.shape[0],4))
+    signs = np.identity(4)
+    signs[1:,1:]*=-1
+    q3s[:,0] = np.trace(signs[None,:]*outers,axis1=1,axis2=2)
+
+    outers[:,1:,1:] = vector_componentss
+
+    q3s[:,1:] = np.sum(outers,axis=1)[:,1:]+outers[:,1:,0]
+    return q3s
+    
+def multi_qv_mult(q1,v2s):
+    q1s = q1.reshape(1,4)
+    outers = np.tensordot(q1s[None,:],v2s[None,:],axes=(0,0))
+    outers = np.moveaxis(outers,2,1)[0]
+
+    vector_componentss = np.cross(np.identity(3)[None,:],outers[:,1:,:])
+
+    outers[:,1:,:] = vector_componentss
+
+    return np.sum(outers,axis=1)
 
 def q_conjugate(q):
     q_conj = np.repeat(np.nan,4)
