@@ -18,6 +18,39 @@ def getThetasTaitBryan(angMom):
 
     return theta_TB,phi_TB
 
+def construct_quaternion(angles,order='zyx',units='deg'):
+
+    axes = {'x':[1,0,0],
+        'y':[0,1,0],
+        'z':[0,0,1]}
+
+    if units == 'deg': angles = np.array(angles)/180*np.pi
+
+    quat = None
+    for angle,axis in zip(angles,order):
+        axis = axes[axis]
+        if quat is None: quat = axisangle_to_q(axis,angle)
+        else: quat = q_mult(axisangle_to_q(axis,angle),quat)
+
+    return quat
+
+def rotateQuaternion(quat,pos,inverse=False):
+
+    ## basically throw away the entire point of having a quaternion
+    ##  in order to broadcast the rotation. at least we can interpret
+    ##  quaternion input /shrug
+    rot_matrix = q_to_rotation_matrix(quat,inverse=inverse)
+
+    ## rotate about each axis with a matrix operation
+    pos_rot = np.array(np.matmul(rot_matrix,pos.T).T,order='C')
+
+    ## on 11/23/2018 (the day after thanksgiving) I discovered that 
+    ##  numpy will change to column major order or something if you
+    ##  take the transpose of a transpose, as above. Try commenting out
+    ##  this line and see what garbage you get. ridiculous.
+    ##  also, C -> "C standard" i.e. row major order. lmfao
+    return np.array(pos_rot,order='C')
+
 def rotateEuler(
     theta,phi,psi,
     pos,
@@ -189,3 +222,68 @@ except ImportError:
     print("Couldn't import numba. Missing:")
     print("abg_python.math_utils.get_cylindrical_velocities")
     print("abg_python.math_utils.get_spherical_velocities")
+
+## quaternion helper functions:
+## https://stackoverflow.com/questions/4870393/rotating-coordinate-system-via-a-quaternion
+def q_mult(q1, q2):
+    """ rip """
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2 # q1[0]*q2[0] - np.dot(q1[1:],q2[1:]) 
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
+    z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
+    return np.array([w, x, y, z])
+
+def q_conjugate(q):
+    q_conj = np.repeat(np.nan,4)
+    q_conj[0] = q[0]
+    q_conj[1:] = -q[1:]
+    return q_conj
+
+def qv_mult(q1, v1):
+    q2 = np.zeros(4)
+    q2[1:] = v1
+    return q_mult(q_mult(q1, q2), q_conjugate(q1))[1:]
+
+def axisangle_to_q(axis, theta):
+    ## normalize the rotation axis
+    axis = axis/np.linalg.norm(axis) 
+    ## initialize the output quaternion
+    q = np.repeat(np.nan,4)
+    
+    ## fill scalar part
+    q[0]  = np.cos(theta/2)
+    
+    ## fill vector part
+    q[1:] = axis*np.sin(theta/2)
+    return q
+
+def q_to_rotation_matrix(quat,inverse=False):
+
+    ## ensure quaternion is unit length
+    quat = quat/np.linalg.norm(quat)
+
+    ## the inverse of a quaternion rotation is just
+    ##  setting theta=-theta. because the scalar
+    ##  part is cos that is even, vector part is 
+    ##  sin (odd) so it picks up a minus sign
+    if inverse: quat[1:]*=-1
+
+    rotation_matrix = np.zeros((3,3))
+    for i in range(3):
+        for j in range(3):
+            foo = 2*quat[1+i]*quat[1+j]
+            if i == j: foo =1+(foo-2*np.linalg.norm(quat[1:]))
+            rotation_matrix[i,j] = foo
+
+    rotation_matrix[0,1]+=-2*quat[0]*quat[2]
+    rotation_matrix[1,0]+= 2*quat[0]*quat[2]
+
+    rotation_matrix[0,2]+= 2*quat[0]*quat[1]
+    rotation_matrix[2,0]+=-2*quat[0]*quat[1]
+
+    rotation_matrix[1,2]+=-2*quat[0]*quat[0]
+    rotation_matrix[2,1]+= 2*quat[0]*quat[0]
+
+    return rotation_matrix
