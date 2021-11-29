@@ -18,7 +18,7 @@ def getThetasTaitBryan(angMom):
 
     return theta_TB,phi_TB
 
-def construct_quaternion(angles,order='zyx',units='deg'):
+def construct_quaternion(angles,order='xyz',units='deg'):
 
     axes = {'x':[1,0,0],
         'y':[0,1,0],
