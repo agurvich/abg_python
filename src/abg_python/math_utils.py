@@ -274,16 +274,16 @@ def q_to_rotation_matrix(quat,inverse=False):
     for i in range(3):
         for j in range(3):
             foo = 2*quat[1+i]*quat[1+j]
-            if i == j: foo =1+(foo-2*np.linalg.norm(quat[1:]))
+            if i == j: foo = 1 + (foo - 2*np.linalg.norm(quat[1:])**2)
             rotation_matrix[i,j] = foo
+    ## quat = r,i,j,k
+    rotation_matrix[0,1]+=-2*quat[0]*quat[3]  ## qr*qk
+    rotation_matrix[1,0]+= 2*quat[0]*quat[3]
 
-    rotation_matrix[0,1]+=-2*quat[0]*quat[2]
-    rotation_matrix[1,0]+= 2*quat[0]*quat[2]
+    rotation_matrix[0,2]+= 2*quat[0]*quat[2] ## qr*qj
+    rotation_matrix[2,0]+=-2*quat[0]*quat[2]
 
-    rotation_matrix[0,2]+= 2*quat[0]*quat[1]
-    rotation_matrix[2,0]+=-2*quat[0]*quat[1]
-
-    rotation_matrix[1,2]+=-2*quat[0]*quat[0]
-    rotation_matrix[2,1]+= 2*quat[0]*quat[0]
+    rotation_matrix[1,2]+=-2*quat[0]*quat[1] ## qr*qi
+    rotation_matrix[2,1]+= 2*quat[0]*quat[1]
 
     return rotation_matrix
