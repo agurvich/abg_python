@@ -1,4 +1,5 @@
 import numpy as np
+
 from ..snapshot_utils import convertSnapToDF
 from ..galaxy.gal_utils import Galaxy
 
@@ -31,108 +32,6 @@ def find_bordering_snapnums(
         times_gyr,
         np.array(list(zip(inds_prev,inds_next))),
         np.array(list(zip(snap_times_gyr[inds_prev],snap_times_gyr[inds_next]))))
-
-def single_threaded_control_flow(
-    function_to_call_on_interpolated_dataframe,
-    times,
-    snap_pairs,
-    snap_pair_times,
-    galaxy_kwargs,
-    extra_keys_to_extract):
-    """ """
-
-    prev_galaxy,next_galaxy = None,None
-    prev_snapnum,next_snapnum = None,None
-
-    return_values = []
-
-    for i,(pair,pair_times) in enumerate(zip(snap_pairs,snap_pair_times)):     
-        if not i%10: print(i,pair,pair_times)
-        ## determine if the galaxies in the pair are actually
-        ##  changed, and if so, open their data from the disk.
-        prev_galaxy,next_galaxy,changed = load_gals_from_disk(
-            prev_snapnum,next_snapnum,
-            pair,
-            prev_galaxy,
-            next_galaxy,
-            **galaxy_kwargs)
-
-        ## update the previous/next snapnums
-        prev_snapnum,next_snapnum = pair
-
-        this_time = times[i]
-        
-        if changed:
-            ## make an interpolated snapshot with these galaxies,
-            ##  this takes a while so we'll hold onto it and only 
-            ##  make a new one if necessary.
-            t0,t1 = pair_times
-            time_merged_df = index_match_snapshots_with_dataframes(
-                prev_galaxy.sub_snap,
-                next_galaxy.sub_snap,
-                extra_keys_to_extract=extra_keys_to_extract)
-
-        ## update the interp_snap with new values for the new time
-        interp_snap = make_interpolated_snap(this_time,time_merged_df,t0,t1)
-        interp_snap['prev_snapnum'] = prev_snapnum
-        interp_snap['next_snapnum'] = next_snapnum
-        interp_snap['prev_time'] = t0
-        interp_snap['next_time'] = t1
-        interp_snap['this_time'] = this_time
-        interp_snap['name'] = next_galaxy.name 
-        ## let's put the FIREstudio projections into a sub-directory of our Galaxy class instance
-        interp_snap['studio_datadir'] = next_galaxy.datadir
-
-        ## call the function we were passed
-        return_values += [function_to_call_on_interpolated_dataframe(interp_snap)]
-    return return_values
-
-def load_gals_from_disk(
-    prev_snapnum,next_snapnum,
-    pair,
-    prev_galaxy,next_galaxy,
-    testing=False,
-    **kwargs):
-    """ Determines whether it needs to load a new galaxy from disk
-        or if we already have what we need."""
-
-    ## -- check the prev galaxy
-    ## keep the current snapnum
-    if pair[0] == prev_snapnum:
-        prev_galaxy=prev_galaxy
-    ## step forward in time, swap pointers
-    elif pair[0] == next_snapnum:
-        prev_galaxy = next_galaxy
-        next_galaxy = None
-    ## will need to read from disk
-    else:
-        prev_galaxy = None
-    
-    ## -- now the next galaxy
-    ## keep the current snapnum
-    if pair[1] == next_snapnum:
-        next_galaxy = next_galaxy
-    ## will need to read from disk
-    else:
-        next_galaxy = None
-
-    changed = False ## flag for whether we loaded something from disk
-    if prev_galaxy is None:
-        print('loading',pair[0],'from disk')
-        if not testing:
-            prev_galaxy = Galaxy(snapnum=pair[0],**kwargs)
-            prev_galaxy.extractMainHalo()
-        else: prev_galaxy = pair[0]
-        changed = True
-    if next_galaxy is None:
-        print('loading',pair[1],'from disk')
-        if not testing:
-            next_galaxy = Galaxy(snapnum=pair[1],**kwargs)
-            next_galaxy.extractMainHalo()
-        else: next_galaxy = pair[1]
-        changed = True
-        
-    return prev_galaxy,next_galaxy,changed
 
 def index_match_snapshots_with_dataframes(
     prev_sub_snap,
@@ -205,7 +104,7 @@ def index_match_snapshots_with_dataframes(
 
     return prev_next_merged_df_snap
 
-def make_interpolated_snap(t,time_merged_df,t0,t1,velocity_interpolate=True,spherical=True):
+def make_interpolated_snap(t,time_merged_df,t0,t1,spherical=True):
     interp_snap = {}
 
     ## create a new snapshot with linear interpolated values
