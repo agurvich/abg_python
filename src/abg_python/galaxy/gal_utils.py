@@ -908,6 +908,12 @@ class Galaxy(
             if 'snap' in self.__dict__.keys():
                 del self.snap
             if loud: print("Snapshot memory free")
+        
+        ## store a couple of things in the dictionary to identify it:
+        for snapdict in [self.sub_snap,self.sub_star_snap]:
+            snapdict['name'] = self.name
+            snapdict['snapnum'] = self.snapnum
+            snapdict['datadir'] = self.datadir
 
         return return_value
 
