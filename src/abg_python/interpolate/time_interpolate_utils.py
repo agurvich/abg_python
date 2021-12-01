@@ -36,7 +36,7 @@ def find_bordering_snapnums(
 def index_match_snapshots_with_dataframes(
     prev_sub_snap,
     next_sub_snap,
-    extra_keys_to_extract=None,
+    keys_to_extract=None,
     extra_arrays_function=None):
     """
         if you use Metallicity  or Velocities then the keys will be different when you try to access them
@@ -53,10 +53,8 @@ def index_match_snapshots_with_dataframes(
         raise NotImplementedError("Need to allow users to pass in a function that will compute"+
             " arbitrary quantity arrays from stuff computed in the snapshot.")
 
-    print('Creating a merged DF')
-    keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
-    if extra_keys_to_extract is not None:
-        keys_to_extract += list(extra_keys_to_extract)
+    if keys_to_extract is None: keys_to_extract = []
+    keys_to_extract += ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
 
     ## convert snapshot dictionaries to pandas dataframes
     prev_df_snap = convertSnapToDF(
