@@ -1063,7 +1063,7 @@ def set_matplotlib_params_black_talk(matplotlib):
 
 def ffmpeg_frames(
     framedir,
-    frame_heads,
+    frame_patterns,
     savename=None,
     framerate=15,
     extension='.mp4',
@@ -1075,10 +1075,12 @@ def ffmpeg_frames(
     if outdir is None:
         outdir = os.path.dirname(framedir)
     
-    for frame_head in frame_heads:
+    for frame_pattern in frame_patterns:
+        ## assume the frame pattern is something like "frame_%03d.png"
+        frame_head = frame_pattern.split('%')[0][:-1]
+
         cmd = 'ffmpeg -framerate %d'%framerate
-        cmd += ' -i %s'%os.path.join(framedir,frame_head)
-        cmd += '_%03d.png'
+        cmd += ' -i %s'%os.path.join(framedir,frame_pattern)
         cmd += ' -q:v 1'
         cmd += ' %s%s -y'%(os.path.join(outdir,frame_head),extension)
         print(cmd)
