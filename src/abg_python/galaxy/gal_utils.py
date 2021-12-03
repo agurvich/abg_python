@@ -21,6 +21,10 @@ from .metadata_utils import metadata_cache,Metadata,MultiMetadata
 from .firefly_utils import Firefly_helper
 from .scale_height_utils import ScaleHeight_helper
 
+try: from firestudio.utils.stellar_utils.load_stellar_hsml import get_particle_hsml
+except: print("FIRE studio is not installed, Galaxy.get_HSML will not work")
+
+
 ## mapping between particle type and what I called them
 sub_snap_dict = {
     0:'sub_snap',
@@ -659,6 +663,7 @@ class Galaxy(
         overwrite_full_snaps_with_rotated_versions = False,
         free_mem = True, ## delete the full snapshot from RAM
         extract_DM = True, ## do we want the DM particles? 
+        compute_stellar_hsml=False,
         loud=True,
         **kwargs):
         """
@@ -866,6 +871,12 @@ class Galaxy(
             ##  oriented on stars or gas
             self.orient_stars = orient_stars
 
+            if compute_stellar_hsml and 'SmoothingLength' not in self.sub_star_snap: 
+                already_saved=False
+                self.sub_star_snap['SmoothingLength'] = self.get_HSML(
+                    loud=loud,
+                    save_meta=False)
+
             ## save for later, if requested
             if (use_saved_subsnapshots and
                 extract_DM and
@@ -875,6 +886,7 @@ class Galaxy(
             if not hasattr(self,'rgas_half'):
                 self.rgas_half = self.calculate_half_mass_radius(
                     which_snap=self.sub_snap) 
+            
 
             return (self.sub_radius,
                 self.orient_stars,
@@ -937,6 +949,50 @@ class Galaxy(
             self.load_stars()
             return self.calculate_half_mass_radius(),
         return compute_rstar_half(self)
+
+    def get_HSML(
+        self,
+        snapdict_name='star',
+        use_metadata=True,
+        save_meta=True,
+        assert_cached=False,
+        loud=True,
+        **kwargs, 
+        ):
+        """Compute smoothing lengths for particles that don't have them,
+            typically collisionless particles (like stars). 
+
+            Input:
+
+                snapdict_name -- name in the form of `'%s_snapdict'%snapdict_name`
+                    that will be used to compute smoothing lengths for. 
+
+                use_metadata = True -- flag to search cache for result
+                save_meta = True -- flag to cache the result
+                assert_cached = False -- flag to require a cache hit
+                loud = True -- whether cache hits/misses should be announced
+                    to the console.
+                
+            Output:
+
+                smoothing_lengths -- numpy array of estimated smoothing lengths"""
+
+        @metadata_cache(
+            '%s_data'%snapdict_name,  ## hdf5 file group name
+            ['%s_SmoothingLengths'%snapdict_name],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            assert_cached=assert_cached,
+            loud=loud,
+            force_from_file=True) ## read from cache file, not attribute of object
+        def compute_HSML(self,snapdict_name):
+            snapdict_name = ('sub_%s_snap'%snapdict_name).replace('sub_gas','sub')
+            snapdict = getattr(self,snapdict_name)
+            pos = snapdict['Coordinates']
+            smoothing_lengths = get_particle_hsml(pos[:,0],pos[:,1],pos[:,2])
+            return smoothing_lengths
+
+        return compute_HSML(self,snapdict_name,**kwargs)
 
     def load_stars(self,**kwargs):
         print("Loading star particles of",self,'at',self.snapdir)

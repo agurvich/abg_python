@@ -294,7 +294,8 @@ try:
         npart_key='Coordinates',
         keys_to_extract=None,
         spherical_coordinates=False,
-        cylindrical_coordinates=False):
+        cylindrical_coordinates=False,
+        total_metallicity_only=False):
 
         copy_snap = copy.copy(snap)
 
@@ -348,9 +349,11 @@ try:
         if 'Metallicity' in copy_snap:
             metallicity = copy_snap.pop('Metallicity')
 
-            ## flatten the various metallicity arrays
-            for i,zarray in enumerate(metallicity.T):
-                copy_snap['met%d'%i]=zarray
+            if not total_metallicity_only:
+                ## flatten the various metallicity arrays
+                for i,zarray in enumerate(metallicity.T):
+                    copy_snap['Metallicity_%d'%i]=zarray
+            else: copy_snap['Metallicity'] = metallicity[:,0]
         
         ## are the particle IDs in the snap? then index by them
         if 'ParticleIDs' in snap:

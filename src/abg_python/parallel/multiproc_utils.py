@@ -53,7 +53,8 @@ def copySnapshotNamesToMPSharedMemory(
     this_snapdict = {}
     shm_buffers = []
     for arr_name in arr_names:
-        shm_buffer,shm_arr = copyNumpyArrayToMPSharedMemory(snapdict[arr_name],**kwargs)
+        if arr_name in snapdict:
+            shm_buffer,shm_arr = copyNumpyArrayToMPSharedMemory(snapdict[arr_name],**kwargs)
         
         ## track these shared memory buffers so they can be cleaned
         ##  up later.

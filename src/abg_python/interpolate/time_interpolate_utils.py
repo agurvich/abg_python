@@ -60,7 +60,8 @@ def index_match_snapshots_with_dataframes(
     prev_df_snap = convertSnapToDF(
         prev_sub_snap,
         keys_to_extract=keys_to_extract,
-        spherical_coordinates=True)
+        spherical_coordinates=True,
+        total_metallicity_only=True)
     
     ## apparently index operations go faster if you sort by index
     prev_df_snap.sort_index(inplace=True)
@@ -68,7 +69,8 @@ def index_match_snapshots_with_dataframes(
     next_df_snap = convertSnapToDF(
         next_sub_snap,
         keys_to_extract=keys_to_extract,
-        spherical_coordinates=True)
+        spherical_coordinates=True,
+        total_metallicity_only=True)
     
     ## apparently index operations go faster if you sort by index
     next_df_snap.sort_index(inplace=True)
