@@ -241,7 +241,7 @@ class Metadata(object):
             if key_name is not None: 
                 group_name = group_name.replace('/','_')
                 if group_name in self.__dict__.keys():
-                    self.__dict__.pop(key)
+                    self.__dict__.pop(key_name)
             else:
                 ## now get the whole group out of the instance
                 for key in list(self.__dict__.keys()):
@@ -454,7 +454,7 @@ def metadata_cache(
                     self.metadata.purge_metadata_group(
                         group,
                         key,
-                        force=force,
+                        force=True,
                         loud=False)
                 return
                     
