@@ -2,6 +2,7 @@ import numpy as np
 
 from ..snapshot_utils import convertSnapToDF
 from ..galaxy.gal_utils import Galaxy
+from ..array_utils import filterDictionary
 
 def find_bordering_snapnums(
     snap_times_gyr,
@@ -37,7 +38,9 @@ def index_match_snapshots_with_dataframes(
     prev_sub_snap,
     next_sub_snap,
     keys_to_extract=None,
-    extra_arrays_function=None):
+    extra_arrays_function=None,
+    t0=None,
+    t1=None):
     """
         if you use Metallicity  or Velocities then the keys will be different when you try to access them
           in your render call using render_kwargs.
@@ -78,6 +81,22 @@ def index_match_snapshots_with_dataframes(
     ## remove particles that do not exist in the previous snapshot, 
     ##  difficult to determine which particle they split from
     next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
+
+    ## add back stars that formed between snapshots
+    if 'AgeGyr' in keys_to_extract:
+        ## find stars w/ age in last snapshot < snapshot spacing
+        new_star_mask = next_sub_snap['AgeGyr'] < (t1-t0)
+        next_young_star_snap = filterDictionary(next_sub_snap,new_star_mask)
+        next_young_star_snap['AgeGyr'] = t0 - next_young_star_snap['AgeGyr']
+        next_young_star_df = convertSnapToDF(
+            next_young_star_snap,
+            keys_to_extract,
+            spherical_coordinates=True,
+            total_metallicity_only=True)
+
+        next_df_snap_reduced = next_df_snap_reduced.append(next_young_star_df)
+        next_df_snap_reduced.sort_index(inplace=True)
+
     
 
     ## merge rows of dataframes based on 
@@ -168,6 +187,10 @@ def make_interpolated_snap(t,time_merged_df,t0,t1,spherical=True):
         coords[:,2] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
         
     interp_snap['Coordinates'] = coords
+
+    ## remove stars that will form between this and the next snapshot
+    ##  but haven't formed yet
+    if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
 
     return interp_snap
 
