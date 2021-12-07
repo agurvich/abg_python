@@ -368,6 +368,7 @@ try:
             snap_df = pd.DataFrame(copy_snap)
 
         snap_df = snap_df.sort_index()
+        snap_df = snap_df[~snap_df.index.duplicated(keep='first')]
 
         return snap_df 
 
