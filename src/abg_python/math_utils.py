@@ -59,12 +59,9 @@ def rotateEuler(
     loud=True,
     inverse=False):
 
-    ## if need to rotate at all really -__-
-    if theta==0 and phi==0 and psi==0: return pos
-
     if rotation_point is None: rotation_point = np.zeros(3)
     
-    pos=pos-rotation_point
+    if pos is not None: pos=pos-rotation_point
 
     # rotate particles by angle derived from frame number
     theta_rad = np.pi*theta/ 180
@@ -100,6 +97,8 @@ def rotateEuler(
 
     ## the inverse of a rotation matrix is its tranpose
     if inverse: rot_matrix = rot_matrix.T
+
+    if pos is None: return rot_matrix
 
     ## rotate about each axis with a matrix operation
     pos_rot = np.matmul(rot_matrix,pos.T).T
@@ -147,8 +146,7 @@ def rotateSnapshot(which_snap,theta,phi,psi):
     return which_snap
 
 try:
-    from numba import jit
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def get_cylindrical_velocities(vels,coords):
         this_coords_xy = coords[:,:2]
         this_radii_xy = np.sqrt(np.sum(this_coords_xy[:,:2]**2,axis=1))
@@ -168,7 +166,7 @@ try:
 
         return vrs,vphis,vzs
 
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def get_cylindrical_coordinates(coords):
     
         rs = np.sqrt(np.sum(coords[:,:2]**2,axis=1))
@@ -178,7 +176,7 @@ try:
 
         return rs,phis,coords[:,2]
 
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def get_spherical_velocities(vels,coords):
 
         ## phi is shared between cylindrical and spherical coordinates
@@ -204,7 +202,7 @@ try:
 
         return vrs,vthetas,vphis
 
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def get_spherical_coordinates(coords):
     
         rs = np.sqrt(np.sum(coords**2,axis=1))
@@ -249,8 +247,8 @@ def q_mult(q1,q2):
     return q3
 
 def multi_q_mult(q1,q2s):
-    q1s = q1.reshape(1,4)
-    outers = np.tensordot(q1s[None,:],q2s[None,:],axes=(0,0))
+    q1 = q1.reshape(1,4)
+    outers = np.tensordot(q1[None,:],q2s[None,:],axes=(0,0))
     outers = np.moveaxis(outers,2,1)[0]
 
     vector_componentss = np.cross(np.identity(3)[None,:],outers[:,1:,1:])
