@@ -352,28 +352,28 @@ class Galaxy(
             self.current_time_Gyr = self.header['TimeGyr']
 
         
-        if self.header['cosmological']:
-            ## opens the halo file to find the halo center and virial radius
-            self.load_halo_file()
-        else:
-            self.scom = np.zeros(3)
-            self.rvir = 300 ## what should i do here...
-            self.rstar_half = None
+            if self.header['cosmological']:
+                ## opens the halo file to find the halo center and virial radius
+                self.load_halo_file()
+            else:
+                self.scom = np.zeros(3)
+                self.rvir = 300 ## what should i do here...
+                self.rstar_half = None
 
-            if 'r30r' in self.snapdir:
-                self.scom = get_idealized_center(self.name,self.snapnum)
+                if 'r30r' in self.snapdir:
+                    self.scom = get_idealized_center(self.name,self.snapnum)
 
 
-        ## have we already calculated it and cached it?
-        if self.rstar_half is None:
-            for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
-                if hasattr(self.metadata,attr):
-                    self.rstar_half = getattr(self.metadata,attr)
-                    break
-
-            ## I guess not
+            ## have we already calculated it and cached it?
             if self.rstar_half is None:
-                print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
+                for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
+                    if hasattr(self.metadata,attr):
+                        self.rstar_half = getattr(self.metadata,attr)
+                        break
+
+                ## I guess not
+                if self.rstar_half is None:
+                    print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
     def load_halo_file(self,halo_fname=None,halo_path=None):
 
@@ -1425,6 +1425,21 @@ class ManyGalaxy(Galaxy):
 
             setattr(self,'__getattr__',__getattr__)
             setattr(self,'__getitem__',__getitem__)
+
+    def get_final_orientation(self):
+        """Get Tait-Bryan xyz rotation angles from the final snapshot"""
+        last_galaxy = self.loadAtSnapshot(self.finsnap)
+        try:
+            ## attempt to read orientation from the cached metadata
+            phi_TB = last_galaxy.metadata.star_extract_phi_TB
+            theta_TB = last_galaxy.metadata.star_extract_theta_TB
+        except AttributeError:
+            ## extract the main halo and cache the output
+            last_galaxy.extractMainHalo(save_meta=True)
+            phi_TB = last_galaxy.metadata.star_extract_phi_TB
+            theta_TB = last_galaxy.metadata.star_extract_theta_TB
+
+        return theta_TB,phi_TB
 
     def find_galaxy_population(
         self,
