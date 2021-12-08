@@ -180,7 +180,9 @@ def make_interpolated_snap(
         inv_rot_matrices = np.zeros((first_coords.shape[0],9))
         for i in range(9):
             this_key = "InvRotationMatrix_%d"%i
-            inv_rot_matrices[:,i] = (time_merged_df[this_key].values)#+time_merged_df[this_key+'_next']).values/2
+            ## explicitly assume that L does not change much
+            ##  by averaging the rotation matrices (yikes)
+            inv_rot_matrices[:,i] = (time_merged_df[this_key]+time_merged_df[this_key+'_next']).values/2
 
         inv_rot_matrices = inv_rot_matrices.reshape(-1,3,3)
 
