@@ -61,7 +61,7 @@ def index_match_snapshots_with_dataframes(
 
     pandas_kwargs = dict(
         keys_to_extract=keys_to_extract,
-        cylindrical_coordinates=True,
+        #cylindrical_coordinates=True,
         spherical_coordinates=True,
         total_metallicity_only=True,
         specific_coords=True)
@@ -119,7 +119,8 @@ def make_interpolated_snap(
     time_merged_df,
     t0,
     t1,
-    mode='cylindrical'):
+    mode='spherical'):
+    
     interp_snap = {}
 
     ## create a new snapshot with linear interpolated values
@@ -156,7 +157,7 @@ def make_interpolated_snap(
     first_vels = np.zeros((time_merged_df.shape[0],3))
     next_vels = np.zeros((time_merged_df.shape[0],3))
 
-    vels = np.zeros(coords.shape)
+    vels = np.zeros(first_coords.shape)
 
     for i,(coord_key,vel_key) in enumerate(zip(ckeys,vkeys)):
         first_coords[:,i] = getattr(time_merged_df,coord_key)
@@ -180,9 +181,13 @@ def make_interpolated_snap(
         inv_rot_matrices = np.zeros((first_coords.shape[0],9))
         for i in range(9):
             this_key = "InvRotationMatrix_%d"%i
-            ## explicitly assume that L does not change much
-            ##  by averaging the rotation matrices (yikes)
-            inv_rot_matrices[:,i] = (time_merged_df[this_key]+time_merged_df[this_key+'_next']).values/2
+            ## interpolate between inverse rotation matrices, 
+            ##  honestly, not sure what this does lol but ends up 
+            ##  with the correct coordinates at either end \_(ツ)_/
+            inv_rot_matrices[:,i] = linear_interpolate(
+                time_merged_df[this_key],
+                time_merged_df[this_key+'_next'],
+                t0,t1,t)
 
         inv_rot_matrices = inv_rot_matrices.reshape(-1,3,3)
 
