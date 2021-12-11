@@ -311,7 +311,7 @@ try:
 
             ## get rotation matrices
             theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
-            rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None)
+            rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
             ## reshape to be Npart x 3 x 3
             rot_matrices = np.rollaxis(rot_matrices,-1,0)
             

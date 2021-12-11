@@ -61,7 +61,7 @@ def index_match_snapshots_with_dataframes(
 
     pandas_kwargs = dict(
         keys_to_extract=keys_to_extract,
-        #cylindrical_coordinates=True,
+        cylindrical_coordinates=True,
         spherical_coordinates=True,
         total_metallicity_only=True,
         specific_coords=True)
@@ -119,7 +119,7 @@ def make_interpolated_snap(
     time_merged_df,
     t0,
     t1,
-    mode='spherical'):
+    coord_interp_mode='spherical'):
     
     interp_snap = {}
 
@@ -130,11 +130,12 @@ def make_interpolated_snap(
             continue
         elif key in [
             'coord_xs','coord_ys','coord_zs',
-            'coord_Rs','coord_rs',
-            'coord_thetas','coord_phis',]:
+            'coord_rs','coord_thetas','coord_phis',
+            'coord_Rs','coord_R_phis','coord_R_zs'
+            ]:
             #'vxs','vys','vzs',
-            #'vrs','vRs',
-            #'vthetas','vphis']:
+            #'vrs','vthetas','vphis'
+            # 'vRs','vRphis','vRzs']:
 
             continue
         interp_snap[key] = linear_interpolate(
@@ -145,11 +146,11 @@ def make_interpolated_snap(
 
     ckeys = {'cartesian':['coord_xs','coord_ys','coord_zs'],
             'spherical':['coord_rs','coord_thetas','coord_phis'],
-            'cylindrical':['coord_Rs','coord_R_phis','coord_R_zs']}[mode]
+            'cylindrical':['coord_Rs','coord_R_phis','coord_R_zs']}[coord_interp_mode]
 
     vkeys = {'cartesian':['vxs','vys','vzs'],
             'spherical':['vrs','vthetas','vphis'],
-            'cylindrical':['vRs','vRphis','vRzs']}[mode]
+            'cylindrical':['vRs','vRphis','vRzs']}[coord_interp_mode]
 
     first_coords = np.zeros((time_merged_df.shape[0],3))
     next_coords = np.zeros((time_merged_df.shape[0],3))
@@ -174,9 +175,9 @@ def make_interpolated_snap(
         next_coords,
         next_vels,
         t,t0,t1,
-        mode=mode)
+        coord_interp_mode=coord_interp_mode)
     
-    if 'InvRotationMatrix_0' in time_merged_df and mode in ['spherical','cylindrical']:
+    if 'InvRotationMatrix_0' in time_merged_df:# and coord_interp_mode in ['spherical','cylindrical']:
         ## reconstruct the inverse rotation matrices
         inv_rot_matrices = np.zeros((first_coords.shape[0],9))
         for i in range(9):
@@ -209,10 +210,11 @@ def interpolate_coords(
     next_coords,
     next_vels,
     t,t0,t1,
-    mode='cylindrical'):
+    coord_interp_mode='spherical'):
 
     delta_t = (t-t0)
-    time_frac = delta_t/(t1-t0)
+    dsnap = (t1-t0)
+    time_frac = delta_t/dsnap
 
     coords = np.zeros((first_coords.shape))
     rtp_coords = np.zeros((first_coords.shape))
@@ -230,37 +232,37 @@ def interpolate_coords(
         dcoord = this_next_coords - this_first_coords
 
         ## r theta phi
-        if mode == 'spherical':
+        if coord_interp_mode == 'spherical':
             phi_index = 2
-            theta_index = 1
-        elif mode == 'cylindrical':
+            r2d = rtp_coords[:,0]*np.sin(rtp_coords[:,1])
+        elif coord_interp_mode == 'cylindrical':
             phi_index = 1
-            theta_index = None
+            r2d = rtp_coords[:,0]
         else:
             phi_index = None
-            theta_index = None
 
-        if phi_index is not None:
-            vbar = vbar/rtp_coords[:,0]
-            ## handle partial windings, change sign as necessary
-            if i == phi_index:
-                dcoord[(dcoord>0) & (vbar < 0)]-=2*np.pi
-                dcoord[(dcoord<0) & (vbar > 0)]+=2*np.pi
+        if i == phi_index: 
+            ## relevant angular velocity is v/r2d
+            vbar = vbar/r2d
 
-            ## handle full windings
-            if i == phi_index or (theta_index is not None and i == theta_index): 
-                nwindings = ((vbar*(t1-t0))/(2*np.pi)).astype(int)
-                dcoord += nwindings*2*np.pi
+            ## how far would we guess each particle could go?
+            approx_radians = vbar*dsnap
+
+            ## let's guess how many times it went around, basically
+            ##  want to determine which of (N)*2pi + dcoord  
+            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
+            ##  closest to approx_radians, (N = approx_radians//2pi)
+            dcoord = guess_windings(dcoord,approx_radians,2*np.pi)
 
         rtp_coords[:,i] = (this_first_coords + dcoord*time_frac)
 
     ## cast spherical coordinates to cartesian coordinates
-    if mode=='spherical': 
+    if coord_interp_mode=='spherical': 
         coords[:,0] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.cos(rtp_coords[:,2])
         coords[:,1] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.sin(rtp_coords[:,2])
         coords[:,2] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
     ## cast cylindrical coordinates to cartesian coordinates
-    elif mode == 'cylindrical':
+    elif coord_interp_mode == 'cylindrical':
         coords[:,0] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
         coords[:,1] = rtp_coords[:,0] * np.sin(rtp_coords[:,1])
         coords[:,2] = rtp_coords[:,2]
@@ -273,3 +275,15 @@ def linear_interpolate(
     t0,t1,
     t):
     return x0 + (x1-x0)/(t1-t0)*(t-t0)
+
+
+def guess_windings(dphi,vphi_dt,period=1):
+    base_windings = vphi_dt//period
+    ## now we have to decide, do we go back a whole winding
+    ##  to match dphi or do we go forward part of a winding?
+    guesses = (base_windings+np.array([-1,0,1])[:,None])*period+(dphi-vphi_dt)
+    
+    ## take advantage of the fact that options are -1,0,1, turn corresponding indices from 0,1,2 -> -1,0,1
+    adjust_windings = np.argmin(np.abs(guesses),axis=0)-1
+
+    return (base_windings+adjust_windings)*period+dphi
