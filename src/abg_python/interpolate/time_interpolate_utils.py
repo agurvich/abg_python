@@ -1,8 +1,11 @@
 import numpy as np
+import pandas as pd
 
 from ..snapshot_utils import convertSnapToDF
 from ..galaxy.gal_utils import Galaxy
 from ..array_utils import filterDictionary
+from ..math_utils import getThetasTaitBryan, rotateEuler
+from ..math_utils import get_cylindrical_velocities,get_cylindrical_coordinates,get_spherical_coordinates,get_spherical_velocities
 
 def find_bordering_snapnums(
     snap_times_gyr,
@@ -40,7 +43,8 @@ def index_match_snapshots_with_dataframes(
     keys_to_extract=None,
     extra_arrays_function=None,
     t0=None,
-    t1=None):
+    t1=None,
+    coord_interp_mode='spherical'):
     """
         if you use Metallicity  or Velocities then the keys will be different when you try to access them
           in your render call using render_kwargs.
@@ -61,10 +65,9 @@ def index_match_snapshots_with_dataframes(
 
     pandas_kwargs = dict(
         keys_to_extract=keys_to_extract,
-        cylindrical_coordinates=True,
-        spherical_coordinates=True,
-        total_metallicity_only=True,
-        specific_coords=True)
+        #cylindrical_coordinates=coord_interp_mode=='cylindrical',
+        #spherical_coordinates=coord_interp_mode=='spherical',
+        total_metallicity_only=True)
     
     ## convert snapshot dictionaries to pandas dataframes
     prev_df_snap = convertSnapToDF(prev_sub_snap,**pandas_kwargs)
@@ -85,8 +88,6 @@ def index_match_snapshots_with_dataframes(
 
         next_df_snap_reduced = next_df_snap_reduced.append(next_young_star_df)
         next_df_snap_reduced.sort_index(inplace=True)
-
-    
 
     ## merge rows of dataframes based on 
     """
@@ -112,6 +113,88 @@ def index_match_snapshots_with_dataframes(
     ##  like half the rows were being thrown out??
     #prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
 
+    if coord_interp_mode in ['cylindrical','spherical']:
+        Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
+        this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
+        this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
+        axes = ['xs','ys','zs']
+
+        ## find the average of the momentum vectors between the two snapshots
+        for suffix in ['','_next']:
+            masses = prev_next_merged_df_snap['Masses'+suffix].values
+            for i in range(3):
+                this_coords[:,i] = prev_next_merged_df_snap['coord_%s'%(axes[i])+suffix]
+                this_vels[:,i] = prev_next_merged_df_snap['v%s'%(axes[i])+suffix]
+
+            ## find angular momentum frame for each particle
+            Ls+= np.cross(this_coords,this_vels*masses[:,None])
+        Ls/=2 
+
+        ## get rotation matrices
+        theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
+        rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
+        ## reshape to be Npart x 3 x 3
+        rot_matrices = np.rollaxis(rot_matrices,-1,0)
+        
+        ## fill a dictionary with the rotated coordinates
+        copy_snap = {}
+        for suffix in ['','_next']:
+            ## let's make new memory buffers each time just to make sure the 
+            ##  dataframe doesn't end up aliasing particle positions :\
+            this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
+            this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
+
+            ## open this snapshot's coordinates and velocities
+            for i in range(3):
+                ckey,vkey = 'coord_%s'%(axes[i])+suffix,'v%s'%(axes[i])+suffix
+                this_coords[:,i] = prev_next_merged_df_snap[ckey]
+                this_vels[:,i] = prev_next_merged_df_snap[vkey]
+
+            ## trick for multiply N matrices by N vectors pairwise
+            this_coords = (rot_matrices*this_coords[:,None]).sum(-1)
+            this_vels = (rot_matrices*this_vels[:,None]).sum(-1)
+
+            ## did we request spherical coordinates?
+            if coord_interp_mode == 'spherical':
+                (copy_snap['coord_rs'+suffix],
+                copy_snap['coord_thetas'+suffix],
+                copy_snap['coord_phis'+suffix]) = get_spherical_coordinates(
+                    this_coords)
+
+                (copy_snap['vrs'+suffix],
+                copy_snap['vthetas'+suffix],
+                copy_snap['vphis'+suffix]) = get_spherical_velocities(
+                    this_vels,
+                    this_coords)
+
+            ## did we request cylindrical coordinates?
+            if coord_interp_mode == 'cylindrical':
+                (copy_snap['coord_Rs'+suffix],
+                copy_snap['coord_R_phis'+suffix],
+                copy_snap['coord_R_zs'+suffix]) = get_cylindrical_coordinates(
+                    this_coords)
+
+                (copy_snap['vRs'+suffix],
+                copy_snap['vRphis'+suffix],
+                copy_snap['vRzs'+suffix]) = get_cylindrical_velocities(
+                    this_vels,
+                    this_coords)
+
+        ## append these columns to the dataframe
+        prev_next_merged_df_snap = prev_next_merged_df_snap.join(
+            pd.DataFrame(copy_snap,index=prev_next_merged_df_snap.index))
+                
+        ## we'll need the inverse rotation matrices
+        ##  later, so let's store them as the inverse (transpose)
+        rot_matrices = np.transpose(rot_matrices,axes=(0,2,1))
+
+        ## however, we need to append rotation matrix elements as 9 extra columns -__-
+        ##  because pandas doesn't like 2D arrays as elements
+        prev_next_merged_df_snap = prev_next_merged_df_snap.join(pd.DataFrame(
+            rot_matrices.reshape(rot_matrices.shape[0],-1), ## flatten from 3d to 2d array
+            columns=['InvRotationMatrix_%d'%i for i in range(9)],
+            index=prev_next_merged_df_snap.index))
+
     return prev_next_merged_df_snap
 
 def make_interpolated_snap(
@@ -128,11 +211,11 @@ def make_interpolated_snap(
     for key in time_merged_df.keys():
         if '_next' in key:
             continue
-        elif key in [
+        elif (key in [
             'coord_xs','coord_ys','coord_zs',
             'coord_rs','coord_thetas','coord_phis',
             'coord_Rs','coord_R_phis','coord_R_zs'
-            ]:
+            ] or 'InvRotationMatrix_' in key):
             #'vxs','vys','vzs',
             #'vrs','vthetas','vphis'
             # 'vRs','vRphis','vRzs']:
@@ -182,13 +265,7 @@ def make_interpolated_snap(
         inv_rot_matrices = np.zeros((first_coords.shape[0],9))
         for i in range(9):
             this_key = "InvRotationMatrix_%d"%i
-            ## interpolate between inverse rotation matrices, 
-            ##  honestly, not sure what this does lol but ends up 
-            ##  with the correct coordinates at either end \_(ツ)_/
-            inv_rot_matrices[:,i] = linear_interpolate(
-                time_merged_df[this_key],
-                time_merged_df[this_key+'_next'],
-                t0,t1,t)
+            inv_rot_matrices[:,i] = time_merged_df[this_key]
 
         inv_rot_matrices = inv_rot_matrices.reshape(-1,3,3)
 
@@ -200,8 +277,9 @@ def make_interpolated_snap(
 
     ## remove stars that will form between this and the next snapshot
     ##  but haven't formed yet
+    ## TODO what is the AgeGyr value for stars that haven't formed w/o the _next prefix??
     if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
-
+ 
     return interp_snap
 
 def interpolate_coords(

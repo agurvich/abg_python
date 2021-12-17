@@ -4,7 +4,6 @@ import copy
 import numpy as np
 
 from .math_utils import get_cylindrical_velocities,get_cylindrical_coordinates,get_spherical_coordinates,get_spherical_velocities
-from .math_utils import getThetasTaitBryan, rotateEuler
 from .physics_utils import getTemperature
 from .cosmo_utils import getAgesGyrs,convertStellarAges
 
@@ -296,37 +295,12 @@ try:
         keys_to_extract=None,
         spherical_coordinates=False,
         cylindrical_coordinates=False,
-        total_metallicity_only=False,
-        specific_coords=False): 
-        """specific as in per particle coords-- i.e. the coordinates in 
-        the angular momentum frame of each particle"""
+        total_metallicity_only=False): 
 
         copy_snap = copy.copy(snap)
-        if specific_coords:
-            coords = copy_snap['Coordinates']
-            vels = copy_snap['Velocities']
-
-            ## find angular momentum frame for each particle
-            Ls = np.cross(coords,vels*copy_snap['Masses'][:,None])
-
-            ## get rotation matrices
-            theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
-            rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
-            ## reshape to be Npart x 3 x 3
-            rot_matrices = np.rollaxis(rot_matrices,-1,0)
-            
-            ## trick for multiply N matrices by N vectors pairwise
-            coords = (rot_matrices*coords[:,None]).sum(-1)
-            vels = (rot_matrices*vels[:,None]).sum(-1)
-
-            ## we'll want to use the inverse rotation matrices
-            ##  later, so let's store them as the inverse (transpose)
-            ##  now
-            rot_matrices = np.transpose(rot_matrices,axes=(0,2,1))
-        else:
-            coords = copy_snap['Coordinates']
-            vels = copy_snap['Velocities']
-            rot_matrices = None
+        
+        coords = copy_snap['Coordinates']
+        vels = copy_snap['Velocities']
 
         ## figure out how many particles there are
         if npart_key not in snap:
@@ -399,13 +373,6 @@ try:
         else:
             print("You didn't ask for IDs, so I'm not indexing by them")
             snap_df = pd.DataFrame(copy_snap)
-
-        ## need to append rotation matrix elements as 9 extra columns -__-
-        if rot_matrices is not None: 
-            snap_df = snap_df.join(pd.DataFrame(
-                rot_matrices.reshape(rot_matrices.shape[0],-1),
-                columns=['InvRotationMatrix_%d'%i for i in range(9)],
-                index=index))
 
         snap_df = snap_df.sort_index()
         snap_df = snap_df[~snap_df.index.duplicated(keep='first')]
