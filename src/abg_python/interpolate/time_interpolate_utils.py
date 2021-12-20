@@ -114,6 +114,8 @@ def index_match_snapshots_with_dataframes(
             for key in next_young_star_df.keys():
                 if key == 'AgeGyr': continue
                 prev_young_star_snap[key] = gas_parent_df[key]
+            
+            del gas_parent_df, extra_df
 
             prev_young_star_df = pd.DataFrame(
                 prev_young_star_snap,
