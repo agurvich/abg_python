@@ -4,6 +4,7 @@ import os
 import numpy as np 
 
 from .array_utils import findArrayClosestIndices
+from .system_utils import getfinsnapnum
 
 
 ### Constants
@@ -138,6 +139,121 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
 
+def trace_rockstar(snapdir,rockstar_path=None):
+
+    if 'elvis' in snapdir:
+        raise NotImplementedError("Can't handle multiple halos, yet")
+
+    if rockstar_path is None:
+        rockstar_path = '../halo/rockstar_dm/catalog_hdf5'
+        rockstar_path = os.path.realpath(os.path.join(snapdir,rockstar_path))
+
+    low_index = getfinsnapnum(
+        rockstar_path,
+        fname_to_match='halo_',getmin=True)
+    high_index = getfinsnapnum(
+        rockstar_path,
+        fname_to_match='halo_',getmin=False)+1
+    
+    snapshots = np.arange(low_index,high_index)
+    rcoms = np.zeros((high_index-low_index,3))+np.nan
+    rvirs = np.zeros(high_index-low_index)+np.nan
+    scalefactors = np.zeros(high_index-low_index)+np.nan
+
+    for i,snapnum in enumerate(snapshots[::-1]):
+        fname = 'halo_%03d.hdf5'%snapnum
+        path = os.path.join(rockstar_path,fname)
+
+        with h5py.File(path,'r') as handle:
+            ## find the indices of the 3 most massive halos
+            masses = handle['mass'][()]
+            ## -masses b.c. argpartition orders from smallest to largest
+            ##  since masses are all positive trick it into doing the
+            ##  reverse by making them all negative
+
+            indices = np.argpartition(-masses,10,)[:10]
+            ## argpartition does not guarantee an ordering
+            ##  let's do it ourselves. order from most to least massive 
+            indices = indices[np.argsort(masses[indices])][::-1]
+
+            masses = masses[indices]
+            hubble_param = handle['cosmology:hubble'][()]
+            scalefactors[i] = handle['snapshot:scalefactor'][()]
+
+            main_host_index = handle['host.index'][0]
+            ## skip the first step because we have nothing to compare to
+            if i != 0: 
+                prev_rcom = rcoms[i-1]
+                mass_rcoms = handle['position'][()][indices]
+                ## km/s -> kpc/gyr
+                mass_vcoms = handle['velocity'][()][indices]*1.022
+
+                drs = mass_vcoms*(prev_time - handle['snapshot:time'][()])
+
+                dists = np.sqrt(np.sum(((mass_rcoms+drs)-prev_rcom)**2,axis=1))
+
+                closest_index = indices[np.argmin(dists)]
+
+                mass_dists = np.sqrt((np.log10(masses)-np.log10(prev_mass))**2)
+                mass_index = indices[np.argmin(mass_dists)]
+
+                if closest_index != main_host_index or main_host_index != mass_index:
+                    main_where = np.argwhere(indices==main_host_index)[0][0]
+                    closest_where = np.argwhere(indices==closest_index)[0][0]
+                    mass_where =  np.argwhere(indices==mass_index)[0][0]
+                    mass_ratio = masses[closest_where]/masses[mass_where]
+                    mass_dist_ratio = mass_dists[mass_where]/mass_dists[closest_where]
+                    distance_ratio = dists[closest_where]/dists[mass_where]
+                    print(
+                        '%03d'%snapnum,
+                        'main host:',main_where,
+                        'closest (kpc):',closest_where,
+                        'closest (mass):',mass_where,
+                        end='\t')
+                    ## both physical and mass distances agree which one we should choose
+                    ##  so let's choose it!
+                    if closest_index == mass_index: 
+                        if main_host_index != mass_index:
+                            print('ignoring rockstar')
+                            main_host_index = mass_index 
+                    ## we'll choose the one closest in physical space
+                    ##  since the masses are kind of a toss-up but one 
+                    ##  is pretty significantly closer than the other
+                    elif distance_ratio < 0.5 and mass_ratio > 0.5:
+                        if closest_index!=main_host_index:
+                            print('choosing closest (kpc)')
+                        #print(
+                            #'choosing the closest in physical space',
+                            #'rather than the most massive.',
+                            #'because the mass ratio is very close to 1:',mass_ratio,
+                            #'but the distance ratio is pretty small:',distance_ratio)
+                            main_host_index = closest_index
+                    ## one is clearly closer in log-mass space, so we'll
+                    ##  choose it
+                    elif mass_dist_ratio < 0.5:
+                        if mass_index!=main_host_index:
+                            print('choosing closest (mass)',distance_ratio,mass_ratio,dists)
+                            #print(np.log10(prev_mass),np.log10(masses))
+                            #print(mass_dists)
+                            #import pdb; pdb.set_trace()
+                            main_host_index = mass_index
+
+
+            ## in comoving kpc (NOT comoving kpc/h), only needs scalefactor
+            rcom = handle['position'][main_host_index]
+            #vcom = handle['velocity'][main_host_index]
+            ## in physical kpc? lmao
+            rvir = handle['radius'][main_host_index]
+            prev_time = handle['snapshot:time'][()]
+            prev_mass = handle['mass'][main_host_index]
+
+        rcoms[i,:] = rcom
+        rvirs[i] = rvir
+
+    rcoms*=scalefactors[:,None]
+    return snapshots,rcoms[::-1],rvirs[::-1]
+
+
 ## rockstar file opening
 def load_rockstar(
     snapdir,snapnum,
@@ -152,7 +268,7 @@ def load_rockstar(
 
     if rockstar_path is None:
         rockstar_path = '../halo/rockstar_dm/'
-        rockstar_path = os.path.join(snapdir,rockstar_path)
+        rockstar_path = os.path.realpath(os.path.join(snapdir,rockstar_path))
 
     fname = 'halo_%03d.hdf5'%snapnum if fname is None else fname
 
@@ -166,6 +282,7 @@ def load_rockstar(
 
     with h5py.File(path,'r') as handle:
         main_host_index = handle[which_host+'.index'][0]
+        hubble_param = handle['cosmology:hubble'][()]
         ## in comoving kpc (NOT comoving kpc/h)
         rcom = handle['position'][main_host_index]
         scalefactor = handle['snapshot:scalefactor'][()]
@@ -173,15 +290,14 @@ def load_rockstar(
 
         ## in physical kpc? lmao
         rvir = handle['radius'][main_host_index]
-        extra_values = [handle[key] for key in extra_names_to_read]
+        extra_values = [handle[key][()] for key in extra_names_to_read]
 
-    return tuple(np.append([rcom*scalefactor,rvir],extra_values))
+    return tuple([rcom*scalefactor,rvir] + extra_values)
         
 
 ## AHF file opening
 def load_AHF(
     snapdir,snapnum,
-    current_redshift,
     hubble = 0.702,
     ahf_path=None,
     extra_names_to_read = None,
@@ -199,7 +315,7 @@ def load_AHF(
     if not os.path.isfile(path):
         raise IOError("path %s does not exist"%path)
 
-    names_to_read = ['snum','Xc','Yc','Zc','Rvir']+extra_names_to_read
+    names_to_read = ['redshift','snum','Xc','Yc','Zc','Rvir']+extra_names_to_read
 
     names = list(np.genfromtxt(path,skip_header=0,max_rows = 1,dtype=str,comments='@'))
     ## ahf will sometimes "helpfully" put the 1-indexed index in the column header
@@ -213,7 +329,7 @@ def load_AHF(
     ##  remove 'snum' from the names to read from the halo file if it's just a single
     ##  snapshot.
     if 'snum' not in names:
-        names_to_read.pop(0)
+        names_to_read.pop(1)
 
     cols = []
     for name in names_to_read:
@@ -227,7 +343,7 @@ def load_AHF(
     if 'snum' not in names_to_read:
         
         if return_full_halo_file: 
-            print('returning:',names_to_read)
+            print('returning (without units):',names_to_read)
             output = np.genfromtxt(
                 path,
                 skip_header=1,
@@ -248,10 +364,10 @@ def load_AHF(
             usecols=cols,
             skip_header=1)
         if return_full_halo_file: 
-            print('returning:',names_to_read)
+            print('returning (without units):',names_to_read)
             return output
 
-        index = output[:,0]==snapnum
+        index = output[:,1]==snapnum
 
         ## if there is no row that matches snapnum
         if np.sum(index)==0:
@@ -260,6 +376,8 @@ def load_AHF(
             print(output[:,0],'snapnums available')
             raise IOError("%d snapshot isn't in the AHF halo file"%snapnum)
         row = output[index][0]
+
+    current_redshift = row[names_to_read.index('redshift')]
 
     ## presumably in comoving kpc/h 
     scom = np.array([
