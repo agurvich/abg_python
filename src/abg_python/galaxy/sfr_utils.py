@@ -264,9 +264,6 @@ class SFR_helper(SFR_plotter):
             radial_thresh=None):
             """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
             
-            ## initialize the spherical radial threshold
-            radial_thresh = 5*self.rstar_half if radial_thresh is None else radial_thresh
-
             finsnap = self.finsnap 
 
             if finsnap == self.snapnum:
@@ -290,6 +287,9 @@ class SFR_helper(SFR_plotter):
             ##  finsnap is self.snapnum maybe not...
             if 'sub_star_snap' not in temp_fin_gal.__dict__.keys():
                 temp_fin_gal.extractMainHalo(free_mem=1,extract_DM=0)
+
+            ## initialize the spherical radial threshold
+            radial_thresh = 5*self.rstar_half if radial_thresh is None else radial_thresh
 
             ## apply the radial mask
             rmask = np.sum(self.sub_star_snap['Coordinates']**2,axis=1)<radial_thresh**2
