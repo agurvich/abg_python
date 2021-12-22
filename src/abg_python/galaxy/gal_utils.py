@@ -10,9 +10,9 @@ from ..snapshot_utils import openSnapshot,get_unit_conversion
 from ..plot_utils import add_to_legend
 from ..color_utils import get_distinct
 from ..array_utils import findIntersection
-from ..snapshot_utils import getfinsnapnum
+from ..system_utils import getfinsnapnum
 from ..physics_utils import iterativeCoM
-from ..cosmo_utils import load_AHF,load_rockstar
+from ..cosmo_utils import load_AHF,load_rockstar,trace_rockstar
 
 from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from .movie_utils import Draw_helper,FIREstudio_helper
@@ -117,9 +117,9 @@ class Galaxy(
             plot_color = 0 - color this instance will use when plotting onto an axis
             multi_thread = 1 - number of threads this instance will use if multi-threading
                 is available
-            ahf_path = None - path to AHF halo files, defaults first to my halo directory
+            halo_path = None - path to AHF halo files, defaults first to my halo directory
                 and snapdir/../halo/ahf if halo second.
-            ahf_fname = None - name of the AHF file, typically smooth_halo_00000.dat
+            halo_fname = None - name of the AHF file, typically smooth_halo_00000.dat
 
         Provided functions:
 
@@ -160,8 +160,8 @@ class Galaxy(
         snapdir_name = None,
         plot_color = 0,
         multi_thread = 1,
-        ahf_path = None,
-        ahf_fname = None,
+        halo_path = None,
+        halo_fname = None,
         save_header_to_table = True,
         meta_name = None,
         suite_name = 'metal_diffusion',
@@ -375,7 +375,15 @@ class Galaxy(
                 if self.rstar_half is None:
                     print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
-    def load_halo_file(self,halo_fname=None,halo_path=None):
+    def load_halo_file(self,halo_fname=None,halo_path=None,use_rockstar_first=True):
+
+        ## decide which one is the fallback
+        if not use_rockstar_first:
+            first_fn = self.load_ahf
+            second_fn = self.load_rockstar
+        else:
+            first_fn = self.load_rockstar
+            second_fn = self.load_ahf
 
         if halo_path == 'None' or halo_fname == 'None':
             self.scom,self.rvir,self.rstar_half = None,None,None
@@ -386,37 +394,20 @@ class Galaxy(
                 'rstar_half',
                 'attributes manually')
         else:
-            try:
-                if 'elvis' in self.snapdir:
-                    raise IOError("No AHF files for Elvis runs")
-                self.load_ahf(ahf_fname=halo_fname,ahf_path=halo_path)
+            try: first_fn(halo_fname,halo_path)
             except IOError as e:
-                #print(e)
-                try:
-                    
-                    if 'elvis' in self.snapdir:
-                        which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
-                        if which_host[:len(self.pretty_name)] == self.pretty_name:
-                            which_host = 0 
-                        else:
-                            if which_host[-len(self.pretty_name):] != self.pretty_name:
-                                raise IOError("invalid name, should be one of %s"%which_host)
-                            which_host = 1
-                    else:
-                        which_host = 0
-
-                    self.load_rockstar(
-                        rockstar_fname=halo_fname,
-                        rockstar_path=halo_path,
-                        which_host=which_host)
+                try: second_fn(halo_fname,halo_path)
                 except IOError:
                     print("Couldn't find AHF nor Rockstar halo files")
                     raise
 
-    def load_ahf(self,**kwargs):
+    def load_ahf(self,halo_fname=None,halo_path=None,**kwargs):
 
-        ## automatically search for the ahf_path and ahf_fname
-        self.ahf_path, self.ahf_fname = self.auto_search_ahf(**kwargs)
+        if 'elvis' in self.snapdir:
+            raise IOError("No AHF files for Elvis runs")
+
+        ## automatically search for the halo_path and halo_fname
+        self.halo_path, self.halo_fname = self.auto_search_ahf(**kwargs)
     
         ## now that we've attempted to identify an AHF file lets open 
         ##  this puppy up
@@ -425,9 +416,8 @@ class Galaxy(
             self.scom, self.rvir, self.rstar_half = load_AHF(
                 self.snapdir,
                 self.snapnum,
-                self.current_redshift,
-                ahf_path = self.ahf_path,
-                fname = self.ahf_fname,
+                ahf_path = self.halo_path,
+                fname = self.halo_fname,
                 hubble = self.header['HubbleParam'])
 
         except ValueError:
@@ -437,47 +427,47 @@ class Galaxy(
                 self.snapnum,
                 self.current_redshift,
                 extra_names_to_read = [],
-                ahf_path = self.ahf_path,
-                fname = self.ahf_fname,
+                ahf_path = self.halo_path,
+                fname = self.halo_fname,
                 hubble = self.header['HubbleParam'])
 
             self.rstar_half = None
 
         return self.scom,self.rvir,self.rstar_half
             
-    def auto_search_ahf(self,ahf_fname=None,ahf_path=None):
+    def auto_search_ahf(self,halo_fname=None,halo_path=None):
         ## attempt to read halo location and properties from AHF
-        if ahf_fname is None:
-            ahf_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
+        if halo_fname is None:
+            halo_fname='halo_0000%d_smooth.dat'%halo_id(self.snapdir_name)
 
-        if ahf_path is None:
+        if halo_path is None:
             ## system blind if you put the soft link in
-            ahf_path = os.path.join(
+            halo_path = os.path.join(
                 os.environ['HOME'],'halo_files',
                 "%s","%s")
 
-            ahf_path = ahf_path%(self.suite_name,self.snapdir_name)
+            halo_path = halo_path%(self.suite_name,self.snapdir_name)
 
-        ## check if this first guess at the ahf_fname and ahf_path
+        ## check if this first guess at the halo_fname and halo_path
         ##  is right
-        if (not os.path.isfile(os.path.join(ahf_path,ahf_fname)) and 
-            ahf_path != 'None' and 
-            ahf_fname != 'None'):
+        if (not os.path.isfile(os.path.join(halo_path,halo_fname)) and 
+            halo_path != 'None' and 
+            halo_fname != 'None'):
             ## try looking in the simulation directory
-            ahf_path = os.sep.join(
+            halo_path = os.sep.join(
                 self.snapdir.split(os.sep)[:-1] ## remove output from the snapdir
                 +['halo','ahf']) ## look in <simdir>/halo/ahf
 
             ## okay no smooth halo file but there is a halo/ahf directory at least
-            if (os.path.isdir(ahf_path) and (
-                not os.path.isfile(os.path.join(ahf_path,ahf_fname)))):
+            if (os.path.isdir(halo_path) and (
+                not os.path.isfile(os.path.join(halo_path,halo_fname)))):
 
                 ## let's scan through the files in the directory and try and 
                 ##  find an AHF halo file that corresponds to just this snapshot. 
                 fnames = []
                 snap_string = "%03d"%self.snapnum
 
-                for fname in os.listdir(ahf_path):
+                for fname in os.listdir(halo_path):
                     if (snap_string in fname and 
                         'AHF_halos' in fname):
                         fnames+=[fname]
@@ -486,34 +476,126 @@ class Galaxy(
                 else:
                     raise IOError("can't find a halo file (or found too many)",fnames)
 
-        return ahf_path, ahf_fname
+        return halo_path, halo_fname
     
-    def get_ahf_file_output(self):
-        try: return load_AHF(
+    def get_rockstar_file_output(
+        self,
+        use_metadata=True,
+        save_meta=True,
+        loud=True,
+        assert_cached=False,
+        force_from_file=False,
+        **kwargs):
+    
+        hdf5_path = os.path.join(
+            os.environ['HOME'],
+            'halo_files',
+            'rockstar',
+            self.suite_name,
+            self.name,
+            'rockstar_trace.hdf5')
+        @metadata_cache(
+            'rockstar_history',
+            ['snapnums','rcoms','rvirs'],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud,
+            assert_cached=assert_cached,
+            force_from_file=force_from_file)
+        def compute_rockstar_file_output(self):
+
+            snapnums,rcoms,rvirs = trace_rockstar(self.snapdir)            
+
+            return snapnums,rcoms,rvirs
+
+        if os.path.isfile(hdf5_path) and use_metadata:
+            if loud: print("reading from",hdf5_path)
+            with h5py.File(hdf5_path,'r') as handle:
+                snapnums = handle['rockstar_history']['snapnums'][()]
+                rcoms = handle['rockstar_history']['rcoms'][()]
+                rvirs = handle['rockstar_history']['rvirs'][()]
+        else:
+            snapnums,rcoms,rvirs = compute_rockstar_file_output(self,**kwargs)
+            self.metadata.export_to_file(hdf5_path,'rockstar_history',write_mode='w')
+        return snapnums,rcoms,rvirs
+    
+    def get_ahf_file_output(
+        self,
+        use_metadata=True,
+        save_meta=False,
+        loud=True,
+        assert_cached=False,
+        force_from_file=False,
+        **kwargs):
+        @metadata_cache(
+            'ahf_history',
+            ['snapnums','rcoms','rvirs'],
+            use_metadata=use_metadata,
+            save_meta=save_meta,
+            loud=loud,
+            assert_cached=assert_cached,
+            force_from_file=force_from_file)
+        def compute_ahf_file_output(self):
+            ## get the self.halo_path to point to rockstar if possible
+            self.load_ahf()
+            snapnums = load_AHF(
                 self.snapdir,
                 self.snapnum,
-                self.current_redshift,
-                ahf_path = self.ahf_path,
-                fname = self.ahf_fname,
-                hubble = self.header['HubbleParam'],
-                return_full_halo_file=True).T
-        except: return load_AHF(
-                self.snapdir,
-                self.snapnum,
-                self.current_redshift,
-                ahf_path = self.ahf_path,
-                fname = self.ahf_fname,
+                ahf_path = self.halo_path,
+                fname = self.halo_fname,
                 hubble = self.header['HubbleParam'],
                 return_full_halo_file=True,
-                extra_names_to_read=[]).T
+                extra_names_to_read=[])[:,1]
 
-    def load_rockstar(self,rockstar_fname=None,rockstar_path=None,which_host=0):
+            rcoms = np.zeros((snapnums.size,3))+np.nan
+            rvirs = np.zeros(snapnums.size)+np.nan
+
+            for i in snapnums:
+                rcom,rvir = load_AHF(
+                    self.snapdir,
+                    i,
+                    ahf_path = self.halo_path,
+                    fname=self.halo_fname,
+                    hubble=self.header['HubbleParam'])[:2]
+
+                rcoms[int(i-snapnums[0]),:] = rcom
+                rvirs[int(i-snapnums[0])] = rvir
+
+            return snapnums[::-1],rcoms,rvirs
+        return compute_ahf_file_output(self,**kwargs)
+
+    def load_rockstar(self,halo_fname=None,halo_path=None):
+
+        snapnums,rcoms,rvirs = self.get_rockstar_file_output(use_metadata=True,save_meta=True,loud=False)
+
+        index = np.argwhere(snapnums==self.snapnum).astype(int)[0][0]
+        self.scom = rcoms[index]
+        self.rvir = rvirs[index]
+        self.rstar_half = None
+
+        return self.scom,self.rvir,self.rstar_half
+
+        if 'elvis' in self.snapdir:
+            which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
+            if which_host[:len(self.pretty_name)] == self.pretty_name:
+                which_host = 0 
+            else:
+                if which_host[-len(self.pretty_name):] != self.pretty_name:
+                    raise IOError("invalid name, should be one of %s"%which_host)
+                which_host = 1
+        else:
+            which_host = 0
+        if halo_path is None:
+            self.halo_path = '../halo/rockstar_dm/'
+            self.halo_path = os.path.realpath(os.path.join(self.snapdir,self.halo_path))
+
+        self.halo_fname = 'halo_%03d.hdf5'%self.snapnum if halo_fname is None else halo_fname
 
         self.scom,self.rvir = load_rockstar(
             self.snapdir,
             self.snapnum,
-            fname=rockstar_fname,
-            rockstar_path=rockstar_path,
+            fname=halo_fname,
+            rockstar_path=halo_path,
             which_host=which_host)
         self.rstar_half=None
 
@@ -1491,8 +1573,8 @@ class ManyGalaxy(Galaxy):
             Options are:
                 plot_color=0,
                 multi_thread=1,
-                ahf_path=None,
-                ahf_fname=None,
+                halo_path=None,
+                halo_fname=None,
             """
 
         new_kwargs = {}
