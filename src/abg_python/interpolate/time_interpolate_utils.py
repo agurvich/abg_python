@@ -362,8 +362,7 @@ def make_interpolated_snap(
 
     ## remove stars that have not formed yet
     if 'AgeGyr' in interp_snap: 
-        age_mask = np.logical_and(interp_snap['AgeGyr']>0,interp_snap['AgeGyr']<0.025)
-        interp_snap = filterDictionary(interp_snap,age_mask)
+        interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
  
     return interp_snap
 
