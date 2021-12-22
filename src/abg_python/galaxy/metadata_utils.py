@@ -317,6 +317,9 @@ class Metadata(object):
         if target[0] != os.sep:
             target = os.path.join(os.environ['HOME'],target)
             print('Detected relative path, prepending $HOME, new target:',target)
+        
+        dirname = os.path.dirname(target)
+        if not os.path.isdir(dirname): os.makedirs(dirname)
 
         ## make a new hdf5 file
         with h5py.File(target,write_mode) as target_handle:
