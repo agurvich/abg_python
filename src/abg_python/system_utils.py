@@ -1,6 +1,7 @@
 from io import StringIO
 
 import sys
+import os
 
 def get_size(obj, seen=None):
     """Recursively finds size of objects
@@ -60,3 +61,34 @@ def suppressSTDOUTToFile(fn,args,fname=None,mode='a+',loud=False,**kwargs):
             print('Warning! Unsupressing std.out...')
 
     return ret
+
+def getfinsnapnum(
+    snapdir,
+    getmin=0,
+    fname_to_match='snapshot_',
+    dir_to_match='snapdir_'):
+
+    if not getmin:
+        maxnum = -1e8
+        for snap in os.listdir(snapdir):
+            if fname_to_match in snap and snap.index(fname_to_match)==0 and '.hdf5' in snap:
+                snapnum = int(snap[len(fname_to_match):-len('.hdf5')])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+            elif dir_to_match in snap and snap.index(dir_to_match)==0:
+                snapnum = int(snap[len(dir_to_match):])
+                if snapnum > maxnum:
+                    maxnum=snapnum
+        return maxnum
+    else:
+        minnum=1e8
+        for snap in os.listdir(snapdir):
+            if fname_to_match in snap and snap.index(fname_to_match)==0 and '.hdf5' in snap:
+                snapnum = int(snap[len(fname_to_match):-len('.hdf5')])
+                if snapnum < minnum:
+                    minnum=snapnum
+            elif dir_to_match in snap and snap.index(dir_to_match)==0:
+                snapnum = int(snap[len(dir_to_match):])
+                if snapnum < minnum:
+                    minnum=snapnum
+        return minnum
