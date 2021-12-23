@@ -105,7 +105,7 @@ def extractDiskFromSnapdicts(
     orient_stars=0,
     force_theta_TB=None,
     force_phi_TB=None,
-    ):
+    loud=True):
     """ Takes two openSnapshot dictionaries and returns a filtered subset of the particles
         that are in the disk, with positions and velocities rotated"""
 
@@ -127,7 +127,7 @@ def extractDiskFromSnapdicts(
             this_snap.pop('phi_TB')
             this_snap.pop('overwritten')
 
-    print("Reorienting...",)
+    if loud: print("Reorienting...",)
     theta_TB,phi_TB,vscom=orientDiskFromSnapdicts(
         star_snap,
         snap,
@@ -136,7 +136,7 @@ def extractDiskFromSnapdicts(
         orient_stars=orient_stars,
         force_theta_TB=force_theta_TB,
         force_phi_TB=force_phi_TB)
-    print("Done.")
+    if loud: print("Done.")
 
     for this_snap in snaps:
         ## overwrites the coordinates in the snapshot

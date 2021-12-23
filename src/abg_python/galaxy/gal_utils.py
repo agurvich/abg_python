@@ -373,7 +373,8 @@ class Galaxy(
 
                 ## I guess not
                 if self.rstar_half is None:
-                    print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
+                    if self.metadata.loud_metadata:
+                        print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
     def load_halo_file(self,halo_fname=None,halo_path=None,use_rockstar_first=True):
 
@@ -801,7 +802,8 @@ class Galaxy(
                 ##  rather than relying on the output of AHF
                 if self.rstar_half is None: self.get_rstar_half(
                     save_meta=save_meta,
-                    force_from_file=True)
+                    force_from_file=True,
+                    loud=False)
 
                 ## radius to calculate angular momentum
                 ##  to orient on 
@@ -937,7 +939,8 @@ class Galaxy(
                 dark_snap=which_dark_snap, ## dark_snap = None will ignore dark matter particles
                 orient_stars=orient_stars,
                 force_theta_TB=force_theta_TB,
-                force_phi_TB=force_phi_TB)
+                force_phi_TB=force_phi_TB,
+                loud=loud)
 
             ## unpack the return value
             if not extract_DM:
@@ -1077,7 +1080,8 @@ class Galaxy(
         return compute_HSML(self,snapdict_name,**kwargs)
 
     def load_stars(self,**kwargs):
-        print("Loading star particles of",self,'at',self.snapdir)
+        if self.metadata.loud_metadata:
+            print("Loading star particles of",self,'at',self.snapdir)
         if not hasattr(self,'star_snap'):
             self.star_snap = openSnapshot(
                 self.snapdir,
@@ -1085,14 +1089,16 @@ class Galaxy(
                 **kwargs)
 
     def load_gas(self,**kwargs):
-        print("Loading gas particles of",self,'at',self.snapdir)
+        if self.metadata.loud_metadata:
+            print("Loading gas particles of",self,'at',self.snapdir)
         self.snap = openSnapshot(
             self.snapdir,
             self.snapnum,0,
             **kwargs)
 
     def load_dark_matter(self,**kwargs):
-        print("Loading dark matter particles of",self,'at',self.snapdir)
+        if self.metadata.loud_metadata:
+            print("Loading dark matter particles of",self,'at',self.snapdir)
         self.dark_snap = openSnapshot(
             self.snapdir,self.snapnum,1,
             **kwargs)

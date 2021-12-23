@@ -22,7 +22,8 @@ class Metadata(object):
         sub_load_low_indices=None,
         sub_load_high_indices=None,
         target_last_sizes=None,
-        sub_load_exclude=None):
+        sub_load_exclude=None,
+        loud=True):
 
 
         self.metapath = metapath
@@ -75,7 +76,7 @@ class Metadata(object):
                     value = handle.attrs[key]
                     setattr(self,key,value)
         except IOError:
-            if self.loud_metadata:
+            if self.loud_metadata and loud:
                 print("Couldn't find a metadata file... for\n",self )
 
     def hasattr(self,attr):
