@@ -160,11 +160,10 @@ class Galaxy(
         snapdir_name = None,
         plot_color = 0,
         multi_thread = 1,
-        halo_path = None,
-        halo_fname = None,
         save_header_to_table = True,
         meta_name = None,
         suite_name = 'metal_diffusion',
+        use_rockstar_first=False,
         **metadata_kwargs 
         ):
 
@@ -354,7 +353,7 @@ class Galaxy(
         
             if self.header['cosmological']:
                 ## opens the halo file to find the halo center and virial radius
-                self.load_halo_file()
+                self.load_halo_file(use_rockstar_first=use_rockstar_first)
             else:
                 self.scom = np.zeros(3)
                 self.rvir = 300 ## what should i do here...
@@ -376,7 +375,7 @@ class Galaxy(
                     if self.metadata.loud_metadata:
                         print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
-    def load_halo_file(self,halo_fname=None,halo_path=None,use_rockstar_first=True):
+    def load_halo_file(self,halo_fname=None,halo_path=None,use_rockstar_first=False):
 
         ## decide which one is the fallback
         if not use_rockstar_first:
