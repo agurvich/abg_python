@@ -1,4 +1,4 @@
-import copy
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -464,7 +464,10 @@ def linear_interpolate(
 
 
 def guess_windings(dphi,vphi_dt,period=1):
-    base_windings = vphi_dt//period
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        base_windings = vphi_dt//period
     ## now we have to decide, do we go back a whole winding
     ##  to match dphi or do we go forward part of a winding?
     guesses = (base_windings+np.array([-1,0,1])[:,None])*period + dphi
