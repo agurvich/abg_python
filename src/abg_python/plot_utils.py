@@ -13,7 +13,7 @@ from .array_utils import pairFilter
 from .fitting_utils import covarianceEigensystem
 from scipy.interpolate import interp1d
 
-latex_pagewidth=6.9738480697 ## in #7.125
+latex_pagewidth=6.9738480697 ## in
 latex_columnwidth=3.32 ## in
 
 
@@ -81,7 +81,21 @@ def add_many_to_legend(
 
 
 
-    
+
+def detach_legend(ax,legend=None,**legend_kwargs):
+    if legend is None:
+        legend = ax.get_legend()
+
+    ## if it's still None then there's not a legend
+    if legend is None:
+        return
+
+    lines = legend.get_lines()
+    labels = [text.get_text() for text in legend.get_texts()]
+
+    ## clear out the current legend
+    ax.legend([])
+    ax.legend(lines,labels,**legend_kwargs)
         
 def add_to_legend(
     ax,
@@ -1135,3 +1149,31 @@ def get_cmap(cmap_name):
         ## extract the matplotlib colormap object
         cmap = cmap.mpl_colormap
     return cmap
+
+
+### from https://kavigupta.org/2019/05/18/Setting-the-size-of-figures-in-matplotlib/?s=03
+from matplotlib.image import imread
+from tempfile import NamedTemporaryFile
+
+def get_size(fig, dpi=240):
+    with NamedTemporaryFile(suffix='.png') as f:
+        fig.savefig(f.name, bbox_inches='tight',dpi=dpi)
+        height, width, _channels = imread(f.name).shape
+        return width/dpi , height/dpi
+
+def set_size(fig, size, eps=1e-2, give_up=2, min_size_in=0.25):
+    target_width, target_height = size
+    set_width, set_height = target_width, target_height # reasonable starting point
+    deltas = [] # how far we have
+    while True:
+        fig.set_size_inches([set_width, set_height])
+        actual_width, actual_height = get_size(fig)
+        set_width *= target_width / actual_width
+        set_height *= target_height / actual_height
+        deltas.append(abs(actual_width - target_width) + abs(actual_height - target_height))
+        if deltas[-1] < eps:
+            return True
+        if len(deltas) > give_up and sorted(deltas[-give_up:]) == deltas[-give_up:]:
+            return False
+        if set_width < min_size_in or set_height < min_size_in:
+            return False
