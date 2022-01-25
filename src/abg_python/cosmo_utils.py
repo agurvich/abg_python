@@ -117,7 +117,7 @@ def getAgesGyrs(open_snapshot):
     cosmo_sfts=open_snapshot['StellarFormationTime']
     cur_time = open_snapshot['Time']
     HubbleParam = open_snapshot['HubbleParam']
-    Omega0 = open_snapshot['Omega0']
+    Omega0 = open_snapshot['Omega0'] if 'Omega0' in open_snapshot else open_snapshot['Omega_Matter']
     ages = convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     ages[ages<0] = 0 ## why does this happen? only noticed once, m12i_res7100_md@526
     return ages
@@ -139,7 +139,7 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
 
-def trace_rockstar(snapdir,rockstar_path=None):
+def trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
 
     if 'elvis' in snapdir:
         raise NotImplementedError("Can't handle multiple halos, yet")
@@ -171,7 +171,8 @@ def trace_rockstar(snapdir,rockstar_path=None):
             ##  since masses are all positive trick it into doing the
             ##  reverse by making them all negative
 
-            indices = np.argpartition(-masses,10,)[:10]
+            N = min(20,masses.size-1)
+            indices = np.argpartition(-masses,N,)[:N]
             ## argpartition does not guarantee an ordering
             ##  let's do it ourselves. order from most to least massive 
             indices = indices[np.argsort(masses[indices])][::-1]
@@ -182,7 +183,7 @@ def trace_rockstar(snapdir,rockstar_path=None):
 
             main_host_index = handle['host.index'][0]
             ## skip the first step because we have nothing to compare to
-            if i != 0: 
+            if i != 0 and fancy_trace: 
                 prev_rcom = rcoms[i-1]
                 mass_rcoms = handle['position'][()][indices]
                 ## km/s -> kpc/gyr
@@ -204,24 +205,27 @@ def trace_rockstar(snapdir,rockstar_path=None):
                     mass_ratio = masses[closest_where]/masses[mass_where]
                     mass_dist_ratio = mass_dists[mass_where]/mass_dists[closest_where]
                     distance_ratio = dists[closest_where]/dists[mass_where]
-                    print(
-                        '%03d'%snapnum,
-                        'main host:',main_where,
-                        'closest (kpc):',closest_where,
-                        'closest (mass):',mass_where,
-                        end='\t')
+                    if loud:
+                        print(
+                            '%03d'%snapnum,
+                            'main host:',main_where,
+                            'closest (kpc):',closest_where,
+                            'closest (mass):',mass_where,
+                            end='\t')
                     ## both physical and mass distances agree which one we should choose
                     ##  so let's choose it!
                     if closest_index == mass_index: 
                         if main_host_index != mass_index:
-                            print('ignoring rockstar')
+                            if loud:
+                                print('ignoring rockstar')
                             main_host_index = mass_index 
                     ## we'll choose the one closest in physical space
                     ##  since the masses are kind of a toss-up but one 
                     ##  is pretty significantly closer than the other
                     elif distance_ratio < 0.5 and mass_ratio > 0.5:
                         if closest_index!=main_host_index:
-                            print('choosing closest (kpc)')
+                            if loud:
+                                print('choosing closest (kpc)')
                         #print(
                             #'choosing the closest in physical space',
                             #'rather than the most massive.',
@@ -232,7 +236,8 @@ def trace_rockstar(snapdir,rockstar_path=None):
                     ##  choose it
                     elif mass_dist_ratio < 0.5:
                         if mass_index!=main_host_index:
-                            print('choosing closest (mass)',distance_ratio,mass_ratio,dists)
+                            if loud:
+                                print('choosing closest (mass)',distance_ratio,mass_ratio,dists)
                             #print(np.log10(prev_mass),np.log10(masses))
                             #print(mass_dists)
                             #import pdb; pdb.set_trace()
