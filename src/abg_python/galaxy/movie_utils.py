@@ -42,9 +42,13 @@ class Draw_helper(object):
         axs=None,
         radius=None,
         height=None,
+        full_snap=False,
         **kwargs):
 
-        coords = self.sub_star_snap['Coordinates']
+        if not full_snap:
+            coords = self.sub_star_snap['Coordinates']
+        else:
+            coords = self.star_snap['Coordinates']
 
         if mask is None: mask = np.ones(coords.shape[0],dtype=bool)
 
