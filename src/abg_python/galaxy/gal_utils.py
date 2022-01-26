@@ -4,6 +4,9 @@ import h5py
 import os
 import multiprocessing
 import itertools
+import copy
+
+from scipy.interpolate import interp1d
 
 ## from abg_python
 from ..snapshot_utils import openSnapshot,get_unit_conversion
@@ -13,6 +16,7 @@ from ..array_utils import findIntersection
 from ..system_utils import getfinsnapnum
 from ..physics_utils import iterativeCoM
 from ..cosmo_utils import load_AHF,load_rockstar,trace_rockstar
+from ..smooth_utils import smooth_x_varying_curve
 
 from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from .movie_utils import Draw_helper,FIREstudio_helper
@@ -375,7 +379,12 @@ class Galaxy(
                     if self.metadata.loud_metadata:
                         print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
 
-    def load_halo_file(self,halo_fname=None,halo_path=None,use_rockstar_first=False):
+    def load_halo_file(
+        self,
+        halo_fname=None,
+        halo_path=None,
+        use_rockstar_first=False,
+        **kwargs):
 
         ## decide which one is the fallback
         if not use_rockstar_first:
@@ -394,9 +403,9 @@ class Galaxy(
                 'rstar_half',
                 'attributes manually')
         else:
-            try: first_fn(halo_fname,halo_path)
+            try: first_fn(halo_fname,halo_path,**kwargs)
             except IOError as e:
-                try: second_fn(halo_fname,halo_path)
+                try: second_fn(halo_fname,halo_path,**kwargs)
                 except IOError:
                     print("Couldn't find AHF nor Rockstar halo files")
                     raise
@@ -485,38 +494,81 @@ class Galaxy(
         loud=True,
         assert_cached=False,
         force_from_file=False,
+        fancy_trace=True,
+        smooth=None,#0.1, ## results in snapshots that are way mis-centered
         **kwargs):
-    
+        """fancy_trace=True - use additional phase space info to minimize jumps in rcom coordinates.
+            smooth=0.1 - whether to smooth by a window in Gyr, None for no smoothing"""
+
+        prefix = ''
+        if fancy_trace:
+            prefix+='fancy_'
+        if smooth is not None:
+            prefix+='smoothed%.3fGyr_'%smooth
+
+        ## separate cachefile that we can save to that all snapshots can use
         hdf5_path = os.path.join(
             os.environ['HOME'],
             'halo_files',
             'rockstar',
             self.suite_name,
             self.name,
-            'rockstar_trace.hdf5')
+            prefix+'rockstar_trace.hdf5')
+
+        kwargs['smooth'] = smooth
+        kwargs['fancy_trace'] = fancy_trace
+
+        self.halo_path = os.path.dirname(hdf5_path)
+        self.halo_fname = os.path.basename(hdf5_path)
+            
         @metadata_cache(
-            'rockstar_history',
-            ['snapnums','rcoms','rvirs'],
+            prefix+'rockstar_history',
+            [prefix+'snapnums',prefix+'rcoms',prefix+'rvirs'],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud,
             assert_cached=assert_cached,
             force_from_file=force_from_file)
-        def compute_rockstar_file_output(self):
+        def compute_rockstar_file_output(self,fancy_trace=True,smooth=0.1):
 
-            snapnums,rcoms,rvirs = trace_rockstar(self.snapdir)            
+            print(f'Tracing the rockstar halo files with fancy:{fancy_trace} and {smooth} Gyr smoothing.')
+            snapnums,rcoms,rvirs = trace_rockstar(self.snapdir,fancy_trace=fancy_trace)
+            new_rcoms = copy.copy(rcoms)
+            if smooth is not None:
+                self.get_snapshotTimes()
+                for i in range(3):
+                    smooth_times,smooth_coords,_,_,_ = smooth_x_varying_curve(
+                        self.snap_gyrs[-len(snapnums):],
+                        rcoms[:,i],
+                        smooth,
+                        assign='center')
+                    new_coords = interp1d(
+                        smooth_times,
+                        smooth_coords,
+                        bounds_error=False,
+                        fill_value=np.nan)(
+                        self.snap_gyrs[-len(snapnums):])
+                    new_rcoms[-len(snapnums):,i] = new_coords
+
+                    ## can't smooth the first and last half-window
+                    ##  /shrug
+                    outside_window_mask = np.isnan(new_rcoms[:,i])
+                    new_rcoms[outside_window_mask,i] = rcoms[outside_window_mask,i]
+                rcoms = new_rcoms
 
             return snapnums,rcoms,rvirs
 
+        ## try loading from a cached trace
         if os.path.isfile(hdf5_path) and use_metadata:
             if loud: print("reading from",hdf5_path)
             with h5py.File(hdf5_path,'r') as handle:
-                snapnums = handle['rockstar_history']['snapnums'][()]
-                rcoms = handle['rockstar_history']['rcoms'][()]
-                rvirs = handle['rockstar_history']['rvirs'][()]
+                snapnums = handle[prefix+'rockstar_history'][prefix+'snapnums'][()]
+                rcoms = handle[prefix+'rockstar_history'][prefix+'rcoms'][()]
+                rvirs = handle[prefix+'rockstar_history'][prefix+'rvirs'][()]
+        ## trace the halo and save it if allowed
         else:
             snapnums,rcoms,rvirs = compute_rockstar_file_output(self,**kwargs)
-            self.metadata.export_to_file(hdf5_path,'rockstar_history',write_mode='w')
+            if save_meta: self.metadata.export_to_file(hdf5_path,prefix+'rockstar_history',write_mode='w')
         return snapnums,rcoms,rvirs
     
     def get_ahf_file_output(
@@ -564,9 +616,18 @@ class Galaxy(
             return snapnums[::-1],rcoms,rvirs
         return compute_ahf_file_output(self,**kwargs)
 
-    def load_rockstar(self,halo_fname=None,halo_path=None):
+    def load_rockstar(self,halo_fname=None,halo_path=None,**kwargs):
 
-        snapnums,rcoms,rvirs = self.get_rockstar_file_output(use_metadata=True,save_meta=True,loud=False)
+        ## have default kwargs but allow them to be ignored
+        ##  in most human readable way
+        if 'use_metadata' not in kwargs:
+            kwargs['use_metadata'] = True
+        if 'save_meta' not in kwargs:
+            kwargs['save_meta'] = True
+        if 'loud' not in kwargs:
+            kwargs['loud'] = False
+
+        snapnums,rcoms,rvirs = self.get_rockstar_file_output(**kwargs)
 
         index = np.argwhere(snapnums==self.snapnum).astype(int)[0][0]
         self.scom = rcoms[index]
