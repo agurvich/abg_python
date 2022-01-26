@@ -183,6 +183,7 @@ def openSnapshot(
                             pkey in keys_to_extract or 
                             pkey in temperature_keys or 
                             pkey in age_keys):
+                            if loud: print('loading:',pkey,end='\t')
 
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
                             ## handle potentially double precision coordinates
@@ -191,6 +192,7 @@ def openSnapshot(
                             else:
                                 value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
                             new_dictionary[pkey] = value
+                            if loud: print('done.')
 
                 if ( (ptype == 0) and ('ChimesAbundances' in handle['PartType0'].keys())):
                     for chimes_species in chimes_keys:
@@ -266,10 +268,14 @@ def openSnapshot(
     ## handle Time in header for cosmological/isolated galaxy
     if 'Time' in new_dictionary:
         if cosmological:
+            if 'Omega0' in new_dictionary:
+                Omega0 = new_dictionary['Omega0']
+            else:
+                Omega0 = new_dictionary['Omega_Matter']
             new_dictionary['TimeGyr'] = convertStellarAges(
                 new_dictionary['HubbleParam'],
-                new_dictionary['Omega0']
-                ,1e-12,
+                Omega0,
+                1e-12,
                 new_dictionary['Time'])
             new_dictionary['ScaleFactor'] = new_dictionary['Time']
         else:
