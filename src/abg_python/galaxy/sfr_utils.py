@@ -278,8 +278,7 @@ class SFR_helper(SFR_plotter):
                     self.snapdir,
                     datadir=os.path.dirname(self.datadir),
                     datadir_name=self.datadir_name,
-                    ahf_path=self.ahf_path,
-                    ahf_fname=self.ahf_fname)
+                    use_rockstar_first='rockstar' in self.halo_fname)
                 print(temp_fin_gal,'loaded to compute SFR archaeologically')
                 return temp_fin_gal.get_SFH(radial_thresh=radial_thresh)
 
@@ -462,8 +461,7 @@ class SFR_helper(SFR_plotter):
                     self.snapdir,
                     datadir=os.path.dirname(self.datadir),
                     datadir_name=self.datadir_name,
-                    ahf_path=self.ahf_path,
-                    ahf_fname=self.ahf_fname)
+                    use_rockstar_first='rockstar' in self.halo_fname)
                 return temp_fin_gal.get_bursty_regime(
                     thresh=thresh,
                     window_size=window_size,
