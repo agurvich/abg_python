@@ -144,10 +144,23 @@ class Metadata(object):
         else:
             setattr(self,key_to_save,value)
         
-    def save_to_metadata(self,group,key,value,mode='a',overwrite=0):
+    def save_to_metadata(self,group,key,value,mode='a',overwrite=0,attempts=0):
         ## first determine if this should be saved as an attribute of
         ##  the currently open metadata object
-        self.__save_to_metadata_object(group,key,value,overwrite)
+        if attempts <=0: self.__save_to_metadata_object(group,key,value,overwrite)
+        try: self.__save_to_metadata_file(group,key,value,mode,overwrite)
+        except OSError as e:
+            ## likely attempting to save to a metadata file that another thread
+            ##  has open. tsk tsk.
+            if attempts < 4:
+                ## let's wait a bit to try and de-sync from the other thread
+                ##  and then try again
+                time.sleep(np.random.randint(30,60))
+                self.save_to_metadata(group,key,value,mode,overwrite,attempts+1)
+            ## well, we tried 5 times so we might as well give up. 
+            else: raise e
+
+    def __save_to_metadata_file(self,group,key,value,mode,overwrite):
         with h5py.File(self.metapath,mode) as handle:
             if group == 'header':
                 if key not in handle.attrs.keys():
@@ -249,7 +262,20 @@ class Metadata(object):
                     if key[:len(group_name)] == group_name:
                         self.__dict__.pop(key)
 
-    def lazy_load_from_file(self,key,load_entire_group=False):
+    def lazy_load_from_file(self,key,load_entire_group=False,attempts=0):
+        try: self.__lazy_load_from_file(key,load_entire_group=load_entire_group)
+        except OSError as e: 
+            ## likely attempting to load from a metadata file that another thread
+            ##  has open. tsk tsk.
+            if attempts < 4:
+                ## let's wait a bit to try and de-sync from the other thread
+                ##  and then try again
+                time.sleep(np.random.randint(30,60))
+                self.lazy_load_from_file(key,load_entire_group,attempts+1)
+            ## well, we tried 5 times so we might as well give up. 
+            else: raise e
+    
+    def __lazy_load_from_file(self,key,load_entire_group=False):
         if key in self.file_keys:
             with h5py.File(self.metapath,'r') as handle:
                 ## handle groups
