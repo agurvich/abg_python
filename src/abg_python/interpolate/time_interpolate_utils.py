@@ -344,7 +344,7 @@ def make_interpolated_snap(
         next_vels,
         t,t0,t1,
         coord_interp_mode=coord_interp_mode)
-    
+ 
     if 'InvRotationMatrix_0' in time_merged_df:# and coord_interp_mode in ['spherical','cylindrical']:
         ## reconstruct the inverse rotation matrices
         inv_rot_matrices = np.zeros((first_coords.shape[0],9))
@@ -355,7 +355,58 @@ def make_interpolated_snap(
         inv_rot_matrices = inv_rot_matrices.reshape(-1,3,3)
 
         coords = (inv_rot_matrices*coords[:,None]).sum(-1)
-        vels = (inv_rot_matrices*vels[:,None]).sum(-1)
+        ## dont' need to inverse-rotate the velocities because they were replaced in conditional above
+        ##  with their cartesian counterparts which were never rotated to begin with. 
+        # vels = (inv_rot_matrices*vels[:,None]).sum(-1)
+
+    ## check for rotational support, inspired by Phil's routine
+    if coord_interp_mode in ['cylindrical','spherical']: 
+        ## average velocity between snapshots
+        avg_vels2 = (first_vels**2+next_vels**2)/2
+        norms2 = np.sum(avg_vels2,axis=1)
+
+        ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
+        ##  make a mask for those particles which are not rotationally supported and need
+        ##  to be replaced with a simple cartesian interpolation
+        support_thresh = 0.50  ## 0.5
+        if coord_interp_mode == 'cylindrical': 
+            radius = np.sqrt(coords[:,0]**2+coords[:,-1]**2)
+            non_rot_support = np.logical_or(
+                avg_vels2[:,1]/norms2 < support_thresh,
+                radius > 30)
+        #elif coord_interp_mode == 'spherical'
+        else: 
+            radius = coords[:,0]
+            non_rot_support = np.logical_or(
+                avg_vels2[:,2]/norms2 < support_thresh,
+                radius > 30)
+
+        ## switch to cartesian coordinates to interpolate
+        ckeys = ['coord_xs','coord_ys','coord_zs']
+        vkeys = ['vxs','vys','vzs']
+        for i,(coord_key,vel_key) in enumerate(zip(ckeys,vkeys)):
+            ## fill the whole buffer(s), we won't use it for anything else
+            ##  and we'll only lose time(/memory?) using masks
+            first_coords[:,i] = getattr(time_merged_df,coord_key)
+            next_coords[:,i] = getattr(time_merged_df,coord_key+'_next')
+
+            first_vels[:,i] = getattr(time_merged_df,vel_key)
+            next_vels[:,i] = getattr(time_merged_df,vel_key+'_next')
+
+            ## replace the velocities that we'll load into the interp snap
+            ##  with their cartesian counterparts because no one is expecting
+            ##  r,phi,z or r,theta,phi when they put in snapdict['Velocities']
+            vels[:,i] = interp_snap[vel_key]
+
+        if np.any(non_rot_support):
+            ## replace the masked coordinates with their cartesian interpolated counterparts
+            coords[non_rot_support] = interpolate_coords(
+                first_coords[non_rot_support],
+                first_vels[non_rot_support],
+                next_coords[non_rot_support],
+                next_vels[non_rot_support],
+                t,t0,t1,
+                coord_interp_mode='cartesian')
 
     interp_snap['Coordinates'] = coords
     interp_snap['Velocities'] = vels
