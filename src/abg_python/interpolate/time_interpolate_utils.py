@@ -198,34 +198,39 @@ def index_match_snapshots_with_dataframes(
     #prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
 
     if coord_interp_mode in ['cylindrical','spherical']:
-        Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
         this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
         this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
         axes = ['xs','ys','zs']
-
-        ## find the average of the momentum vectors between the two snapshots
-        for i,axis in enumerate(axes):
-            Ls[:,i] = (prev_next_merged_df_snap[f'L{axis}']+prev_next_merged_df_snap[f'L{axis}_next']).values/2
-
-        ## get rotation matrices
-        theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
-        rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
-        ## reshape to be Npart x 3 x 3
-        rot_matrices = np.rollaxis(rot_matrices,-1,0)
         
         ## fill a dictionary with the rotated coordinates
         copy_snap = {}
         for suffix in ['','_next']:
+
             ## let's make new memory buffers each time just to make sure the 
             ##  dataframe doesn't end up aliasing particle positions :\
             this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
             this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
+            this_Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
 
-            ## open this snapshot's coordinates and velocities
+            ## fill coordinate,velocity, and angular momentum buffers 
             for i,axis in enumerate(axes):
-                ckey,vkey = f'coord_{axis}'+suffix,f'v{axis}'+suffix
-                this_coords[:,i] = prev_next_merged_df_snap[ckey]
-                this_vels[:,i] = prev_next_merged_df_snap[vkey]
+                this_coords[:,i] = prev_next_merged_df_snap[f'coord_{axis}{suffix}']
+                this_vels[:,i] = prev_next_merged_df_snap[f'v{axis}{suffix}']
+                this_Ls[:,i] = prev_next_merged_df_snap[f'L{axis}{suffix}']
+
+            this_Ls = this_Ls/np.linalg.norm(this_Ls,axis=1)[:,None]
+            ## now, ironically, we are going to go back in and change the angular momentum
+            ##  vector to be a unit vector because here's as good as anywhere to do it I guess
+            ##  we do this because we have to interpolate between them later on
+            for i,axis in enumerate(axes):
+                prev_next_merged_df_snap[f'L{axis}{suffix}'] = this_Ls[:,i]
+
+            ## get rotation matrices *for this time*
+            theta_TBs,phi_TBs = getThetasTaitBryan(this_Ls.T)
+            rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
+            ## reshape to be Npart x 3 x 3
+            rot_matrices = np.rollaxis(rot_matrices,-1,0)
+            #inv_rot_matrices = np.transpose(rot_matrices,axes=(0,2,1))
 
             ## trick for multiply N matrices by N vectors pairwise
             this_coords = (rot_matrices*this_coords[:,None]).sum(-1)
@@ -262,6 +267,7 @@ def index_match_snapshots_with_dataframes(
         prev_next_merged_df_snap = prev_next_merged_df_snap.join(new_df)
         #for key in copy_snap.keys(): print(key,copy_snap[key].shape)
                 
+        """
         ## we'll need the inverse rotation matrices
         ##  later, so let's store them as the inverse (transpose)
         rot_matrices = np.transpose(rot_matrices,axes=(0,2,1))
@@ -272,6 +278,7 @@ def index_match_snapshots_with_dataframes(
             rot_matrices.reshape(rot_matrices.shape[0],-1), ## flatten from 3d to 2d array
             columns=['InvRotationMatrix_%d'%i for i in range(9)],
             index=prev_next_merged_df_snap.index))
+        """
 
     return prev_next_merged_df_snap
 
@@ -351,6 +358,17 @@ def make_interpolated_snap(
         ## dont' need to inverse-rotate the velocities because they were replaced in conditional above
         ##  with their cartesian counterparts which were never rotated to begin with. 
         # vels = (inv_rot_matrices*vels[:,None]).sum(-1)
+    elif coord_interp_mode in ['cylindrical','spherical']:
+        this_Lhats = np.zeros(first_coords.shape)
+        ## get rotation matrices *for this time*
+        ##  by interpolating the angular momentum vector
+        for i,axis in enumerate(['xs','ys','zs']):
+            this_Lhats[:,i] = interp_snap[f'L{axis}'] ## don't worry, we normalized them already
+
+        theta_TBs,phi_TBs = getThetasTaitBryan(this_Lhats.T)
+        rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
+        ## reshape to be Npart x 3 x 3
+        inv_rot_matrices = np.transpose(np.rollaxis(rot_matrices,-1,0),axes=(0,2,1))
 
     ## check for rotational support, inspired by Phil's routine
     if coord_interp_mode in ['cylindrical','spherical']: 
