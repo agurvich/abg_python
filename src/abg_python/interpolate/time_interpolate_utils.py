@@ -204,15 +204,8 @@ def index_match_snapshots_with_dataframes(
         axes = ['xs','ys','zs']
 
         ## find the average of the momentum vectors between the two snapshots
-        for suffix in ['','_next']:
-            masses = prev_next_merged_df_snap['Masses'+suffix].values
-            for i in range(3):
-                this_coords[:,i] = prev_next_merged_df_snap['coord_%s'%(axes[i])+suffix]
-                this_vels[:,i] = prev_next_merged_df_snap['v%s'%(axes[i])+suffix]
-
-            ## find angular momentum frame for each particle
-            Ls+= np.cross(this_coords,this_vels*masses[:,None])
-        Ls/=2 
+        for i,axis in enumerate(axes):
+            Ls[:,i] = (prev_next_merged_df_snap[f'L{axis}']+prev_next_merged_df_snap[f'L{axis}_next']).values/2
 
         ## get rotation matrices
         theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
@@ -229,8 +222,8 @@ def index_match_snapshots_with_dataframes(
             this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
 
             ## open this snapshot's coordinates and velocities
-            for i in range(3):
-                ckey,vkey = 'coord_%s'%(axes[i])+suffix,'v%s'%(axes[i])+suffix
+            for i,axis in enumerate(axes):
+                ckey,vkey = f'coord_{axis}'+suffix,f'v{axis}'+suffix
                 this_coords[:,i] = prev_next_merged_df_snap[ckey]
                 this_vels[:,i] = prev_next_merged_df_snap[vkey]
 
@@ -361,7 +354,7 @@ def make_interpolated_snap(
 
     ## check for rotational support, inspired by Phil's routine
     if coord_interp_mode in ['cylindrical','spherical']: 
-        ## average velocity between snapshots
+        ## average 1D velocity between snapshots
         avg_vels2 = (first_vels**2+next_vels**2)/2
         norms2 = np.sum(avg_vels2,axis=1)
 

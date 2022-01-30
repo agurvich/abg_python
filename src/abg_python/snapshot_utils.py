@@ -256,6 +256,13 @@ def openSnapshot(
         for key in (set(age_keys) - subtract_set):
             new_dictionary.pop(key)
     
+    ## calculate the angular momentum, only if specifically requested
+    if ((not header_only) and
+        (keys_to_extract is None or 'AngularMomentum' in keys_to_extract)):
+        new_dictionary['AngularMomentum'] = np.cross(
+            new_dictionary['Coordinates'],
+            new_dictionary['Velocities']*new_dictionary['Masses'][:,None])
+    
     ## it would be good to check if the number of particles read is the same as 
     ##  the total number advertised in the snapshot... but can't guarantee any one
     ##  key to check (or that any arrays were read at all!)
@@ -358,6 +365,10 @@ try:
         if 'Velocities' in copy_snap:
             vels = copy_snap.pop('Velocities')
             copy_snap['vxs'],copy_snap['vys'],copy_snap['vzs']=vels.T
+        
+        if 'AngularMomentum' in copy_snap:
+            Ls = copy_snap.pop('AngularMomentum')
+            copy_snap['Lxs'],copy_snap['Lys'],copy_snap['Lzs']=Ls.T
 
         if 'Metallicity' in copy_snap:
             metallicity = copy_snap.pop('Metallicity')
