@@ -1233,9 +1233,12 @@ class Galaxy(
             ## put the common keys into ABG_Header
             ABG_Header = handle.create_group("ABG_Header")
             for key in common_keys:
+                if key == 'AngularMomentum': 
+                    print('why is AngularMomentum being output to ABG_Header in abg_python.galaxy.gal_utils?')
+                    continue
                 ABG_Header.attrs[key]=self.sub_snap[key]
 
-            derived_arrays = set(['Temperature','AgeGyr'])
+            derived_arrays = set(['Temperature','AgeGyr','AngularMomentum'])
             for ptype,extra_keys in zip(ptypes,extra_keyss):
                 abg_pgroup = ABG_Header.create_group('PartType%d'%ptype)
                 this_sub_snap = getattr(self,sub_snap_dict[ptype])
