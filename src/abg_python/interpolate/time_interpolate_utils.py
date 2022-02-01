@@ -199,13 +199,20 @@ def index_match_snapshots_with_dataframes(
 
     if coord_interp_mode in ['cylindrical','spherical']:
         Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
+        next_Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
         this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
         this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
         axes = ['xs','ys','zs']
 
         ## find the average of the momentum vectors between the two snapshots
         for i,axis in enumerate(axes):
-            Ls[:,i] = (prev_next_merged_df_snap[f'L{axis}']+prev_next_merged_df_snap[f'L{axis}_next']).values/2
+            Ls[:,i] = prev_next_merged_df_snap[f'L{axis}']
+            next_Ls[:,i] = prev_next_merged_df_snap[f'L{axis}_next']
+        
+        ## convert to jhat
+        Ls = Ls/(np.linalg.norm(Ls,axis=1)*prev_next_merged_df_snap['Masses'])[:,None]
+        next_Ls = next_Ls/(np.linalg.norm(next_Ls,axis=1)*prev_next_merged_df_snap['Masses_next']).values[:,None]
+        Ls = (Ls+next_Ls)/2
 
         ## get rotation matrices
         theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
