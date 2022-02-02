@@ -17,6 +17,7 @@ from ..system_utils import getfinsnapnum
 from ..physics_utils import iterativeCoM
 from ..cosmo_utils import load_AHF,load_rockstar,trace_rockstar
 from ..smooth_utils import smooth_x_varying_curve
+from ..math_utils import add_jhat_coords
 
 from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from .movie_utils import Draw_helper,FIREstudio_helper
@@ -808,6 +809,7 @@ class Galaxy(
         extract_DM = True, ## do we want the DM particles? 
         compute_stellar_hsml=False,
         loud=True,
+        jhat_coords=False,
         **kwargs):
         """
         radius = None -- radius of final sub_snap extraction, *not* orient_radius, 
@@ -1066,11 +1068,16 @@ class Galaxy(
                 del self.snap
             if loud: print("Snapshot memory free")
         
+        snapdicts = [self.sub_snap,self.sub_star_snap]
+        if extract_DM: snapdicts += [self.sub_dark_snap]
+
         ## store a couple of things in the dictionary to identify it:
-        for snapdict in [self.sub_snap,self.sub_star_snap]:
+        for snapdict in snapdicts:
             snapdict['name'] = self.name
             snapdict['snapnum'] = self.snapnum
             snapdict['datadir'] = self.datadir
+
+            if jhat_coords: add_jhat_coords(snapdict)
 
         return return_value
 
