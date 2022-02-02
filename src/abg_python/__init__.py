@@ -23,3 +23,5 @@ seconds_per_year = 3.15e7
 #cm3/(g s^2) * kpc/cm * (km/cm)^2 * g/msun * msun/mcode= kpc/mcode (km/s)^2  
 #Gcgs/cm_per_kpc*SOLAR_MASS_g/1e10*1e10 = 
 Gcode = 43099.305194805194
+## km/s -> kpc/gyr
+kms_to_kpcgyr = 1/(cm_per_kpc/1e5)*seconds_per_year*1e9
