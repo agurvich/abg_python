@@ -7,8 +7,9 @@ from ..snapshot_utils import convertSnapToDF
 from ..galaxy.gal_utils import Galaxy
 from ..array_utils import filterDictionary
 from ..math_utils import getThetasTaitBryan, rotateEuler
-from ..math_utils import get_cylindrical_velocities,get_cylindrical_coordinates,get_spherical_coordinates,get_spherical_velocities
+from ..math_utils import get_primehats
 from ..physics_utils import get_IMass
+from .. import kms_to_kpcgyr
 
 def find_bordering_snapnums(
     snap_times_gyr,
@@ -47,13 +48,13 @@ def index_match_snapshots_with_dataframes(
     extra_arrays_function=None,
     t0=None,
     t1=None,
-    coord_interp_mode='spherical',
+    polar=True,
     extra_df=None):
     """
         if you use Metallicity  or Velocities then the keys will be different when you try to access them
           in your render call using render_kwargs.
-        Velocities -> vx,vy,vz 
-        Metallicity -> met0,met1,met2,...
+        Velocities ->  Velocities_0,Velocities_1,Velocities_2
+        Metallicity -> Metallicity_0,Metallicity_1,...
     keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
     """
     
@@ -74,11 +75,11 @@ def index_match_snapshots_with_dataframes(
         'ParticleChildIDsNumber',
         'AgeGyr',
         'Temperature']
+    
+    if polar: keys_to_extract+=['polarjhats','polarjhatCoordinates','polarjhatVelocities']
 
     pandas_kwargs = dict(
         keys_to_extract=keys_to_extract,
-        #cylindrical_coordinates=coord_interp_mode=='cylindrical',
-        #spherical_coordinates=coord_interp_mode=='spherical',
         total_metallicity_only=True)
     
     ## convert snapshot dictionaries to pandas dataframes
@@ -121,59 +122,9 @@ def index_match_snapshots_with_dataframes(
                 prev_young_star_snap,
                 index=next_young_star_df.index)
 
-        else:
-            ## copy the velocities, assume they have constant velocity from birth I guess
-            for key in ['ParticleChildIDsNumber','ParticleIDs','Velocities','Metallicity','SmoothingLength']:
-                prev_young_star_snap[key] = next_young_star_snap[key]
-
-            prev_young_star_snap['AgeGyr'] = next_young_star_snap['AgeGyr'] - (t1-t0)
-
-            ## account for mass loss-- this will be linearly interpolated between
-            ##  later on (rather than applying the mass loss factor as should happen
-            ##  but that's okay for now, it's close enough.
-            prev_young_star_snap['Masses'] = get_IMass(
-                next_young_star_snap['AgeGyr'],
-                next_young_star_snap['Masses'])
-            
-            ## figure out what coordinates they had at birth. best we can do is interpolate backwards
-            ## (we could look for a matching gas particle but there's no guarantee that DF was loaded
-            ## :\. it also seems way more complex to handle than just interpolating backwards)
-            this_coords = next_young_star_snap['Coordinates']
-            this_vels = next_young_star_snap['Velocities']
-
-            ## find angular momentum frame for each particle
-            Ls = np.cross(this_coords,this_vels*next_young_star_snap['Masses'][:,None])
-
-            ## get rotation matrices
-            theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
-            rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
-            ## reshape to be Npart x 3 x 3
-            rot_matrices = np.rollaxis(rot_matrices,-1,0)
-
-            ## rotate into L frame, still in cartesian coordinates
-            this_coords = (rot_matrices*this_coords[:,None]).sum(-1)
-            this_vels = (rot_matrices*this_vels[:,None]).sum(-1)
-            ## did we request spherical coordinates?
-            if coord_interp_mode == 'spherical':
-                this_vels = np.array(get_spherical_velocities(this_vels,this_coords),order='C').T
-                this_coords = np.array(get_spherical_coordinates(this_coords),order='C').T
-            ## did we request cylindrical coordinates?
-            elif coord_interp_mode == 'cylindrical':
-                this_vels = np.array(get_cylindrical_velocities(this_vels,this_coords),order='C').T
-                this_coords = np.array(get_cylindrical_coordinates(this_coords),order='C').T
-
-            prev_young_star_snap['Coordinates'] = (
-                np.transpose(rot_matrices,axes=(0,2,1))* ## rotate out of L frame
-                interpolate_coords( ## interpolate in spherical/cylindrical coordinates *and* convert to cartesian
-                    this_coords,
-                    this_vels,
-                    None,
-                    None,
-                    t0,t1,t0,
-                    coord_interp_mode=coord_interp_mode)[:,None]
-                ).sum(-1) 
-
-            prev_young_star_df = convertSnapToDF(prev_young_star_snap,**pandas_kwargs)
+        ## NOTE: could this be why i'm getting spherical shells of very young stars?
+        ##  maybe I should be extrapolating instead...
+        else: raise ValueError("Pass time_merged_gas_df to find progenitor gas particles")
 
         ## append the young stars to each dataframe
         next_df_snap_reduced = next_df_snap_reduced.append(next_young_star_df)
@@ -196,316 +147,52 @@ def index_match_snapshots_with_dataframes(
     ## NOTE: this was breaking when we were calculating spherical coords--
     ##  like half the rows were being thrown out??
     #prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
+    ## TODO: should extrapolate missing particles in each snapshot
 
-    if coord_interp_mode in ['cylindrical','spherical']:
-        Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
-        next_Ls = np.zeros((prev_next_merged_df_snap.shape[0],3))
-        this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
-        this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
-        axes = ['xs','ys','zs']
+    ## add jhat rotation angle
+    if polar:
+        rotation_angle = 0
+        for i in range(3):
+            rotation_angle += prev_next_merged_df_snap['polarjhats_%d'%i]*prev_next_merged_df_snap['polarjhats_%d_next'%i]
+        rotation_angle = np.arccos(rotation_angle)
 
-        ## find the average of the momentum vectors between the two snapshots
-        for i,axis in enumerate(axes):
-            Ls[:,i] = prev_next_merged_df_snap[f'L{axis}']
-            next_Ls[:,i] = prev_next_merged_df_snap[f'L{axis}_next']
-        
-        ## convert to jhat
-        Ls = Ls/(np.linalg.norm(Ls,axis=1)*prev_next_merged_df_snap['Masses'])[:,None]
-        next_Ls = next_Ls/(np.linalg.norm(next_Ls,axis=1)*prev_next_merged_df_snap['Masses_next']).values[:,None]
-        Ls = (Ls+next_Ls)/2
+        ## doing it this way will automatically add 
+        ##  the interpolated jhat_rotangle to the interp_snap in make_interpolated_snap
+        prev_next_merged_df_snap['jhat_rotangle_next'] = rotation_angle
+        prev_next_merged_df_snap['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
 
-        ## get rotation matrices
-        theta_TBs,phi_TBs = getThetasTaitBryan(Ls.T)
-        rot_matrices = rotateEuler(theta_TBs,phi_TBs,0,None,loud=False)
-        ## reshape to be Npart x 3 x 3
-        rot_matrices = np.rollaxis(rot_matrices,-1,0)
-        
-        ## fill a dictionary with the rotated coordinates
-        copy_snap = {}
-        for suffix in ['','_next']:
-            ## let's make new memory buffers each time just to make sure the 
-            ##  dataframe doesn't end up aliasing particle positions :\
-            this_coords = np.zeros((prev_next_merged_df_snap.shape[0],3))
-            this_vels = np.zeros((prev_next_merged_df_snap.shape[0],3))
-
-            ## open this snapshot's coordinates and velocities
-            for i,axis in enumerate(axes):
-                ckey,vkey = f'coord_{axis}'+suffix,f'v{axis}'+suffix
-                this_coords[:,i] = prev_next_merged_df_snap[ckey]
-                this_vels[:,i] = prev_next_merged_df_snap[vkey]
-
-            ## trick for multiply N matrices by N vectors pairwise
-            this_coords = (rot_matrices*this_coords[:,None]).sum(-1)
-            this_vels = (rot_matrices*this_vels[:,None]).sum(-1)
-
-            ## did we request spherical coordinates?
-            if coord_interp_mode == 'spherical':
-                (copy_snap['coord_rs'+suffix],
-                copy_snap['coord_thetas'+suffix],
-                copy_snap['coord_phis'+suffix]) = get_spherical_coordinates(
-                    this_coords)
-
-                (copy_snap['vrs'+suffix],
-                copy_snap['vthetas'+suffix],
-                copy_snap['vphis'+suffix]) = get_spherical_velocities(
-                    this_vels,
-                    this_coords)
-
-            ## did we request cylindrical coordinates?
-            if coord_interp_mode == 'cylindrical':
-                (copy_snap['coord_Rs'+suffix],
-                copy_snap['coord_R_phis'+suffix],
-                copy_snap['coord_R_zs'+suffix]) = get_cylindrical_coordinates(
-                    this_coords)
-
-                (copy_snap['vRs'+suffix],
-                copy_snap['vRphis'+suffix],
-                copy_snap['vRzs'+suffix]) = get_cylindrical_velocities(
-                    this_vels,
-                    this_coords)
-
-        new_df = pd.DataFrame(copy_snap,index=prev_next_merged_df_snap.index)
-        ## append these columns to the dataframe
-        prev_next_merged_df_snap = prev_next_merged_df_snap.join(new_df)
-        #for key in copy_snap.keys(): print(key,copy_snap[key].shape)
-                
-        ## we'll need the inverse rotation matrices
-        ##  later, so let's store them as the inverse (transpose)
-        rot_matrices = np.transpose(rot_matrices,axes=(0,2,1))
-
-        ## however, we need to append rotation matrix elements as 9 extra columns -__-
-        ##  because pandas doesn't like 2D arrays as elements
-        prev_next_merged_df_snap = prev_next_merged_df_snap.join(pd.DataFrame(
-            rot_matrices.reshape(rot_matrices.shape[0],-1), ## flatten from 3d to 2d array
-            columns=['InvRotationMatrix_%d'%i for i in range(9)],
-            index=prev_next_merged_df_snap.index))
+    prev_next_merged_df_snap.first_time = t0
+    prev_next_merged_df_snap.next_time = t1
 
     return prev_next_merged_df_snap
 
-def make_interpolated_snap(
-    t,
-    time_merged_df,
-    t0,
-    t1,
-    coord_interp_mode='spherical'):
+def make_interpolated_snap(time_merged_df,t,polar=True):
     
     interp_snap = {}
 
+    t0,t1 = time_merged_df.first_time,time_merged_df.next_time
     ## create a new snapshot with linear interpolated values
     ##  between key and key_next using t0, t1, and t.
     for key in time_merged_df.keys():
-        if '_next' in key:
-            continue
-        elif (key in [
-            'coord_xs','coord_ys','coord_zs',
-            'coord_rs','coord_thetas','coord_phis',
-            'coord_Rs','coord_R_phis','coord_R_zs'
-            ] or 'InvRotationMatrix_' in key):
-            #'vxs','vys','vzs',
-            #'vrs','vthetas','vphis'
-            # 'vRs','vRphis','vRzs']:
-
-            continue
+        if '_next' in key: continue
+        elif 'polarjhat' in key: continue ## will allow jhat_rotangle though
         interp_snap[key] = linear_interpolate(
             getattr(time_merged_df,key),
             getattr(time_merged_df,key+'_next'),
-            t0,t1,
-            t).values
+            t0,t1,t).values
 
-    ckeys = {'cartesian':['coord_xs','coord_ys','coord_zs'],
-            'spherical':['coord_rs','coord_thetas','coord_phis'],
-            'cylindrical':['coord_Rs','coord_R_phis','coord_R_zs']}[coord_interp_mode]
-
-    vkeys = {'cartesian':['vxs','vys','vzs'],
-            'spherical':['vrs','vthetas','vphis'],
-            'cylindrical':['vRs','vRphis','vRzs']}[coord_interp_mode]
-
-    first_coords = np.zeros((time_merged_df.shape[0],3))
-    next_coords = np.zeros((time_merged_df.shape[0],3))
-
-    first_vels = np.zeros((time_merged_df.shape[0],3))
-    next_vels = np.zeros((time_merged_df.shape[0],3))
-
-    vels = np.zeros(first_coords.shape)
-
-    for i,(coord_key,vel_key) in enumerate(zip(ckeys,vkeys)):
-        first_coords[:,i] = getattr(time_merged_df,coord_key)
-        next_coords[:,i] = getattr(time_merged_df,coord_key+'_next')
-
-        first_vels[:,i] = getattr(time_merged_df,vel_key)
-        next_vels[:,i] = getattr(time_merged_df,vel_key+'_next')
-
-        vels[:,i] = interp_snap[vel_key]
-
-    coords = interpolate_coords(
-        first_coords,
-        first_vels,
-        next_coords,
-        next_vels,
+    ## interpolate coordinates using higher order/more complicated interpolations
+    ##  will remove the Coordinates_i and Velocities_i keys from interp_snap
+    interp_snap['Coordinates'],interp_snap['Velocities'] = interpolate_position(
         t,t0,t1,
-        coord_interp_mode=coord_interp_mode)
- 
-    if 'InvRotationMatrix_0' in time_merged_df:# and coord_interp_mode in ['spherical','cylindrical']:
-        ## reconstruct the inverse rotation matrices
-        inv_rot_matrices = np.zeros((first_coords.shape[0],9))
-        for i in range(9):
-            this_key = "InvRotationMatrix_%d"%i
-            inv_rot_matrices[:,i] = time_merged_df[this_key]
-
-        inv_rot_matrices = inv_rot_matrices.reshape(-1,3,3)
-
-        coords = (inv_rot_matrices*coords[:,None]).sum(-1)
-        ## dont' need to inverse-rotate the velocities because they were replaced in conditional above
-        ##  with their cartesian counterparts which were never rotated to begin with. 
-        # vels = (inv_rot_matrices*vels[:,None]).sum(-1)
-
-    ## check for rotational support, inspired by Phil's routine
-    if coord_interp_mode in ['cylindrical','spherical']: 
-        ## average 1D velocity between snapshots
-        avg_vels2 = (first_vels**2+next_vels**2)/2
-        norms2 = np.sum(avg_vels2,axis=1)
-
-        ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
-        ##  make a mask for those particles which are not rotationally supported and need
-        ##  to be replaced with a simple cartesian interpolation
-        support_thresh = 0.50  ## 0.5
-        if coord_interp_mode == 'cylindrical': 
-            radius = np.sqrt(coords[:,0]**2+coords[:,-1]**2)
-            non_rot_support = np.logical_or(
-                avg_vels2[:,1]/norms2 < support_thresh,
-                radius > 30)
-        #elif coord_interp_mode == 'spherical'
-        else: 
-            radius = coords[:,0]
-            non_rot_support = np.logical_or(
-                avg_vels2[:,2]/norms2 < support_thresh,
-                radius > 30)
-
-        ## switch to cartesian coordinates to interpolate
-        ckeys = ['coord_xs','coord_ys','coord_zs']
-        vkeys = ['vxs','vys','vzs']
-        for i,(coord_key,vel_key) in enumerate(zip(ckeys,vkeys)):
-            ## fill the whole buffer(s), we won't use it for anything else
-            ##  and we'll only lose time(/memory?) using masks
-            first_coords[:,i] = getattr(time_merged_df,coord_key)
-            next_coords[:,i] = getattr(time_merged_df,coord_key+'_next')
-
-            first_vels[:,i] = getattr(time_merged_df,vel_key)
-            next_vels[:,i] = getattr(time_merged_df,vel_key+'_next')
-
-            ## replace the velocities that we'll load into the interp snap
-            ##  with their cartesian counterparts because no one is expecting
-            ##  r,phi,z or r,theta,phi when they put in snapdict['Velocities']
-            vels[:,i] = interp_snap[vel_key]
-
-        if np.any(non_rot_support):
-            ## replace the masked coordinates with their cartesian interpolated counterparts
-            coords[non_rot_support] = interpolate_coords(
-                first_coords[non_rot_support],
-                first_vels[non_rot_support],
-                next_coords[non_rot_support],
-                next_vels[non_rot_support],
-                t,t0,t1,
-                coord_interp_mode='cartesian')
-
-    interp_snap['Coordinates'] = coords
-    interp_snap['Velocities'] = vels
+        time_merged_df,
+        interp_snap,
+        polar=polar)
 
     ## remove stars that have not formed yet
-    if 'AgeGyr' in interp_snap: 
-        interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
+    if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
  
     return interp_snap
-
-def interpolate_coords(
-    first_coords,
-    first_vels,
-    next_coords,
-    next_vels,
-    t,t0,t1,
-    coord_interp_mode='spherical'):
-
-    delta_t = (t-t0)
-    dsnap = (t1-t0)
-    time_frac = delta_t/dsnap
-
-    coords = np.zeros((first_coords.shape))
-    rtp_coords = np.zeros((first_coords.shape))
-    
-    for i in range(3):
-        this_first_coords = first_coords[:,i]
-        this_first_vels = first_vels[:,i]
-
-        if next_vels is not None: this_next_vels = next_vels[:,i]
-        else: this_next_vels = first_vels[:,i]
-
-        vbar = (this_first_vels+this_next_vels)/2.
-
-        ## handle angular stuff
-        if coord_interp_mode == 'spherical':
-            phi_index = 2
-            ## divide vels by r3d, for theta
-            if i == 1: 
-                renorm = rtp_coords[:,0]
-                vbar = vbar/renorm
-                this_first_vels = this_first_vels/renorm
-                this_next_vels = this_next_vels/renorm
-            ## divide vels by r2d, for phi
-            elif i ==2: 
-                renorm = (rtp_coords[:,0]*np.sin(rtp_coords[:,1]))
-                vbar = vbar/renorm
-                this_first_vels = this_first_vels/renorm
-                this_next_vels = this_next_vels/renorm
-        elif coord_interp_mode == 'cylindrical':
-            phi_index = 1
-            ## divide vels by r2d, for phi
-            if i == 1: 
-                renorm = rtp_coords[:,0]
-                vbar = vbar/renorm
-                this_first_vels = this_first_vels/renorm
-                this_next_vels = this_next_vels/renorm
-        else: phi_index = None
-
-        if next_coords is not None: this_next_coords = next_coords[:,i]
-        ## handle extrapolation case
-        else: 
-            if phi_index is None or i != phi_index:
-                this_next_coords = this_first_coords + this_first_vels*dsnap
-            else:
-                this_next_coords = this_first_coords + np.mod(this_first_vels*dsnap,2*np.pi)
-        
-        dcoord = this_next_coords - this_first_coords
-
-        if i == phi_index: 
-            ## how far would we guess each particle could go?
-            #approx_radians = vbar*dsnap ## phil suggests errors can happen if v changes sign
-            approx_radians = this_first_vels*dsnap
-
-            ## let's guess how many times it went around, basically
-            ##  want to determine which of (N)*2pi + dcoord  
-            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
-            ##  closest to approx_radians, (N = approx_radians//2pi)
-            dcoord = guess_windings(dcoord,approx_radians,2*np.pi)
-
-        rtp_coords[:,i] = (
-            ## basic linear interpolation
-            this_first_coords + dcoord*time_frac +  
-            ## correction factor to minimize velocity difference, apparently
-            (this_next_vels - this_first_vels)/2*dsnap * time_frac * (time_frac - 1)) 
-
-    ## cast spherical coordinates to cartesian coordinates
-    if coord_interp_mode=='spherical': 
-        coords[:,0] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.cos(rtp_coords[:,2])
-        coords[:,1] = rtp_coords[:,0] * np.sin(rtp_coords[:,1]) * np.sin(rtp_coords[:,2])
-        coords[:,2] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
-    ## cast cylindrical coordinates to cartesian coordinates
-    elif coord_interp_mode == 'cylindrical':
-        coords[:,0] = rtp_coords[:,0] * np.cos(rtp_coords[:,1])
-        coords[:,1] = rtp_coords[:,0] * np.sin(rtp_coords[:,1])
-        coords[:,2] = rtp_coords[:,2]
-    else: coords = rtp_coords
-
-    return coords
 
 def linear_interpolate(
     x0,x1,
@@ -513,6 +200,188 @@ def linear_interpolate(
     t):
     return x0 + (x1-x0)/(t1-t0)*(t-t0)
 
+def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
+
+    if not polar:
+        coords = np.zeros((time_merged_df.shape[0],3))
+        coords[:,0] = interp_snap.pop('Coordinates_0')
+        coords[:,1] = interp_snap.pop('Coordinates_1')
+        coords[:,2] = interp_snap.pop('Coordinates_2')
+        vels = np.zeros((time_merged_df.shape[0],3))
+        vels[:,0] = interp_snap.pop('Velocities_0')
+        vels[:,1] = interp_snap.pop('Velocities_1')
+        vels[:,2] = interp_snap.pop('Velocities_2')
+        return coords,vels
+    else:
+        ## doesn't actually have z because we've rotated into jhat plane
+        rpz_interp_coords = np.zeros((time_merged_df.shape[0],2))
+        rpz_interp_vels = np.zeros((time_merged_df.shape[0],2))
+
+        first_jhats = np.zeros((time_merged_df.shape[0],3))
+        next_jhats = np.zeros((time_merged_df.shape[0],3))
+
+        ## interpolate r coordinate
+        coord_key = 'polarjhatCoordinates_0'
+        vel_key = 'polarjhatVelocities_0'
+        first_Rs = getattr(time_merged_df,coord_key).values
+        next_Rs = getattr(time_merged_df,coord_key+'_next').values
+        rpz_interp_coords[:,0], rpz_interp_vels[:,0] = interpolate_at_order(
+            first_Rs,
+            next_Rs,
+            getattr(time_merged_df,vel_key).values,
+            getattr(time_merged_df,vel_key+'_next').values,
+            t,t0,t1) ## defaults to order=1
+
+        ## interpolate phi coordinate
+        coord_key = 'polarjhatCoordinates_1'
+        vel_key = 'polarjhatVelocities_1'
+        first_renorm = kms_to_kpcgyr/first_Rs ## convert to radians
+        next_renorm = kms_to_kpcgyr/next_Rs ## convert to radians
+
+        rpz_interp_coords[:,1], rpz_interp_vels[:,1] = interpolate_at_order(
+            getattr(time_merged_df,coord_key).values,
+            getattr(time_merged_df,coord_key+'_next').values,
+            getattr(time_merged_df,vel_key).values*first_renorm, 
+            getattr(time_merged_df,vel_key+'_next').values*next_renorm, 
+            t,t0,t1,
+            order=3,
+            periodic=True,
+            vels_renorm=(1/first_renorm,1/next_renorm))
+
+        ## unpack flattened rpz arrays from pandas dataframe which did our id matching
+        for i in range(3):
+            jhat_key = 'polarjhats_%d'%i
+            first_jhats[:,i] = getattr(time_merged_df,jhat_key).values
+            next_jhats[:,i] = getattr(time_merged_df,jhat_key+'_next').values
+
+        ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
+        ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
+        return convert_rp_to_xyz(
+            interp_snap,
+            rpz_interp_coords,
+            rpz_interp_vels,
+            first_jhats,
+            next_jhats)
+
+def interpolate_at_order(
+    this_first_coords,
+    this_next_coords,
+    this_first_vels,
+    this_next_vels,
+    t,t0,t1,
+    order=1,
+    periodic=False,
+    vels_renorm=None):
+
+    dt = (t-t0)
+    dsnap = (t1-t0)
+    time_frac = dt/dsnap ## 'tau' in Phil's notation
+
+    if this_next_coords is not None:
+        dcoord = this_next_coords - this_first_coords
+        if periodic:
+            ## how far would we guess each particle goes at tfirst?
+            ##  let's guess how many times it actually went around, basically
+            ##  want to determine which of (N)*2pi + dcoord  
+            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
+            ##  closest to approx_radians, (N = approx_radians//2pi)
+            dcoord = guess_windings(dcoord,this_first_vels*dsnap,2*np.pi)
+    else:
+        ## handle extrapolation case
+        dcoord = this_first_vels*dsnap
+        #if periodic:dcoord = np.mod(dcoord,2*np.pi)
+    
+    ## basic linear interpolation
+    if order == 1:
+        interp_coords = this_first_coords + dcoord*time_frac
+    ## correction factor to minimize velocity difference, apparently
+    elif order == 2:
+        x2 = (this_next_vels - this_first_vels)/2 * dsnap
+        x1 = dcoord - x2
+        interp_coords = this_first_coords + x1*time_frac * x2*time_frac*time_frac
+    ## "enables exact matching of x,v but can 'overshoot' " - phil
+    elif order == 3:
+        x2 = 3*dcoord - (2*this_first_vels+this_next_vels)*dsnap
+        x3 = -2*dcoord + (this_first_vels+this_next_vels)*dsnap
+        interp_coords = this_first_coords + this_first_vels*dt + x2*time_frac**2 + x3*time_frac**3
+    else: raise Exception("Bad order, should be 1,2, or 3")
+
+    ## when periodic = True need to convert velocities back to 
+    ##  km/s when we do the interpolation below
+    if vels_renorm is not None:
+        this_first_vels = this_first_vels * vels_renorm[0]
+        this_next_vels = this_next_vels * vels_renorm[1]
+    ## do a simple 1st order interpolation for the velocities
+    ##  while we have them in scope
+    return interp_coords, this_first_vels + (this_next_vels - this_first_vels)*(t-t0)/(t1-t0)
+
+def convert_rp_to_xyz(
+    interp_snap,
+    rpz_interp_coords,
+    rpz_interp_vels,
+    first_jhats,
+    next_jhats):
+
+    ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
+    ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
+    rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
+
+    khats = np.cross(first_jhats,next_jhats) ## vector about which the vector is rotated
+    ohats = np.cross(khats,first_jhats) ## vector pointing from ji toward jf in plane of rotation
+
+    ## make sure all our vectors are normalized properly 
+    first_jhats = first_jhats/np.linalg.norm(first_jhats,axis=1)[:,None]
+    khats = khats/np.linalg.norm(khats,axis=1)[:,None]
+    ohats = ohats/np.linalg.norm(ohats,axis=1)[:,None]
+
+    ## last term is canceled b.c. by definition k . j_i = 0
+    interp_jhats = first_jhats*np.cos(rotangle)[:,None] + ohats*np.sin(rotangle)[:,None] #+ khats*(np.dot(khats,first_jhats))*(1-np.cos(rotangle))
+    interp_jhats/=np.linalg.norm(interp_jhats,axis=1)[:,None]
+
+    xprimehats,yprimehats = get_primehats(interp_jhats) ## x' & y' in x,y,z coordinates
+
+    xyz_interp_vels = np.zeros(rpz_interp_vels.shape)
+    xyz_interp_coords = np.zeros(rpz_interp_coords.shape)
+
+    ## replace rp w/ xy
+    xyz_interp_vels[:,0] +=  rpz_interp_vels[:,0]*np.cos(rpz_interp_coords[:,1]) #  vr * cos(phi)
+    xyz_interp_vels[:,1] +=  rpz_interp_vels[:,0]*np.sin(rpz_interp_coords[:,1]) #  vr * sin(phi)
+    xyz_interp_vels[:,0] += -rpz_interp_vels[:,1]*np.sin(rpz_interp_coords[:,1]) # -vphi * sin(phi)
+    xyz_interp_vels[:,1] +=  rpz_interp_vels[:,1]*np.cos(rpz_interp_coords[:,1]) #  vphi * cos(phi)
+
+    xyz_interp_coords[:,0] = rpz_interp_coords[:,0]*np.cos(rpz_interp_coords[:,1]) # r * cos(phi)
+    xyz_interp_coords[:,1] = rpz_interp_coords[:,0]*np.sin(rpz_interp_coords[:,1]) # r * sin(phi)
+
+    ## unit primehat vectors are in simulation coordinate frame, multiply by 
+    ##  components in jhat frame to get simulation coordinates
+    coords = xyz_interp_coords[:,0,None]*xprimehats + xyz_interp_coords[:,1,None]*yprimehats
+    vels = xyz_interp_vels[:,0,None]*xprimehats + xyz_interp_vels[:,1,None]*yprimehats
+
+    ## check for rotational support, inspired by Phil's routine
+    ## average 1D velocity between snapshots
+    #avg_vels2 = (rpz_first_vels**2+rpz_next_vels**2)/2
+    ## time interpolated 1D velocity 
+    avg_vels2 = rpz_interp_vels**2
+    norms2 = np.sum(avg_vels2,axis=1)
+
+    ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
+    ##  make a mask for those particles which are not rotationally supported and need
+    ##  to be replaced with a simple cartesian interpolation
+    support_thresh = 0.50  ## 0.5
+    non_rot_support = np.logical_or(
+        avg_vels2[:,1]/norms2 < support_thresh,
+        rpz_interp_coords[:,0] > 30)
+
+    for i in range(3): 
+        ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
+        ##  computed in the loop in our calling function (which put them into interp_snap in the first place)
+        these_coords = interp_snap.pop('Coordinates_%d'%i)
+        these_vels = interp_snap.pop('Velocities_%d'%i)
+        if np.any(non_rot_support): 
+            coords[non_rot_support][:,i] = these_coords[non_rot_support]
+            vels[non_rot_support][:,i] = these_vels[non_rot_support]
+    
+    return coords,vels
 
 def guess_windings(dphi,vphi_dt,period=1):
 
