@@ -7,7 +7,7 @@ from ..snapshot_utils import convertSnapToDF
 from ..galaxy.gal_utils import Galaxy
 from ..array_utils import filterDictionary
 from ..math_utils import getThetasTaitBryan, rotateEuler
-from ..math_utils import get_primehats
+from ..math_utils import get_primehats,add_jhat_coords
 from ..physics_utils import get_IMass
 from .. import kms_to_kpcgyr
 
@@ -86,7 +86,20 @@ def index_match_snapshots_with_dataframes(
     prev_df_snap = convertSnapToDF(prev_sub_snap,**pandas_kwargs)
     
     next_df_snap = convertSnapToDF(next_sub_snap,**pandas_kwargs)
-        
+
+    ## replace velocities
+    """
+    avg_vscom = (next_sub_snap['scom'] - prev_sub_snap['scom'])/(t1-t0)
+    for i in range(3):
+        ## add on the center of mass velocity measured from halo file
+        ##  which was already subtracted out when we loaded the data
+        prev_df_snap['Velocities_%d'%i]+=prev_sub_snap['vscom'][i]
+        next_df_snap['Velocities_%d'%i]+=next_sub_snap['vscom'][i]
+
+        ## subtract out the average velocity (i.e. change in centering)
+        prev_df_snap['Velocities_%d'%i]-=avg_vscom[i]
+        next_df_snap['Velocities_%d'%i]-=avg_vscom[i]
+    """
     ## remove particles that do not exist in the previous snapshot, 
     ##  difficult to determine which particle they split from
     next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
@@ -144,23 +157,28 @@ def index_match_snapshots_with_dataframes(
 
     ## remove particles that do not exist in the next snapshot, 
     ##  difficult to tell if they turned into stars or were merged. 
-    ## NOTE: this was breaking when we were calculating spherical coords--
-    ##  like half the rows were being thrown out??
-    #prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
+    prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
     ## TODO: should extrapolate missing particles in each snapshot
 
-    ## add jhat rotation angle
+    ## have to add all the angular momentum stuff
     if polar:
+        ## compute coordinates w.r.t. angular momentum plane of each particle
+        for suffix in ['','_next']: add_polar_jhat_coords(prev_next_merged_df_snap,suffix)
+
+        ## add jhat rotation angle, compute dot product and take arccos of it
         rotation_angle = 0
         for i in range(3):
-            rotation_angle += prev_next_merged_df_snap['polarjhats_%d'%i]*prev_next_merged_df_snap['polarjhats_%d_next'%i]
+            rotation_angle += (prev_next_merged_df_snap['polarjhats_%d'%i] *
+                prev_next_merged_df_snap['polarjhats_%d_next'%i])
         rotation_angle = np.arccos(rotation_angle)
 
-        ## doing it this way will automatically add 
+        ## doing it this way (setting 0 @ t = t0 and rotation angle at t = t1) 
+        ##  will automatically add 
         ##  the interpolated jhat_rotangle to the interp_snap in make_interpolated_snap
         prev_next_merged_df_snap['jhat_rotangle_next'] = rotation_angle
         prev_next_merged_df_snap['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
 
+    ## store these in the dataframe so we can be sure we have the right times everywhere
     prev_next_merged_df_snap.first_time = t0
     prev_next_merged_df_snap.next_time = t1
 
@@ -400,3 +418,20 @@ def guess_windings(dphi,vphi_dt,period=1):
     adjust_windings-=1
 
     return (base_windings+adjust_windings)*period+dphi
+
+def add_polar_jhat_coords(merged_df,suffix):
+    coords = np.zeros((merged_df.shape[0],3))
+    vels = np.zeros((merged_df.shape[0],3))
+    for i in range(3):
+        coords[:,i] = merged_df[f'Coordinates_{i:d}{suffix}']
+        vels[:,i] = merged_df[f'Velocities_{i:d}{suffix}']
+
+
+
+    jhat_coords,jhat_vels,jhats = add_jhat_coords(coords=coords,vels=vels)
+    
+    for i in range(3):
+        merged_df[f'polarjhats_{i:d}{suffix}'] = jhats[:,i]
+        if i > 1: continue ## below are only 2d
+        merged_df[f'polarjhatCoordinates_{i:d}{suffix}'] = jhat_coords[:,i]
+        merged_df[f'polarjhatVelocities_{i:d}{suffix}'] = jhat_vels[:,i]

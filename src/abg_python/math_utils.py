@@ -1,4 +1,5 @@
 import numpy as np 
+import warnings
 
 #math functions (trig and linear algebra...)
 def vectorsToRAAndDec(vectors):
@@ -177,14 +178,16 @@ def get_cylindrical_coordinates(coords):
 
     return rs,phis,coords[:,2]
 
-def add_jhat_coords(snapdict):
+def add_jhat_coords(snapdict=None,coords=None,vels=None):
     """adds coordinates w.r.t. plane defined by jhat, z = vz = 0 in this plane by definition"""
 
-    coords = snapdict['Coordinates']
-    vels = snapdict['Velocities']
-
-    if 'AngularMomentum' in snapdict: Ls = snapdict['AngularMomentum']
-    else: Ls = np.cross(coords,vels)
+    if snapdict is not None:
+        coords = snapdict['Coordinates']
+        vels = snapdict['Velocities']
+        if 'AngularMomentum' in snapdict: Ls = snapdict['AngularMomentum']
+        else: Ls = np.cross(coords,vels)
+    elif (coords is not None) and (vels is not None): Ls = np.cross(coords,vels)
+    else: raise ValueError("Either pass in snapdict or coords+vels")
 
     ## can ignore mass b.c. want unit vector
     jhats = Ls/np.linalg.norm(Ls,axis=1)[:,None]
@@ -196,13 +199,23 @@ def add_jhat_coords(snapdict):
 
     prime_coords[:,0] = np.sum(coords*xprimehats,axis=1) ## cartesian
     prime_coords[:,1] = np.sum(coords*yprimehats,axis=1) ## cartesian
-    prime_coords[:,2] = np.sum(coords*jhats,axis=1) ## cartesian; 0 by definition
+    #prime_coords[:,2] = np.sum(coords*jhats,axis=1) ## cartesian; 0 by definition
 
     prime_rs,rs = np.sqrt(np.sum(prime_coords**2,axis=1)) , np.sqrt(np.sum(coords**2,axis=1))
-    if not np.all(np.isclose(prime_rs,rs)):
-        print(prime_rs)
-        print(rs)
-        raise ValueError("incorrect jhat decomposition")
+    
+    
+    check = np.isclose(prime_rs,rs)
+    if not np.all(check):
+        if np.sum(check)/check.size > 0.9:
+            warnings.warn(
+                "Some entries were not converted correctly, maybe nans? "+
+                str(np.sum(check)/check.size) + r"% succeeded.")
+        else:
+            print(prime_rs)
+            print(rs)
+            raise ValueError(
+                "Substantial failure in jhat coordinate decomposition. " + 
+                str(np.sum(check)/check.size) + r"% succeeded.")
 
     ## don't need to do this b.c. by definition jhat = r x v; np.dot(coords,jhats) = 0
     #prime_coords[:,2] = np.dot(coords,jhats)
@@ -218,18 +231,29 @@ def add_jhat_coords(snapdict):
     prime_vels[:,0] = vRs
     prime_vels[:,1] = vphis
     prime_speeds,speeds = np.sqrt(np.sum(prime_vels**2,axis=1)) , np.sqrt(np.sum(vels**2,axis=1))
-    if not np.all(np.isclose(prime_speeds,speeds)):
-        print(prime_speeds)
-        print(speeds)
-        raise ValueError("incorrect jhat decomposition")
+    check = np.isclose(prime_speeds,speeds)
+    if not np.all(check):
+        if np.sum(check)/check.size > 0.9:
+            warnings.warn(
+                "Some entries were not converted correctly, maybe nans? "+
+                str(np.sum(check)/check.size) + r"% succeeded.")
+        else:
+            print(prime_speeds)
+            print(speeds)
+            raise ValueError(
+                "Subtantial failure in jhat velocity decomposition. " + 
+                str(np.sum(check)/check.size) + r"% succeeded.")
 
     Rs,phis,_ = get_cylindrical_coordinates(prime_coords)
     prime_coords[:,0] = Rs
     prime_coords[:,1] = phis
 
-    snapdict['polarjhatCoordinates'] = prime_coords[:,:-1] ## only 2d
-    snapdict['polarjhatVelocities'] = prime_vels[:,:-1]## only 2d
-    snapdict['polarjhats'] = jhats
+    if snapdict is not None:
+        snapdict['polarjhatCoordinates'] = prime_coords[:,:-1] ## only 2d
+        snapdict['polarjhatVelocities'] = prime_vels[:,:-1]## only 2d
+        snapdict['polarjhats'] = jhats
+
+    return prime_coords[:,:-1],prime_vels[:,:-1],jhats
 
 #@jit(nopython=True)
 def get_primehats(jhats):
