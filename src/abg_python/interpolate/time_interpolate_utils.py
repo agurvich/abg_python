@@ -149,7 +149,7 @@ def index_match_snapshots_with_dataframes(
 
             for key in next_young_star_df.keys():
                 if key == 'AgeGyr': continue
-                prev_young_star_snap[key][next_stars_with_parents_mask] = gas_parent_df.loc[next_stars_with_parents_mask,key]
+                prev_young_star_snap[key][next_stars_with_parents_mask] = gas_parent_df[key]
             
             del gas_parent_df, extra_df
 
