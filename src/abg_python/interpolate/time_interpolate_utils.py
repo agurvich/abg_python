@@ -100,9 +100,6 @@ def index_match_snapshots_with_dataframes(
         prev_df_snap['Velocities_%d'%i]-=avg_vscom[i]
         next_df_snap['Velocities_%d'%i]-=avg_vscom[i]
     """
-    ## remove particles that do not exist in the previous snapshot, 
-    ##  difficult to determine which particle they split from
-    next_df_snap_reduced = next_df_snap.reindex(prev_df_snap.index,copy=False)
 
     ## add back stars that formed between snapshots
     if 'AgeGyr' in keys_to_extract and 'AgeGyr' in next_sub_snap:
@@ -119,6 +116,8 @@ def index_match_snapshots_with_dataframes(
         if extra_df is not None:
             prev_young_star_snap['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
             next_stars_with_parents_mask = next_young_star_df.index.isin(extra_df.index)
+            #print('% with a gas particle parent:',np.sum(next_stars_with_parents_mask)/next_stars_with_parents_mask.size)
+            #import pdb; pdb.set_trace()
             next_young_star_df = next_young_star_df[next_stars_with_parents_mask]
             gas_parent_mask = extra_df.index.isin(next_young_star_df.index)
 
@@ -150,15 +149,46 @@ def index_match_snapshots_with_dataframes(
 
     ## merge rows of dataframes based on particle ID
     prev_next_merged_df_snap = prev_df_snap.join(
-        next_df_snap_reduced,
-        rsuffix='_next')
+        next_df_snap,
+        rsuffix='_next',
+        how='outer')
     prev_next_merged_df_snap = prev_next_merged_df_snap.loc[
         ~prev_next_merged_df_snap.index.duplicated(keep='first')]
 
-    ## remove particles that do not exist in the next snapshot, 
-    ##  difficult to tell if they turned into stars or were merged. 
+
+    ## appears in this snapshot but not the next
+    prev_but_not_next = prev_next_merged_df_snap.isna()['Masses_next']
+
+    ## extrapolate the coordinates forward 
+    for i in range(3):
+        prev_next_merged_df_snap[prev_but_not_next][f'Coordinates_{i:d}_next'] =(
+            prev_next_merged_df_snap[prev_but_not_next][f'Coordinates_{i:d}'] + 
+            prev_next_merged_df_snap[prev_but_not_next][f'Velocities_{i:d}']*(t1-t0)*kms_to_kpcgyr)
+
+    ## carry field values forward as a constant
+    for key in prev_next_merged_df_snap.keys():
+        if '_next' in key: continue
+        if 'Coordinates' in key: continue
+        prev_next_merged_df_snap[prev_but_not_next][key+'_next'] = (prev_next_merged_df_snap[prev_but_not_next][key])
+
+    ## appears in next snapshot but not this one
+    next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
+
+    ## extrapolate the coordinates backward
+    for i in range(3):
+        prev_next_merged_df_snap[next_but_not_prev][f'Coordinates_{i:d}'] =(
+            prev_next_merged_df_snap[next_but_not_prev][f'Coordinates_{i:d}_next'] + 
+            prev_next_merged_df_snap[next_but_not_prev][f'Velocities_{i:d}_next']*(t0-t1)*kms_to_kpcgyr)
+
+    ## carry field values backward as a constant
+    for key in prev_next_merged_df_snap.keys():
+        if '_next' in key: continue
+        if 'Coordinates' in key: continue
+        prev_next_merged_df_snap[next_but_not_prev][key] = (prev_next_merged_df_snap[next_but_not_prev][key+'_next'])
+
+    ## remove any nans; there shouldn't be any unless someone passed in spooky
+    ##  field values
     prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
-    ## TODO: should extrapolate missing particles in each snapshot
 
     ## have to add all the angular momentum stuff
     if polar:
@@ -435,3 +465,42 @@ def add_polar_jhat_coords(merged_df,suffix):
         if i > 1: continue ## below are only 2d
         merged_df[f'polarjhatCoordinates_{i:d}{suffix}'] = jhat_coords[:,i]
         merged_df[f'polarjhatVelocities_{i:d}{suffix}'] = jhat_vels[:,i]
+
+"""
+def add_polar_jhat_coords(merged_df,take_avg_L=False):
+
+    ## initialize particle data buffers
+    coords = np.zeros((merged_df.shape[0],3))
+    vels = np.zeros((merged_df.shape[0],3))
+
+    if take_avg_L:
+        avg_Ls = 0 
+        ## calculate the average angular momentum vector between the two snapshots
+        for suffix in ['','_next']:
+            for i in range(3):
+                coords[:,i] = merged_df[f'Coordinates_{i:d}{suffix}']
+                vels[:,i] = merged_df[f'Velocities_{i:d}{suffix}']
+            avg_Ls += np.cross(coords,vels)
+        avg_Ls/=2
+    else: avg_Ls = None
+
+    ## calculate the coordinates in the relevant frame
+    for suffix in ['','_next']:
+        ## fill buffer with pandas dataframe values
+        for i in range(3):
+            coords[:,i] = merged_df[f'Coordinates_{i:d}{suffix}']
+            vels[:,i] = merged_df[f'Velocities_{i:d}{suffix}']
+
+        jhat_coords,jhat_vels,jhats = add_jhat_coords(
+            dict(
+                AngularMomentum=avg_Ls,
+                Coordinates=coords,
+                Velocities=vels))
+    
+        ## storer the result in the pandas dataframe
+        for i in range(3):
+            merged_df[f'polarjhats_{i:d}{suffix}'] = jhats[:,i]
+            if i > 1 and not take_avg_L: continue ## below are only 2d
+            merged_df[f'polarjhatCoordinates_{i:d}{suffix}'] = jhat_coords[:,i]
+            merged_df[f'polarjhatVelocities_{i:d}{suffix}'] = jhat_vels[:,i]
+"""
