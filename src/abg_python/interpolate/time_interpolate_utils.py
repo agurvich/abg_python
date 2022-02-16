@@ -278,8 +278,8 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         return coords,vels
     else:
         ## doesn't actually have z because we've rotated into jhat plane
-        rpz_interp_coords = np.zeros((time_merged_df.shape[0],2))
-        rpz_interp_vels = np.zeros((time_merged_df.shape[0],2))
+        rp_interp_coords = np.zeros((time_merged_df.shape[0],2))
+        rp_interp_vels = np.zeros((time_merged_df.shape[0],2))
 
         first_jhats = np.zeros((time_merged_df.shape[0],3))
         next_jhats = np.zeros((time_merged_df.shape[0],3))
@@ -292,7 +292,7 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         first_vRs = getattr(time_merged_df,vel_key).values
         next_vRs = getattr(time_merged_df,vel_key+'_next').values
 
-        rpz_interp_coords[:,0], rpz_interp_vels[:,0] = interpolate_at_order(
+        rp_interp_coords[:,0], rp_interp_vels[:,0] = interpolate_at_order(
             first_Rs,
             next_Rs,
             first_vRs,
@@ -302,20 +302,17 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         ## interpolate phi coordinate
         coord_key = 'polarjhatCoordinates_1'
         vel_key = 'polarjhatVelocities_1'
-        first_renorm = kms_to_kpcgyr/first_Rs ## convert to radians
-        next_renorm = kms_to_kpcgyr/next_Rs ## convert to radians
         first_vphis = getattr(time_merged_df,vel_key).values 
         next_vphis = getattr(time_merged_df,vel_key+'_next').values 
 
-        rpz_interp_coords[:,1], rpz_interp_vels[:,1] = interpolate_at_order(
+        rp_interp_coords[:,1], rp_interp_vels[:,1] = interpolate_at_order(
             getattr(time_merged_df,coord_key).values,
             getattr(time_merged_df,coord_key+'_next').values,
-            first_vphis*first_renorm,
-            next_vphis*next_renorm,
+            first_vphis, ## radians / gyr
+            next_vphis, ## radians / gyr
             t,t0,t1,
             order=3,
-            periodic=True,
-            vels_renorm=(1/first_renorm,1/next_renorm))
+            periodic=True)
 
         ## unpack flattened rpz arrays from pandas dataframe which did our id matching
         for i in range(3):
@@ -323,14 +320,14 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
             first_jhats[:,i] = getattr(time_merged_df,jhat_key).values
             next_jhats[:,i] = getattr(time_merged_df,jhat_key+'_next').values
 
-        ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
+        ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
         ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
         ## vphi2/(vr2+vphi2) = 1/(vr2/vphi2 + 1)
-        vrot2_frac = 1 / (1 + (first_vRs**2 + next_vRs**2)/(first_vphis**2 + next_vphis**2))
-        return convert_rp_to_xyz(
+        vrot2_frac = 1 / (1 + (first_vRs**2 + next_vRs**2)/((first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2))
+        return convert_rp_to_xy(
             interp_snap,
-            rpz_interp_coords,
-            rpz_interp_vels,
+            rp_interp_coords,
+            rp_interp_vels,
             first_jhats,
             next_jhats,
             vrot2_frac=vrot2_frac)
@@ -342,8 +339,7 @@ def interpolate_at_order(
     this_next_vels,
     t,t0,t1,
     order=1,
-    periodic=False,
-    vels_renorm=None):
+    periodic=False):
 
     dt = (t-t0)
     dsnap = (t1-t0)
@@ -357,7 +353,7 @@ def interpolate_at_order(
             ##  want to determine which of (N)*2pi + dcoord  
             ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
             ##  closest to approx_radians, (N = approx_radians//2pi)
-            dcoord = guess_windings(dcoord,this_first_vels*dsnap,2*np.pi)
+            dcoord = guess_windings(dcoord,(this_first_vels+this_next_vels)/2*dsnap,2*np.pi)
     else:
         ## handle extrapolation case
         dcoord = this_first_vels*dsnap
@@ -378,24 +374,19 @@ def interpolate_at_order(
         interp_coords = this_first_coords + this_first_vels*dt + x2*time_frac**2 + x3*time_frac**3
     else: raise Exception("Bad order, should be 1,2, or 3")
 
-    ## when periodic = True need to convert velocities back to 
-    ##  km/s when we do the interpolation below
-    if vels_renorm is not None:
-        this_first_vels = this_first_vels * vels_renorm[0]
-        this_next_vels = this_next_vels * vels_renorm[1]
     ## do a simple 1st order interpolation for the velocities
     ##  while we have them in scope
     return interp_coords, this_first_vels + (this_next_vels - this_first_vels)*(t-t0)/(t1-t0)
 
-def convert_rp_to_xyz(
+def convert_rp_to_xy(
     interp_snap,
-    rpz_interp_coords,
-    rpz_interp_vels,
+    rp_interp_coords,
+    rp_interp_vels,
     first_jhats,
     next_jhats,
     vrot2_frac=None):
 
-    ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
+    ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
     rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
 
@@ -415,29 +406,29 @@ def convert_rp_to_xyz(
 
     xprimehats,yprimehats = get_primehats(interp_jhats) ## x' & y' in x,y,z coordinates
 
-    xyz_interp_vels = np.zeros(rpz_interp_vels.shape)
-    xyz_interp_coords = np.zeros(rpz_interp_coords.shape)
+    xy_interp_vels = np.zeros(rp_interp_vels.shape)
+    xy_interp_coords = np.zeros(rp_interp_coords.shape)
 
     ## replace rp w/ xy
-    xyz_interp_vels[:,0] +=  rpz_interp_vels[:,0]*np.cos(rpz_interp_coords[:,1]) #  vr * cos(phi)
-    xyz_interp_vels[:,1] +=  rpz_interp_vels[:,0]*np.sin(rpz_interp_coords[:,1]) #  vr * sin(phi)
-    xyz_interp_vels[:,0] += -rpz_interp_vels[:,1]*np.sin(rpz_interp_coords[:,1]) # -vphi * sin(phi)
-    xyz_interp_vels[:,1] +=  rpz_interp_vels[:,1]*np.cos(rpz_interp_coords[:,1]) #  vphi * cos(phi)
+    xy_interp_vels[:,0] +=  rp_interp_vels[:,0]*np.cos(rp_interp_coords[:,1]) #  vr * cos(phi)
+    xy_interp_vels[:,1] +=  rp_interp_vels[:,0]*np.sin(rp_interp_coords[:,1]) #  vr * sin(phi)
+    xy_interp_vels[:,0] += -rp_interp_vels[:,1]*np.sin(rp_interp_coords[:,1]) # -vphi * sin(phi)
+    xy_interp_vels[:,1] +=  rp_interp_vels[:,1]*np.cos(rp_interp_coords[:,1]) #  vphi * cos(phi)
 
-    xyz_interp_coords[:,0] = rpz_interp_coords[:,0]*np.cos(rpz_interp_coords[:,1]) # r * cos(phi)
-    xyz_interp_coords[:,1] = rpz_interp_coords[:,0]*np.sin(rpz_interp_coords[:,1]) # r * sin(phi)
+    xy_interp_coords[:,0] = rp_interp_coords[:,0]*np.cos(rp_interp_coords[:,1]) # r * cos(phi)
+    xy_interp_coords[:,1] = rp_interp_coords[:,0]*np.sin(rp_interp_coords[:,1]) # r * sin(phi)
 
     ## unit primehat vectors are in simulation coordinate frame, multiply by 
     ##  components in jhat frame to get simulation coordinates
-    coords = xyz_interp_coords[:,0,None]*xprimehats + xyz_interp_coords[:,1,None]*yprimehats
-    vels = xyz_interp_vels[:,0,None]*xprimehats + xyz_interp_vels[:,1,None]*yprimehats
+    coords = xy_interp_coords[:,0,None]*xprimehats + xy_interp_coords[:,1,None]*yprimehats
+    vels = xy_interp_vels[:,0,None]*xprimehats + xy_interp_vels[:,1,None]*yprimehats
 
     ## check for rotational support, inspired by Phil's routine
     ## average 1D velocity between snapshots
-    #avg_vels2 = (rpz_first_vels**2+rpz_next_vels**2)/2
+    #avg_vels2 = (rp_first_vels**2+rp_next_vels**2)/2
     ## time interpolated 1D velocity 
     if vrot2_frac is None: 
-        avg_vels2 = rpz_interp_vels**2
+        avg_vels2 = rp_interp_vels**2
         norms2 = np.sum(avg_vels2,axis=1)
         vrot2_frac = avg_vels2[:,1]/norms2
 
@@ -447,7 +438,7 @@ def convert_rp_to_xyz(
     support_thresh = 0.50  ## 0.5
     non_rot_support = np.logical_or(
         vrot2_frac < support_thresh,
-        rpz_interp_coords[:,0] > 30)
+        rp_interp_coords[:,0] > 30)
 
     for i in range(3): 
         ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
