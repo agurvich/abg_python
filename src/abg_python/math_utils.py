@@ -184,7 +184,7 @@ def add_jhat_coords(snapdict=None,coords=None,vels=None):
     if snapdict is not None:
         coords = snapdict['Coordinates']
         vels = snapdict['Velocities']
-        if 'AngularMomentum' in snapdict: Ls = snapdict['AngularMomentum']
+        if 'AngularMomentum' in snapdict and snapdict['AngularMomentum'] is not None: Ls = snapdict['AngularMomentum']
         else: Ls = np.cross(coords,vels)
     elif (coords is not None) and (vels is not None): Ls = np.cross(coords,vels)
     else: raise ValueError("Either pass in snapdict or coords+vels")
@@ -192,68 +192,37 @@ def add_jhat_coords(snapdict=None,coords=None,vels=None):
     ## can ignore mass b.c. want unit vector
     jhats = Ls/np.linalg.norm(Ls,axis=1)[:,None]
 
+    ## project coordinates onto jhat plane
+    polar_coords = np.zeros((coords.shape[0],3))
+    polar_vels = np.zeros((vels.shape[0],3))
+
+    ## define phi=0 as arbitrary but fixed rotation of jhat, yhat is cross to
+    ##  ensure right hand rule. 'primehat' because it's in the jhat frame
     xprimehats,yprimehats = get_primehats(jhats)
 
-    ## project coordinates onto jhat plane
-    prime_coords = np.zeros((coords.shape[0],3))
+    ## find polar unit vectors
+    phihats = np.cross(jhats,coords)
+    phihats /= np.linalg.norm(phihats,axis=1)[:,None]
+    r3dhats = coords/np.linalg.norm(coords,axis=1)[:,None]
 
-    prime_coords[:,0] = np.sum(coords*xprimehats,axis=1) ## cartesian
-    prime_coords[:,1] = np.sum(coords*yprimehats,axis=1) ## cartesian
-    #prime_coords[:,2] = np.sum(coords*jhats,axis=1) ## cartesian; 0 by definition
+    ## position in r3d
+    polar_coords[:,0] = np.linalg.norm(coords,axis=1)
+    ## velocity in r3d
+    polar_vels[:,0] = np.sum(vels*r3dhats,axis=1)
 
-    prime_rs,rs = np.sqrt(np.sum(prime_coords**2,axis=1)) , np.sqrt(np.sum(coords**2,axis=1))
-    
-    
-    check = np.isclose(prime_rs,rs)
-    if not np.all(check):
-        if np.sum(check)/check.size > 0.9:
-            warnings.warn(
-                "Some entries were not converted correctly, maybe nans? "+
-                str(np.sum(check)/check.size) + r"% succeeded.")
-        else:
-            print(prime_rs)
-            print(rs)
-            raise ValueError(
-                "Substantial failure in jhat coordinate decomposition. " + 
-                str(np.sum(check)/check.size) + r"% succeeded.")
-
-    ## don't need to do this b.c. by definition jhat = r x v; np.dot(coords,jhats) = 0
-    #prime_coords[:,2] = np.dot(coords,jhats)
-
-    ## now do velocities
-    prime_vels = np.zeros((vels.shape[0],3))
-    prime_vels[:,0] = np.sum(vels*xprimehats,axis=1) ## cartesian
-    prime_vels[:,1] = np.sum(vels*yprimehats,axis=1) ## cartesian
-    ## don't need to do this b.c. by definition jhat = r x v; np.dot(vels,jhats) = 0
-    #prime_vels[:,2] = np.dot(vels,jhats)
-
-    vRs,vphis,_= get_cylindrical_velocities(prime_vels,prime_coords)
-    prime_vels[:,0] = vRs
-    prime_vels[:,1] = vphis
-    prime_speeds,speeds = np.sqrt(np.sum(prime_vels**2,axis=1)) , np.sqrt(np.sum(vels**2,axis=1))
-    check = np.isclose(prime_speeds,speeds)
-    if not np.all(check):
-        if np.sum(check)/check.size > 0.9:
-            warnings.warn(
-                "Some entries were not converted correctly, maybe nans? "+
-                str(np.sum(check)/check.size) + r"% succeeded.")
-        else:
-            print(prime_speeds)
-            print(speeds)
-            raise ValueError(
-                "Subtantial failure in jhat velocity decomposition. " + 
-                str(np.sum(check)/check.size) + r"% succeeded.")
-
-    Rs,phis,_ = get_cylindrical_coordinates(prime_coords)
-    prime_coords[:,0] = Rs
-    prime_coords[:,1] = phis
+    ## position in phi
+    phis = np.arctan2(np.sum(coords*yprimehats,axis=1),np.sum(coords*xprimehats,axis=1))
+    phis[phis<0] += 2*np.pi
+    polar_coords[:,1] = phis
+    ## velocity in phi
+    polar_vels[:,1] = np.sum(vels*phihats,axis=1)
 
     if snapdict is not None:
-        snapdict['polarjhatCoordinates'] = prime_coords[:,:-1] ## only 2d
-        snapdict['polarjhatVelocities'] = prime_vels[:,:-1]## only 2d
+        snapdict['polarjhatCoordinates'] = polar_coords[:,:-1] ## only 2d
+        snapdict['polarjhatVelocities'] = polar_vels[:,:-1]## only 2d
         snapdict['polarjhats'] = jhats
 
-    return prime_coords[:,:-1],prime_vels[:,:-1],jhats
+    return polar_coords[:,:-1],polar_vels[:,:-1],jhats
 
 #@jit(nopython=True)
 def get_primehats(jhats):
