@@ -216,7 +216,7 @@ def index_match_snapshots_with_dataframes(
         for i in range(3):
             rotation_angle += (prev_next_merged_df_snap['polarjhats_%d'%i] *
                 prev_next_merged_df_snap['polarjhats_%d_next'%i])
-        rotation_angle = np.arccos(rotation_angle)
+        rotation_angle = np.arccos(np.clip(rotation_angle,-1,1))
 
         ## doing it this way (setting 0 @ t = t0 and rotation angle at t = t1) 
         ##  will automatically add 
@@ -289,11 +289,14 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         vel_key = 'polarjhatVelocities_0'
         first_Rs = getattr(time_merged_df,coord_key).values
         next_Rs = getattr(time_merged_df,coord_key+'_next').values
+        first_vRs = getattr(time_merged_df,vel_key).values
+        next_vRs = getattr(time_merged_df,vel_key+'_next').values
+
         rpz_interp_coords[:,0], rpz_interp_vels[:,0] = interpolate_at_order(
             first_Rs,
             next_Rs,
-            getattr(time_merged_df,vel_key).values,
-            getattr(time_merged_df,vel_key+'_next').values,
+            first_vRs,
+            next_vRs,
             t,t0,t1) ## defaults to order=1
 
         ## interpolate phi coordinate
@@ -301,12 +304,14 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         vel_key = 'polarjhatVelocities_1'
         first_renorm = kms_to_kpcgyr/first_Rs ## convert to radians
         next_renorm = kms_to_kpcgyr/next_Rs ## convert to radians
+        first_vphis = getattr(time_merged_df,vel_key).values 
+        next_vphis = getattr(time_merged_df,vel_key+'_next').values 
 
         rpz_interp_coords[:,1], rpz_interp_vels[:,1] = interpolate_at_order(
             getattr(time_merged_df,coord_key).values,
             getattr(time_merged_df,coord_key+'_next').values,
-            getattr(time_merged_df,vel_key).values*first_renorm, 
-            getattr(time_merged_df,vel_key+'_next').values*next_renorm, 
+            first_vphis*first_renorm,
+            next_vphis*next_renorm,
             t,t0,t1,
             order=3,
             periodic=True,
@@ -325,7 +330,8 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
             rpz_interp_coords,
             rpz_interp_vels,
             first_jhats,
-            next_jhats)
+            next_jhats,
+            avg_vels2 = (first_vRs**2+first_vphis**2+next_vRs**2+next_vphis**2)/2)
 
 def interpolate_at_order(
     this_first_coords,
@@ -384,7 +390,8 @@ def convert_rp_to_xyz(
     rpz_interp_coords,
     rpz_interp_vels,
     first_jhats,
-    next_jhats):
+    next_jhats,
+    avg_vels2=None):
 
     ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
@@ -427,7 +434,7 @@ def convert_rp_to_xyz(
     ## average 1D velocity between snapshots
     #avg_vels2 = (rpz_first_vels**2+rpz_next_vels**2)/2
     ## time interpolated 1D velocity 
-    avg_vels2 = rpz_interp_vels**2
+    if avg_vels2 is None: avg_vels2 = rpz_interp_vels**2
     norms2 = np.sum(avg_vels2,axis=1)
 
     ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
