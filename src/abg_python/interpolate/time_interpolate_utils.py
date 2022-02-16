@@ -390,13 +390,15 @@ def convert_rp_to_xyz(
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
     rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
 
-    khats = np.cross(first_jhats,next_jhats) ## vector about which the vector is rotated
+    khats = np.cross(first_jhats,next_jhats) ## vector about which jhat is rotated
     ohats = np.cross(khats,first_jhats) ## vector pointing from ji toward jf in plane of rotation
 
     ## make sure all our vectors are normalized properly 
     first_jhats = first_jhats/np.linalg.norm(first_jhats,axis=1)[:,None]
-    khats = khats/np.linalg.norm(khats,axis=1)[:,None]
-    ohats = ohats/np.linalg.norm(ohats,axis=1)[:,None]
+    knorms = np.linalg.norm(khats,axis=1)
+    khats[knorms>0] /= knorms[knorms>0,None]
+    onorms = np.linalg.norm(ohats,axis=1)
+    ohats[onorms>0] /= onorms[onorms>0,None]
 
     ## last term is canceled b.c. by definition k . j_i = 0
     interp_jhats = first_jhats*np.cos(rotangle)[:,None] + ohats*np.sin(rotangle)[:,None] #+ khats*(np.dot(khats,first_jhats))*(1-np.cos(rotangle))
