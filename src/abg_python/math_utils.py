@@ -1,6 +1,8 @@
 import numpy as np 
 import warnings
 
+from .constants import kms_to_kpcgyr
+
 #math functions (trig and linear algebra...)
 def vectorsToRAAndDec(vectors):
     xs,ys,zs = np.transpose(vectors)
@@ -210,19 +212,54 @@ def add_jhat_coords(snapdict=None,coords=None,vels=None):
     ## velocity in r3d
     polar_vels[:,0] = np.sum(vels*r3dhats,axis=1)
 
+    xprimes = np.sum(coords*xprimehats,axis=1)
+    yprimes = np.sum(coords*yprimehats,axis=1)
+    zprimes = np.sum(coords*jhats,axis=1)
+
     ## position in phi
-    phis = np.arctan2(np.sum(coords*yprimehats,axis=1),np.sum(coords*xprimehats,axis=1))
+    phis = np.arctan2(yprimes,xprimes)
     phis[phis<0] += 2*np.pi
     polar_coords[:,1] = phis
     ## velocity in phi
-    polar_vels[:,1] = np.sum(vels*phihats,axis=1)
+    polar_vels[:,1] = np.sum(vels*phihats,axis=1)/polar_coords[:,0] ## radians/s
+
+    ## position in theta
+    ##  NOTE: this is pi/2 by defn unless Ls has been passed in as an avg
+    ## reciprocal from what you might expect, z/R, because measured from the pole
+    ##  num > 0 & denom -inf -> +inf => np.arctan2: 0 -> pi so we're good
+    polar_coords[:,2] = np.arctan2(np.sqrt(xprimes**2+yprimes**2),zprimes)
+    ## velocity in theta dir
+    ##  NOTE: this is 0 by defn unless Ls has been passed in as an avg
+    polar_vels[:,2] = np.sum(vels*jhats,axis=1)/polar_coords[:,0] ## radians/s
+
+    polar_vels*=kms_to_kpcgyr ## r: kpc/gyr phi: 1/gyr theta: 1/gyr
+
+    no_zvels = not np.all(np.isclose(polar_vels[:,-1],0)) 
+    no_zcoords = not np.all(np.isclose(polar_coords[:,-1],np.pi/2))
+
+    ## either the z component of velocity and coords is 0 by defn
+    ##  or some particles have z velocities and coords
+    if not ((no_zvels and no_zcoords) or (not no_zvels and not no_zcoords)):
+        raise ArithmeticError(
+            f"Something went wrong, no_zvels:{no_zvels} and no_zcoords:{no_zcoords} invalid")
+    
+    ## this doesn't work because coords and velocities are in radians
+    """
+    for orig_arr,polar_arr in zip([coords,vels],[polar_coords,polar_vels]):
+        matches = np.isclose(
+            np.linalg.norm(orig_arr,axis=1),
+            np.linalg.norm(polar_arr,axis=1))
+        if not np.all(matches):
+            percent = (1-matches.sum()/matches.size)*100
+            raise ArithmeticError(f"{percent:.2f}% of magnitudes were not conserved in this rotation.")
+    """
 
     if snapdict is not None:
-        snapdict['polarjhatCoordinates'] = polar_coords[:,:-1] ## only 2d
-        snapdict['polarjhatVelocities'] = polar_vels[:,:-1]## only 2d
+        snapdict['polarjhatCoordinates'] = polar_coords
+        snapdict['polarjhatVelocities'] = polar_vels
         snapdict['polarjhats'] = jhats
 
-    return polar_coords[:,:-1],polar_vels[:,:-1],jhats
+    return polar_coords,polar_vels,jhats
 
 #@jit(nopython=True)
 def get_primehats(jhats):
