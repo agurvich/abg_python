@@ -325,13 +325,15 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
 
         ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
         ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
+        ## vphi2/(vr2+vphi2) = 1/(vr2/vphi2 + 1)
+        vrot2_frac = 1 / (1 + (first_vRs**2 + next_vRs**2)/(first_vphis**2 + next_vphis**2))
         return convert_rp_to_xyz(
             interp_snap,
             rpz_interp_coords,
             rpz_interp_vels,
             first_jhats,
             next_jhats,
-            avg_vels2 = (first_vRs**2+first_vphis**2+next_vRs**2+next_vphis**2)/2)
+            vrot2_frac=vrot2_frac)
 
 def interpolate_at_order(
     this_first_coords,
@@ -391,7 +393,7 @@ def convert_rp_to_xyz(
     rpz_interp_vels,
     first_jhats,
     next_jhats,
-    avg_vels2=None):
+    vrot2_frac=None):
 
     ## need to convert rpz_interp_coords and rpz_interp_vels from r' p' to x,y,z
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
@@ -434,15 +436,17 @@ def convert_rp_to_xyz(
     ## average 1D velocity between snapshots
     #avg_vels2 = (rpz_first_vels**2+rpz_next_vels**2)/2
     ## time interpolated 1D velocity 
-    if avg_vels2 is None: avg_vels2 = rpz_interp_vels**2
-    norms2 = np.sum(avg_vels2,axis=1)
+    if vrot2_frac is None: 
+        avg_vels2 = rpz_interp_vels**2
+        norms2 = np.sum(avg_vels2,axis=1)
+        vrot2_frac = avg_vels2[:,1]/norms2
 
     ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
     ##  make a mask for those particles which are not rotationally supported and need
     ##  to be replaced with a simple cartesian interpolation
     support_thresh = 0.50  ## 0.5
     non_rot_support = np.logical_or(
-        avg_vels2[:,1]/norms2 < support_thresh,
+        vrot2_frac < support_thresh,
         rpz_interp_coords[:,0] > 30)
 
     for i in range(3): 
