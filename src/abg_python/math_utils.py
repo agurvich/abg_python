@@ -234,26 +234,18 @@ def add_jhat_coords(snapdict=None,coords=None,vels=None):
 
     polar_vels*=kms_to_kpcgyr ## r: kpc/gyr phi: 1/gyr theta: 1/gyr
 
-    no_zvels = not np.all(np.isclose(polar_vels[:,-1],0)) 
-    no_zcoords = not np.all(np.isclose(polar_coords[:,-1],np.pi/2))
+    no_zvels = np.all(np.isclose(polar_vels[:,-1],0)) 
+    no_zcoords = np.all(np.isclose(polar_coords[:,-1],np.pi/2))
 
     ## either the z component of velocity and coords is 0 by defn
     ##  or some particles have z velocities and coords
     if not ((no_zvels and no_zcoords) or (not no_zvels and not no_zcoords)):
         raise ArithmeticError(
             f"Something went wrong, no_zvels:{no_zvels} and no_zcoords:{no_zcoords} invalid")
+    elif no_zvels and no_zcoords:
+        polar_coords = polar_coords[:,:-1]
+        polar_vels = polar_vels[:,:-1]
     
-    ## this doesn't work because coords and velocities are in radians
-    """
-    for orig_arr,polar_arr in zip([coords,vels],[polar_coords,polar_vels]):
-        matches = np.isclose(
-            np.linalg.norm(orig_arr,axis=1),
-            np.linalg.norm(polar_arr,axis=1))
-        if not np.all(matches):
-            percent = (1-matches.sum()/matches.size)*100
-            raise ArithmeticError(f"{percent:.2f}% of magnitudes were not conserved in this rotation.")
-    """
-
     if snapdict is not None:
         snapdict['polarjhatCoordinates'] = polar_coords
         snapdict['polarjhatVelocities'] = polar_vels
