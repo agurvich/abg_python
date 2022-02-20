@@ -168,7 +168,7 @@ class Galaxy(
         save_header_to_table = True,
         meta_name = None,
         suite_name = 'metal_diffusion',
-        use_rockstar_first=False,
+        use_rockstar_first=True,
         **metadata_kwargs 
         ):
 
@@ -384,7 +384,7 @@ class Galaxy(
         self,
         halo_fname=None,
         halo_path=None,
-        use_rockstar_first=False,
+        use_rockstar_first=True,
         **kwargs):
 
         ## decide which one is the fallback
@@ -412,6 +412,8 @@ class Galaxy(
                     raise
 
     def load_ahf(self,halo_fname=None,halo_path=None,**kwargs):
+
+        raise Exception("We don't use ahf, only rockstar. join us.")
 
         if 'elvis' in self.snapdir:
             raise IOError("No AHF files for Elvis runs")
