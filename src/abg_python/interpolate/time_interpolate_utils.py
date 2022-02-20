@@ -191,6 +191,42 @@ def index_match_snapshots_with_dataframes(
     ## appears in next snapshot but not this one
     next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
 
+    ## find the particles who don't exist in the prev snapshot
+    ##  AND have a child ID != 0; suggests they /probably/
+    ##  split from their parent between the two snapshots.
+    multi_indices = np.array(next_but_not_prev[next_but_not_prev].index.values.tolist())
+    orphaned_splits = multi_indices[multi_indices[:,1] !=0]
+    if len(orphaned_splits):
+        for orphan in orphaned_splits:
+            ## convert to tuple so it can actually index .loc
+            orphan  = tuple(orphan)
+            ## find all particles that have a matching base index
+            these_parents = prev_next_merged_df_snap.loc[orphan[0]]
+            ## only handle single split cases since we don'tk now how to handle
+            ##  when there are multiple child indices how to figure out which one is
+            ##  the parent in situations w/ multiple generations
+            if these_parents.shape[0] > 2: 
+                print(
+                    "NOTE: ambiguous parentage for child particle."+
+                    " Assuming parent is generation 0.")
+            elif these_parents.shape[0] == 1:
+                continue ## just extrapolate
+            parent = (orphan[0],0)
+
+            if parent not in prev_next_merged_df_snap.index:
+                parent = (orphan[0],these_parents.iloc[0].name)
+                print(
+                    "NOTE: very ambiguous parentage for child particle, no generation 0."+
+                    " Assuming parent is earliest generation.")
+            
+            for key in prev_next_merged_df_snap.keys():
+                if '_next' in key: continue
+                ## copy all fields from the parent particle
+                prev_next_merged_df_snap.loc[orphan,key] = prev_next_merged_df_snap.loc[parent,key]
+        ## redefine next_but_not_prev, after
+        ## having filled in the fields from the parent particles
+        next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
+
     ## extrapolate the coordinates backward
     for i in range(3):
         prev_next_merged_df_snap.loc[next_but_not_prev,f'Coordinates_{i:d}'] =(
@@ -499,7 +535,10 @@ def convert_rp_to_xy(
         xy_interp_coords[:,1,None]*yprimehats +
         xy_interp_coords[:,2,None]*interp_jhats)
 
-    vels = xy_interp_vels[:,0,None]*xprimehats + xy_interp_vels[:,1,None]*yprimehats
+    vels = (
+        xy_interp_vels[:,0,None]*xprimehats +
+        xy_interp_vels[:,1,None]*yprimehats +
+        xy_interp_vels[:,2,None]*interp_jhats)
 
     ## check for rotational support, inspired by Phil's routine
     ## average 1D velocity between snapshots
@@ -578,6 +617,6 @@ def add_polar_jhat_coords(merged_df,take_avg_L=False):
                 Velocities=vels))
 
         for i in range(jhat_coords.shape[1]):
-            merged_df[f'polarjhats_{i:d}{suffix}'] = jhats[:,i]
             merged_df[f'polarjhatCoordinates_{i:d}{suffix}'] = jhat_coords[:,i]
             merged_df[f'polarjhatVelocities_{i:d}{suffix}'] = jhat_vels[:,i]
+        for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{suffix}'] = jhats[:,i]
