@@ -256,6 +256,13 @@ def openSnapshot(
         for key in (set(age_keys) - subtract_set):
             new_dictionary.pop(key)
     
+    ## calculate the angular momentum, only if specifically requested
+    if ((not header_only) and
+        (keys_to_extract is not None and 'AngularMomentum' in keys_to_extract)):
+        new_dictionary['AngularMomentum'] = np.cross(
+            new_dictionary['Coordinates'],
+            new_dictionary['Velocities']*new_dictionary['Masses'][:,None])
+    
     ## it would be good to check if the number of particles read is the same as 
     ##  the total number advertised in the snapshot... but can't guarantee any one
     ##  key to check (or that any arrays were read at all!)
@@ -350,23 +357,17 @@ try:
                 vels,
                 coords)
 
+        if total_metallicity_only and 'Metallicity' in copy_snap:
+            copy_snap['Metallicity'] = copy_snap['Metallicity'][:,0]
+
         ## handle multidimensional array data, if it's been requested
-        if 'Coordinates' in copy_snap:
-            coords = copy_snap.pop('Coordinates')
-            copy_snap['coord_xs'],copy_snap['coord_ys'],copy_snap['coord_zs']=coords.T
-
-        if 'Velocities' in copy_snap:
-            vels = copy_snap.pop('Velocities')
-            copy_snap['vxs'],copy_snap['vys'],copy_snap['vzs']=vels.T
-
-        if 'Metallicity' in copy_snap:
-            metallicity = copy_snap.pop('Metallicity')
-
-            if not total_metallicity_only:
-                ## flatten the various metallicity arrays
-                for i,zarray in enumerate(metallicity.T):
-                    copy_snap['Metallicity_%d'%i]=zarray
-            else: copy_snap['Metallicity'] = metallicity[:,0]
+        for key in list(copy_snap.keys()):
+            shape = np.shape(copy_snap[key])
+            if (len(shape) == 2 and shape[0] == npart): 
+                #print('splitting:',key)
+                value = copy_snap.pop(key)
+                for i in range(shape[1]):
+                    copy_snap[key+'_%d'%i] = value[:,i]
         
         ## are the particle IDs in the snap? then index by them
         if 'ParticleIDs' in snap:

@@ -1,4 +1,7 @@
 import numpy as np 
+import warnings
+
+from .constants import kms_to_kpcgyr
 
 #math functions (trig and linear algebra...)
 def vectorsToRAAndDec(vectors):
@@ -145,81 +148,165 @@ def rotateSnapshot(which_snap,theta,phi,psi):
         which_snap['Velocities']=rotateEuler(theta,phi,psi,which_snap['Velocities'],loud=False)
     return which_snap
 
-try:
-    #@jit(nopython=True)
-    def get_cylindrical_velocities(vels,coords):
-        this_coords_xy = coords[:,:2]
-        this_radii_xy = np.sqrt(np.sum(this_coords_xy[:,:2]**2,axis=1))
+def get_cylindrical_velocities(vels,coords):
+    this_coords_xy = coords[:,:2]
+    this_radii_xy = np.sqrt(np.sum(this_coords_xy[:,:2]**2,axis=1))
 
-        rhats = np.zeros((len(this_coords_xy),2))
-        rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
-        rhats[:,1] = this_coords_xy[:,1]/this_radii_xy
+    rhats = np.zeros((len(this_coords_xy),2))
+    rhats[:,0] = this_coords_xy[:,0]/this_radii_xy
+    rhats[:,1] = this_coords_xy[:,1]/this_radii_xy
 
-        vrs = np.sum(rhats*vels[:,:2],axis=1)
-        #vrs = np.zeros(len(this_coords))
-        #for pi in range(len(this_coords)):
-            #vrs[pi] = np.sum(this_coords[pi,:2]/np.sum
+    vrs = np.sum(rhats*vels[:,:2],axis=1)
+    #vrs = np.zeros(len(this_coords))
+    #for pi in range(len(this_coords)):
+        #vrs[pi] = np.sum(this_coords[pi,:2]/np.sum
 
-        vzs = vels[:,2]
+    ## allow for x,y being passed in only if z = 0
+    ##  and we're trying not to waste memory
+    if len(vels.shape) == 3: vzs = vels[:,2]
+    else: vzs = 0
 
-        vphis = np.sqrt(np.sum(vels**2,axis=1) - vrs**2 - vzs**2)
+    vphis = np.sqrt(np.sum(vels**2,axis=1) - vrs**2 - vzs**2)
 
-        return vrs,vphis,vzs
+    return vrs,vphis,vzs
 
-    #@jit(nopython=True)
-    def get_cylindrical_coordinates(coords):
+#@jit(nopython=True)
+def get_cylindrical_coordinates(coords):
+
+    rs = np.sqrt(np.sum(coords[:,:2]**2,axis=1))
+
+    phis = np.arctan2(coords[:,1],coords[:,0])
+    phis[phis < 0 ]+=2*np.pi
+
+    return rs,phis,coords[:,2]
+
+def add_jhat_coords(snapdict=None,coords=None,vels=None):
+    """adds coordinates w.r.t. plane defined by jhat, z = vz = 0 in this plane by definition"""
+
+    if snapdict is not None:
+        coords = snapdict['Coordinates']
+        vels = snapdict['Velocities']
+        if 'AngularMomentum' in snapdict and snapdict['AngularMomentum'] is not None: Ls = snapdict['AngularMomentum']
+        else: Ls = np.cross(coords,vels)
+    elif (coords is not None) and (vels is not None): Ls = np.cross(coords,vels)
+    else: raise ValueError("Either pass in snapdict or coords+vels")
+
+    ## can ignore mass b.c. want unit vector
+    jhats = Ls/np.linalg.norm(Ls,axis=1)[:,None]
+
+    ## project coordinates onto jhat plane
+    polar_coords = np.zeros((coords.shape[0],3))
+    polar_vels = np.zeros((vels.shape[0],3))
+
+    ## define phi=0 as arbitrary but fixed rotation of jhat, yhat is cross to
+    ##  ensure right hand rule. 'primehat' because it's in the jhat frame
+    xprimehats,yprimehats = get_primehats(jhats)
+
+    ## find polar unit vectors
+    phihats = np.cross(jhats,coords)
+    phihats /= np.linalg.norm(phihats,axis=1)[:,None]
+    r3dhats = coords/np.linalg.norm(coords,axis=1)[:,None]
+
+    ## position in r3d
+    polar_coords[:,0] = np.linalg.norm(coords,axis=1)
+    ## velocity in r3d
+    polar_vels[:,0] = np.sum(vels*r3dhats,axis=1)
+
+    xprimes = np.sum(coords*xprimehats,axis=1)
+    yprimes = np.sum(coords*yprimehats,axis=1)
+    zprimes = np.sum(coords*jhats,axis=1)
+
+    ## position in phi
+    phis = np.arctan2(yprimes,xprimes)
+    phis[phis<0] += 2*np.pi
+    polar_coords[:,1] = phis
+    ## velocity in phi
+    polar_vels[:,1] = np.sum(vels*phihats,axis=1)/polar_coords[:,0] ## radians/s
+
+    ## position in theta
+    ##  NOTE: this is pi/2 by defn unless Ls has been passed in as an avg
+    ## reciprocal from what you might expect, z/R, because measured from the pole
+    ##  num > 0 & denom -inf -> +inf => np.arctan2: 0 -> pi so we're good
+    polar_coords[:,2] = np.arctan2(np.sqrt(xprimes**2+yprimes**2),zprimes)
+    ## velocity in theta dir
+    ##  NOTE: this is 0 by defn unless Ls has been passed in as an avg
+    polar_vels[:,2] = np.sum(vels*jhats,axis=1)/polar_coords[:,0] ## radians/s
+
+    polar_vels*=kms_to_kpcgyr ## r: kpc/gyr phi: 1/gyr theta: 1/gyr
+
+    no_zvels = np.all(np.isclose(polar_vels[:,-1],0)) 
+    no_zcoords = np.all(np.isclose(polar_coords[:,-1],np.pi/2))
+
+    ## either the z component of velocity and coords is 0 by defn
+    ##  or some particles have z velocities and coords
+    if not ((no_zvels and no_zcoords) or (not no_zvels and not no_zcoords)):
+        raise ArithmeticError(
+            f"Something went wrong, no_zvels:{no_zvels} and no_zcoords:{no_zcoords} invalid")
+    elif no_zvels and no_zcoords:
+        polar_coords = polar_coords[:,:-1]
+        polar_vels = polar_vels[:,:-1]
     
-        rs = np.sqrt(np.sum(coords[:,:2]**2,axis=1))
+    if snapdict is not None:
+        snapdict['polarjhatCoordinates'] = polar_coords
+        snapdict['polarjhatVelocities'] = polar_vels
+        snapdict['polarjhats'] = jhats
 
-        phis = np.arctan2(coords[:,1],coords[:,0])
-        phis[phis < 0 ]+=2*np.pi
+    return polar_coords,polar_vels,jhats
 
-        return rs,phis,coords[:,2]
+#@jit(nopython=True)
+def get_primehats(jhats):
+    ## define absolute phi = 0 as an arbitrary (but fixed)
+    ##  90 degree rotation of jhat
+    xprimehats = np.zeros(jhats.shape)
+    ## don't need to set, this is already 0
+    #xprimehats[:,0] = 0
+    xprimehats[:,1] = -jhats[:,2]
+    xprimehats[:,2] = jhats[:,1]
 
-    #@jit(nopython=True)
-    def get_spherical_velocities(vels,coords):
+    ## a little shorter than it needs to be b.c. jhat had a 0 component
+    xprimehats/=np.linalg.norm(xprimehats,axis=1)[:,None]
 
-        ## phi is shared between cylindrical and spherical coordinates
-        ##  this avoids having to dot each velocity with that particle's
-        ##  phi hat vector
-        _,vphis,_ = get_cylindrical_velocities(vels,coords)
+    ## define y s.t. cross(x,y) = z; i.e. right handed coordinate system
+    yprimehats = np.cross(jhats,xprimehats)
+    return xprimehats,yprimehats
 
+def get_spherical_velocities(vels,coords):
 
-        rs = np.sqrt(np.sum(coords**2,axis=1))
-
-        rhats = np.zeros(coords.shape)
-        rhats[:,0] = coords[:,0]/rs
-        rhats[:,1] = coords[:,1]/rs
-        rhats[:,2] = coords[:,2]/rs
-
-        vrs = np.sum(rhats*vels,axis=1)
-
-        ## vtheta is the remaining velocity
-        vthetas = np.sqrt(
-            np.sum(vels**2,axis=1) - 
-            vrs**2 -
-            vphis**2)
-
-        return vrs,vthetas,vphis
-
-    #@jit(nopython=True)
-    def get_spherical_coordinates(coords):
-    
-        rs = np.sqrt(np.sum(coords**2,axis=1))
-
-        phis = np.arctan2(coords[:,1],coords[:,0])
-        phis[phis < 0 ]+=2*np.pi
-
-        ## reciprocal from what you might expect, z/R, because measured from the pole
-        thetas = np.arctan2(np.sqrt(np.sum(coords[:,:2]**2,axis=1)),coords[:,2])
-
-        return rs,thetas,phis
+    ## phi is shared between cylindrical and spherical coordinates
+    ##  this avoids having to dot each velocity with that particle's
+    ##  phi hat vector
+    _,vphis,_ = get_cylindrical_velocities(vels,coords)
 
 
-except ImportError:
-    print("Couldn't import numba. Missing:")
-    print("abg_python.math_utils.get_cylindrical_velocities")
-    print("abg_python.math_utils.get_spherical_velocities")
+    rs = np.sqrt(np.sum(coords**2,axis=1))
+
+    rhats = np.zeros(coords.shape)
+    rhats[:,0] = coords[:,0]/rs
+    rhats[:,1] = coords[:,1]/rs
+    rhats[:,2] = coords[:,2]/rs
+
+    vrs = np.sum(rhats*vels,axis=1)
+
+    ## vtheta is the remaining velocity
+    vthetas = np.sqrt(
+        np.sum(vels**2,axis=1) - 
+        vrs**2 -
+        vphis**2)
+
+    return vrs,vthetas,vphis
+
+#@jit(nopython=True)
+def get_spherical_coordinates(coords):
+
+    rs = np.sqrt(np.sum(coords**2,axis=1))
+
+    phis = np.arctan2(coords[:,1],coords[:,0])
+    phis[phis < 0 ]+=2*np.pi
+
+    ## reciprocal from what you might expect, z/R, because measured from the pole
+    thetas = np.arctan2(np.sqrt(np.sum(coords[:,:2]**2,axis=1)),coords[:,2])
+
+    return rs,thetas,phis
 
 ## quaternion helper functions:
 ## https://stackoverflow.com/questions/4870393/rotating-coordinate-system-via-a-quaternion
