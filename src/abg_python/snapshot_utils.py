@@ -392,6 +392,52 @@ except ImportError:
     print("abg_python.index_match_snapshots_with_dataframes")
     print("abg_python.make_interpolated_snap")
 
+def iterativeCoM(coordinates,masses,velocities=None):
+    com = np.zeros(3)
+    
+    ## choose an intial location to zoom in on 
+    ##  by coarse graining the data into cells
+    cmax = np.max(np.abs(coordinates))
+    edges = np.linspace(-cmax,cmax,100)
+    cs = (edges[1:]+edges[:-1])/2
+    grids = np.meshgrid(cs,cs,cs)
+
+    ## bin coordinates
+    h,_ = np.histogramdd(coordinates,bins=[edges,edges,edges],weights=masses)
+
+    ## find the cell with the most mass in it
+    max_cell_index = np.argmax(h.flatten())
+
+    ## initialize the CoM as the center of that cell
+    for i,grid in enumerate(grids): com[i] = grid.flatten()[max_cell_index]
+
+    ## now use concentric shells to find an estimate
+    ##  for the center of mass
+    for i in range(1,10):
+        rs = np.sqrt(np.sum((coordinates-com)**2,axis=1))
+        rmax = rs.max()/(2)**i
+
+        rmask = rs <= rmax
+
+        if np.sum(rmask) == 0: 
+            print('no particles, breaking')
+            break
+
+        print("Centering on particles within %.2f kpc"%rmax,'of',f"{com[0]:.2f}, {com[1]:.2f}, {com[2]:.2f}")
+
+        ## compute the center of mass of the particles within this shell
+        com = (np.sum(coordinates[rmask] *
+            masses[rmask][:,None],axis=0) / 
+            np.sum(masses[rmask]))
+    
+    vcom = None
+    if velocities is not None:
+        vcom = (np.sum(velocities[rmask] *
+            masses[rmask][:,None],axis=0) / 
+            np.sum(masses[rmask]))
+    
+    return com,vcom
+
 ## thanks Alex Richings!
 def read_chimes(filename, chimes_species): 
     ''' filename - string containing the name of the HDF5 file to read in. 
