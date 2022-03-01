@@ -26,7 +26,8 @@ import plotly
 
 def main(
     du_file_name,
-    top_level_name=None):
+    top_level_name=None,
+    min_size=0.1): ## TB
 
     ## what is the name of the left-most node (name of current directory). 
     ##  in file it is just '.'
@@ -51,11 +52,11 @@ def main(
         paths[i] = paths[i].replace('./','')
 
 
-    ## keep only files larger than a TB
-    mask = mems > 1024**4
+    ## keep only files larger minimum size
+    mask = mems > (1024**4*min_size)
     big_paths = paths[mask]
     big_mems = mems[mask]
-    print(np.sum(mask),'many files > 1 TB')
+    print(np.sum(mask),'many files > 1 GB')
 
     ## sort the paths alphabetically
     ##  this will align sub-directories 
@@ -86,7 +87,7 @@ def main(
     labels, xs, origins, targets, sizes = sankify(
         top_folders,
         level=1,
-        max_size=0.5)
+        min_size=min_size)
 
 
     sizes = np.array(sizes)
@@ -144,7 +145,11 @@ def main(
         arrangement='snap')])
 
     ## make it big
-    fig.layout=go.Layout(autosize=False,width=500*6,height=2000,margin=dict(l=20, r=20, t=20, b=200))
+    fig.layout=go.Layout(
+        autosize=False,
+        width=500*3,
+        height=2000,
+        margin=dict(l=20, r=20, t=20, b=200))
 
     ## write output to html
     fig.write_html(os.path.join(
@@ -197,7 +202,7 @@ def parse_file_string_list(node,pre_str=''):
     return node
 
 
-def sankify(my_dict,level=0,origin=0,offset=0,max_size=None):
+def sankify(my_dict,level=0,origin=0,offset=0,min_size=None):
     
     labels = list(my_dict.keys())
     labels.pop(labels.index('size'))
@@ -205,7 +210,7 @@ def sankify(my_dict,level=0,origin=0,offset=0,max_size=None):
     ## filter out sub-directories which are too small
     new_labels = []
     for label in labels:
-        if my_dict[label]['size'] >= max_size: new_labels+=[label]
+        if my_dict[label]['size'] >= min_size: new_labels+=[label]
     labels = new_labels
 
     ## create this layer's lists
@@ -222,7 +227,7 @@ def sankify(my_dict,level=0,origin=0,offset=0,max_size=None):
             level+1, ## 1 layer deeper
             origin=1+offset+j, ## set the origin to be this sub-directory
             offset=len(labels)+offset, ## see below, labels gets longer
-            max_size=max_size)
+            min_size=min_size)
 
         ## append this layer to the flattened list(s)
         labels+=this_labels
@@ -239,5 +244,7 @@ if __name__ == '__main__':
     top_level_name = 'GalaxiesOnFIRE'
     du_file_name = 'frontera_usage_11.15.21.txt'
     top_level_name = 'pfh-frontera-scratch'
+    du_file_name = 'fire3_usage.txt'
+    top_level_name = 'stampede2/GalaxiesOnFire/fire3'
 
     main(du_file_name,top_level_name)
