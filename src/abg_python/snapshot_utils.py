@@ -144,13 +144,11 @@ def openSnapshot(
 
     for i,fname in enumerate(sorted(fnames)):
     ## let the user know what snapshot file we're trying to open
-        if loud:
-            print(fname)
+        if loud: print(fname)
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
-                if not no_header_keys:
-                    fillHeader(new_dictionary,handle)
+                if not no_header_keys: fillHeader(new_dictionary,handle)
                 else:
                     ## need them for the units, we'll pop them later
                     for key in ['HubbleParam','Time','Redshift']:
@@ -169,12 +167,14 @@ def openSnapshot(
                         print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
+                ## if this particle type doesn't appear in the snapshot
+                if 'PartType%d'%ptype not in handle: continue
+                ## load snapshot data
                 if not header_only:
                     ## decide if the coordinates are in double precision, by default they are not
-                    if 'Flag_DoublePrecision' in new_dictionary and new_dictionary['Flag_DoublePrecision']:
-                        coord_dtype = np.float64
-                    else:
-                        coord_dtype = np.float32
+                    if ('Flag_DoublePrecision' in new_dictionary and 
+                        new_dictionary['Flag_DoublePrecision']): coord_dtype = np.float64
+                    else: coord_dtype = np.float32
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
@@ -202,17 +202,30 @@ def openSnapshot(
             else:
                 ## append NumPart_ThisFile to header info
                 new_dictionary['NumPart_ThisFile']+=[handle['Header'].attrs['NumPart_ThisFile']]
+
+                ## if this particle type doesn't appear in the snapshot
+                if 'PartType%d'%ptype not in handle: continue
+
                 if not header_only:
                     ## append particle array for each file
                     for pkey in handle['PartType%d'%ptype].keys():
-                        if (keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys or pkey in age_keys):
+                        if (keys_to_extract is None or 
+                            pkey in keys_to_extract or 
+                            pkey in temperature_keys or 
+                            pkey in age_keys):
+
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
                             ## handle potentially double precision coordinates
                             if pkey == 'Coordinates':
                                 value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
-                            else:
-                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
-                            new_dictionary[pkey] = np.append(new_dictionary[pkey],value,axis=0) 
+                            else: value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
+
+                            ## append this array to the one already in the dictionary
+                            ##  slower and less safe (could run out of memory half-way through)
+                            ##  than pre-allocating memory but easier to code
+                            if pkey in new_dictionary:
+                                new_dictionary[pkey] = np.append(new_dictionary[pkey],value,axis=0) 
+                            else: new_dictionary[pkey] = value
 
     ## get temperatures if this is a gas particle dataset
     if ( (ptype == 0) and 
