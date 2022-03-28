@@ -630,38 +630,38 @@ class Galaxy(
         if 'loud' not in kwargs:
             kwargs['loud'] = False
 
-        snapnums,rcoms,rvirs = self.get_rockstar_file_output(**kwargs)
+        try:
+            snapnums,rcoms,rvirs = self.get_rockstar_file_output(**kwargs)
 
-        index = np.argwhere(snapnums==self.snapnum).astype(int)[0][0]
-        self.scom = rcoms[index]
-        self.rvir = rvirs[index]
-        self.rstar_half = None
+            index = np.argwhere(snapnums==self.snapnum).astype(int)[0][0]
+            self.scom = rcoms[index]
+            self.rvir = rvirs[index]
+            self.rstar_half = None
 
-        return self.scom,self.rvir,self.rstar_half
-
-        if 'elvis' in self.snapdir:
-            which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
-            if which_host[:len(self.pretty_name)] == self.pretty_name:
-                which_host = 0 
+        except IOError:
+            if 'elvis' in self.snapdir:
+                which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
+                if which_host[:len(self.pretty_name)] == self.pretty_name:
+                    which_host = 0 
+                else:
+                    if which_host[-len(self.pretty_name):] != self.pretty_name:
+                        raise IOError("invalid name, should be one of %s"%which_host)
+                    which_host = 1
             else:
-                if which_host[-len(self.pretty_name):] != self.pretty_name:
-                    raise IOError("invalid name, should be one of %s"%which_host)
-                which_host = 1
-        else:
-            which_host = 0
-        if halo_path is None:
-            self.halo_path = '../halo/rockstar_dm/'
-            self.halo_path = os.path.realpath(os.path.join(self.snapdir,self.halo_path))
+                which_host = 0
+            if halo_path is None:
+                self.halo_path = '../halo/rockstar_dm/'
+                self.halo_path = os.path.realpath(os.path.join(self.snapdir,self.halo_path))
 
-        self.halo_fname = 'halo_%03d.hdf5'%self.snapnum if halo_fname is None else halo_fname
+            self.halo_fname = 'halo_%03d.hdf5'%self.snapnum if halo_fname is None else halo_fname
 
-        self.scom,self.rvir = load_rockstar(
-            self.snapdir,
-            self.snapnum,
-            fname=halo_fname,
-            rockstar_path=halo_path,
-            which_host=which_host)
-        self.rstar_half=None
+            self.scom,self.rvir = load_rockstar(
+                self.snapdir,
+                self.snapnum,
+                fname=halo_fname,
+                rockstar_path=halo_path,
+                which_host=which_host)
+            self.rstar_half=None
 
         return self.scom,self.rvir,self.rstar_half
 

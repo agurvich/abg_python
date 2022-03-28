@@ -261,6 +261,7 @@ class SFR_helper(SFR_plotter):
             force_from_file=True)
         def compute_SFH(
             self,
+            DT,
             radial_thresh=None):
             """ radial_thresh=None - spherical cut,defaults to 5*rstar_half"""
             
@@ -294,31 +295,8 @@ class SFR_helper(SFR_plotter):
             rmask = np.sum(self.sub_star_snap['Coordinates']**2,axis=1)<radial_thresh**2
 
             star_snap = filterDictionary(self.sub_star_snap,rmask)
-
-            ## get initial stellar masses if possible, otherwise estimate them by "undoing" the 
-            ##  integrated STARBURST99 mass loss rates
-            smasses = star_snap['Masses'].astype(np.float64)*1e10 # solar masses
-            ages = star_snap['AgeGyr']  # gyr, as advertised
-            smasses = get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
-
-            ## calculate the star formation history
-            SFTs,timemax = star_snap['TimeGyr'] - star_snap['AgeGyr'],star_snap['TimeGyr']
-
-            ## make sure our last bin ends at the current time
-            time_edges = np.arange(star_snap['TimeGyr'],0,-DT)[::-1]
-
-            SFRs,SFH_time_edges = arch_method(
-                smasses,
-                SFTs,
-                time_edges,
-                DT=DT)
-
-            ## calculate the stellar metallicity history-- which Katie Breivik once asked me for
-            ##  /shrug
-            metals = star_snap['Metallicity'][:,0] # mass fractions
-            SFR_metals,SFH_time_edges = arch_method(smasses*metals,SFTs,time_edges,DT=DT)
-            SFR_metals = SFR_metals/SFRs # metal masses / total masses -> metal mass fraction in each bin
- 
+            SFH_time_edges, SFRs, SFR_metals, DT = snapshotSFH(star_snap,DT)
+            
             ## free up temporary galaxy memory
             if temp_fin_gal is not self:
                 del temp_fin_gal
@@ -333,7 +311,7 @@ class SFR_helper(SFR_plotter):
 
             return SFH_time_edges, SFRs, SFR_metals, DT
 
-        return_value = list(compute_SFH(self,**kwargs))
+        return_value = list(compute_SFH(self,DT,**kwargs))
 
         return_value[-1] = DT
         foo,return_value[1] = boxcar_average(
@@ -482,115 +460,204 @@ class SFR_helper(SFR_plotter):
                     use_metadata=use_metadata,
                     assert_cached=assert_cached)
 
-
-            adjusted_sfrs = (self.SFRs + self.SFRs[self.SFRs>0].min()/10)
- 
-            if mode == 'peaktrough':
-
-                rel_scatters = np.zeros(adjusted_sfrs.size)
-                per_ls = np.zeros(adjusted_sfrs.size)
-                per_rs = np.zeros(adjusted_sfrs.size)
-                medians = np.zeros(adjusted_sfrs.size)
-                
-                this_window_size = 0.05 #window_size
-                window_size_n = int(this_window_size/self.SFH_dt/2)
-
-                for i in range(adjusted_sfrs.size):
-                    window = adjusted_sfrs[
-                        max(0,i-window_size_n):
-                        min(adjusted_sfrs.size-1,i+window_size_n)]
-
-                    median = np.nanmedian(window)
-                    if np.isnan(median): import pdb; pdb.set_trace()
-
-                    per_l,per_r = np.quantile(
-                        window/median,
-                        [0.1,0.9])
-
-                    rel_scatters[i] = (per_r - per_l)
-                    #rel_scatters[i] = (per_r / per_l)
-                    per_ls[i] = per_l
-                    per_rs[i] = per_r
-                    medians[i] = median
-                xs,rel_scatters = boxcar_average(
-                    self.SFH_time_edges,
-                    rel_scatters,
-                    0.3,
-                    assign='center')
-
-                self.SFH_scatter_per_ls = per_ls
-                self.SFH_scatter_per_rs = per_rs
-                self.SFH_scatter_medians = medians
-                self.SFH_rel_scatters = rel_scatters
-
-            elif mode == 'anna':
-                ## calculate scatter using 10 Myr running average in 
-                ##  window_size sized window
-                xs,adjusted_sfrs = boxcar_average(
-                    self.SFH_time_edges,
-                    adjusted_sfrs,
-                    0.01)
-
-                xs,boxcar_ys_300 = boxcar_average(
-                    self.SFH_time_edges,
-                    adjusted_sfrs,
-                    0.5,#window_size,
-                    assign='center')
-
-                xs,boxcar_ys2_300 = boxcar_average(
-                    self.SFH_time_edges,
-                    adjusted_sfrs**2,
-                    0.5,#window_size,
-                    assign='center')
-
-                ## <std>/<SFR>
-                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
-            else:
-                xs,boxcar_ys_300 = boxcar_average(
-                    self.SFH_time_edges,
-                    np.log10(adjusted_sfrs),
-                    window_size,
-                    assign='center')
-
-                xs,boxcar_ys2_300 = boxcar_average(
-                    self.SFH_time_edges,
-                    np.log10(adjusted_sfrs)**2,
-                    window_size,
-                    assign='center')
-
-                rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
-
-            ## find the first 300 Myr window that is consistently below the threshold
-            #print(thresh, thresh_window,rel_scatters)
-            l_window, r_window = find_first_window(
+            tbursty, rel_scatters = findBurstyRegime(
                 self.SFH_time_edges,
-                rel_scatters,
-                lambda x,y: y < thresh,
-                thresh_window,
-                last=True)
+                self.SFRs,
+                thresh=thresh, ## dex of scatter
+                window_size=window_size, ## size of window to compute scatter within
+                mode=mode,
+                thresh_window=thresh_window)
 
-            #print(mode,l_window,r_window,rel_scatters)
             tindex = np.nan
             bursty_redshift = np.nan
-            if np.isfinite(l_window):
-                tindex = np.argmin((l_window-self.SFH_time_edges)**2)
+            tindex = np.argmin((tbursty-self.SFH_time_edges)**2)
+            if np.isfinite(tbursty):
                 bursty_redshift = approximateRedshiftFromGyr(
                     self.header['HubbleParam'],
                     self.header['Omega0'],
-                    np.array([l_window]) )[0]
+                    np.array([tbursty]) )[0]
 
-            #print(mode,tindex,l_window,r_window,bursty_redshift,rel_scatters)
-            return tindex, l_window, bursty_redshift, rel_scatters
+            return tindex, tbursty, bursty_redshift, rel_scatters
         
         return compute_bursty_regime(self,**kwargs)
 
 #### HELPER FUNCTIONS
+def snapshotSFH(star_snap,DT):
+    ## get initial stellar masses if possible, otherwise estimate them by "undoing" the 
+    ##  integrated STARBURST99 mass loss rates
+    smasses = star_snap['Masses'].astype(np.float64)*1e10 # solar masses
+    if 'AgeGyr' not in star_snap: raise KeyError(
+        "AgeGyr is missing from snapshot."+
+        " Either compute it yourself and add it to the dictionary or use"+
+        " abg_python.snapshot_utils.openSnapshot to open the data (it will compute it for you!).")
+    ages = star_snap['AgeGyr']  # gyr, as advertised
+    smasses = get_IMass(ages,smasses) # uses a fit function to figure out initial mass from current age
+
+    ## calculate the star formation history
+    SFTs,timemax = star_snap['TimeGyr'] - star_snap['AgeGyr'],star_snap['TimeGyr']
+
+    ## make sure our last bin ends at the current time
+    time_edges = np.arange(star_snap['TimeGyr'],0,-DT)[::-1]
+
+    SFRs,SFH_time_edges = arch_method(
+        smasses,
+        SFTs,
+        time_edges,
+        DT=DT)
+
+    ## calculate the stellar metallicity history-- which Katie Breivik once asked me for
+    ##  /shrug
+    metals = star_snap['Metallicity'][:,0] # mass fractions
+    SFR_metals,SFH_time_edges = arch_method(smasses*metals,SFTs,time_edges,DT=DT)
+    SFR_metals = SFR_metals/SFRs # metal masses / total masses -> metal mass fraction in each bin
+
+    return SFH_time_edges, SFRs, SFR_metals, DT
+
 def arch_method(smasses,SFTs,time_edges,DT=None):
 
-    if DT==None:
-        DT = .001 #1 Myr in Gyr
+    if DT==None: DT = .001 #1 Myr in Gyr
 
     SFRs,time_edges = np.histogram(SFTs,weights=smasses/(DT*1e9),bins=time_edges) #solar masses/year, Myr
 
     #ignore the last point because it will often contain a "remainder bin", not a full bin width
     return SFRs, time_edges
+
+def findBurstyRegime(
+    time_edges:np.ndarray,
+    SFRs:np.ndarray,
+    thresh:float=0.3, ## dex of scatter
+    window_size:float=0.3, ## size of window to compute scatter within
+    mode:str=None,
+    thresh_window:float=1.5): 
+    """ Finds the first window where the "bursty condition" is true. The "bursty condition"
+        can be defined 3 ways (using the mode parameter). By default, finds when the scatter in 
+        log SFR is < the ~scatter in the SFMS (0.3 dex). Scatters larger than this one would not 
+        call "constant" w.r.t. the SFMS and scatters smaller than this would occupy a spot on the
+        SFMS (not directly on mind you, just like, it wouldn't jump around).
+
+        1. Sigma_300(log(<SFR>_1)) (default,
+            thresh=0.3 consistent with defn in
+            https://ui.adsabs.harvard.edu/abs/2022arXiv220304321G/abstract
+            https://ui.adsabs.harvard.edu/abs/2021MNRAS.501.4812F/abstract
+            https://ui.adsabs.harvard.edu/abs/2021ApJ...911...88S/abstract
+            https://ui.adsabs.harvard.edu/abs/2020MNRAS.498.3664G/abstract )
+        2. Sigma_300(<SFR>_10)/<SFR>_10 < thresh (mode == 'anna', 
+            thresh=0.5 consistent with defn in
+            https://ui.adsabs.harvard.edu/abs/2021MNRAS.505..889Y/abstract )
+        3.  peak(SFR/median) - trough(SFR/median) (mode == 'peaktrough',
+            used to check "visual intuition" but works like actual garbage.
+            Do not use this. Seriously.)
+
+    Parameters
+    ----------
+    time_edges : np.ndarray
+        SFR histogram edges in Gyr, ideally spaced by 1 Myr (we boxcar average anyway)
+    SFRs : np.ndarray
+        SFR histogram in msun/year (or whatever units, i'm a docstring not a cop)
+    thresh : float, optional
+        threshold value that the relative scatter should be below, by default 0.3
+    window_size: float, optional
+        the window that the relative scatter in log SFR should be computed in, 
+        by default 0.3 (300 Myr)
+    thresh_window : float, optional
+        width of window that the relative scatter must remain below threshold for 
+        (to avoid little excursions below counting as the "end" of bursty SFR.
+        I see you m12f!!), by default 1.5
+
+    Returns
+    -------
+    l_window 
+        the time corresponding to the left edge of the thresh_window
+        that satisfies the threshold condition.
+    rel_scatters
+        the relative scatters with the same shape as SFRs
+    """
+                
+    adjusted_sfrs = (SFRs + SFRs[SFRs>0].min()/10)
+
+    if mode == 'peaktrough':
+
+        rel_scatters = np.zeros(adjusted_sfrs.size)
+        per_ls = np.zeros(adjusted_sfrs.size)
+        per_rs = np.zeros(adjusted_sfrs.size)
+        medians = np.zeros(adjusted_sfrs.size)
+        
+        this_window_size = 0.05 #window_size
+        window_size_n = int(this_window_size/SFH_dt/2)
+
+        for i in range(adjusted_sfrs.size):
+            window = adjusted_sfrs[
+                max(0,i-window_size_n):
+                min(adjusted_sfrs.size-1,i+window_size_n)]
+
+            median = np.nanmedian(window)
+            if np.isnan(median): import pdb; pdb.set_trace()
+
+            per_l,per_r = np.quantile(
+                window/median,
+                [0.1,0.9])
+
+            rel_scatters[i] = (per_r - per_l)
+            #rel_scatters[i] = (per_r / per_l)
+            per_ls[i] = per_l
+            per_rs[i] = per_r
+            medians[i] = median
+        xs,rel_scatters = boxcar_average(
+            time_edges,
+            rel_scatters,
+            0.3,
+            assign='center')
+
+        ## plot these to show peak-trough band
+        #SFH_scatter_per_ls = per_ls #<--- bottom of band
+        #SFH_scatter_per_rs = per_rs #<--- top of band
+        #SFH_scatter_medians = medians #<--- middle of band
+        #SFH_rel_scatters = rel_scatters #<--- scatters you want to stay w/i band
+
+    elif mode == 'anna':
+        ## calculate scatter using 10 Myr running average in 
+        ##  window_size sized window
+        xs,adjusted_sfrs = boxcar_average(
+            time_edges,
+            adjusted_sfrs,
+            0.01)
+
+        xs,boxcar_ys_300 = boxcar_average(
+            time_edges,
+            adjusted_sfrs,
+            0.5,#window_size,
+            assign='center')
+
+        xs,boxcar_ys2_300 = boxcar_average(
+            time_edges,
+            adjusted_sfrs**2,
+            0.5,#window_size,
+            assign='center')
+
+        ## <std>/<SFR>
+        rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)/boxcar_ys_300
+    else:
+        xs,boxcar_ys_300 = boxcar_average(
+            time_edges,
+            np.log10(adjusted_sfrs),
+            window_size,
+            assign='center')
+
+        xs,boxcar_ys2_300 = boxcar_average(
+            time_edges,
+            np.log10(adjusted_sfrs)**2,
+            window_size,
+            assign='center')
+
+        rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
+
+    ## find the first 300 Myr window that is consistently below the threshold
+    #print(thresh, thresh_window,rel_scatters)
+    l_window, r_window = find_first_window(
+        time_edges,
+        rel_scatters,
+        lambda x,y: y < thresh,
+        thresh_window,
+        last=True)
+
+    return l_window, rel_scatters

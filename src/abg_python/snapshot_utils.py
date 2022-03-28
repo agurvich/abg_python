@@ -144,13 +144,11 @@ def openSnapshot(
 
     for i,fname in enumerate(sorted(fnames)):
     ## let the user know what snapshot file we're trying to open
-        if loud:
-            print(fname)
+        if loud: print(fname)
         with h5py.File(fname,'r') as handle:
             if i == 0:
                 ## read header once
-                if not no_header_keys:
-                    fillHeader(new_dictionary,handle)
+                if not no_header_keys: fillHeader(new_dictionary,handle)
                 else:
                     ## need them for the units, we'll pop them later
                     for key in ['HubbleParam','Time','Redshift']:
@@ -169,12 +167,14 @@ def openSnapshot(
                         print('This is a cosmological snapshot... converting to physical units')
                     cosmological=1
 
+                ## if this particle type doesn't appear in the snapshot
+                if 'PartType%d'%ptype not in handle: continue
+                ## load snapshot data
                 if not header_only:
                     ## decide if the coordinates are in double precision, by default they are not
-                    if 'Flag_DoublePrecision' in new_dictionary and new_dictionary['Flag_DoublePrecision']:
-                        coord_dtype = np.float64
-                    else:
-                        coord_dtype = np.float32
+                    if ('Flag_DoublePrecision' in new_dictionary and 
+                        new_dictionary['Flag_DoublePrecision']): coord_dtype = np.float64
+                    else: coord_dtype = np.float32
 
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
@@ -202,17 +202,30 @@ def openSnapshot(
             else:
                 ## append NumPart_ThisFile to header info
                 new_dictionary['NumPart_ThisFile']+=[handle['Header'].attrs['NumPart_ThisFile']]
+
+                ## if this particle type doesn't appear in the snapshot
+                if 'PartType%d'%ptype not in handle: continue
+
                 if not header_only:
                     ## append particle array for each file
                     for pkey in handle['PartType%d'%ptype].keys():
-                        if (keys_to_extract is None or pkey in keys_to_extract or pkey in temperature_keys or pkey in age_keys):
+                        if (keys_to_extract is None or 
+                            pkey in keys_to_extract or 
+                            pkey in temperature_keys or 
+                            pkey in age_keys):
+
                             unit_fact = get_unit_conversion(new_dictionary,pkey,cosmological)
                             ## handle potentially double precision coordinates
                             if pkey == 'Coordinates':
                                 value = np.array(handle['PartType%d/%s'%(ptype,pkey)],dtype=coord_dtype)*unit_fact
-                            else:
-                                value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
-                            new_dictionary[pkey] = np.append(new_dictionary[pkey],value,axis=0) 
+                            else: value = np.array(handle['PartType%d/%s'%(ptype,pkey)])*unit_fact
+
+                            ## append this array to the one already in the dictionary
+                            ##  slower and less safe (could run out of memory half-way through)
+                            ##  than pre-allocating memory but easier to code
+                            if pkey in new_dictionary:
+                                new_dictionary[pkey] = np.append(new_dictionary[pkey],value,axis=0) 
+                            else: new_dictionary[pkey] = value
 
     ## get temperatures if this is a gas particle dataset
     if ( (ptype == 0) and 
@@ -392,6 +405,52 @@ except ImportError:
     print("abg_python.snapshot_utils.convertSnapshotToDF")
     print("abg_python.index_match_snapshots_with_dataframes")
     print("abg_python.make_interpolated_snap")
+
+def iterativeCoM(coordinates,masses,velocities=None):
+    com = np.zeros(3)
+    
+    ## choose an intial location to zoom in on 
+    ##  by coarse graining the data into cells
+    cmax = np.max(np.abs(coordinates))
+    edges = np.linspace(-cmax,cmax,100)
+    cs = (edges[1:]+edges[:-1])/2
+    grids = np.meshgrid(cs,cs,cs)
+
+    ## bin coordinates
+    h,_ = np.histogramdd(coordinates,bins=[edges,edges,edges],weights=masses)
+
+    ## find the cell with the most mass in it
+    max_cell_index = np.argmax(h.flatten())
+
+    ## initialize the CoM as the center of that cell
+    for i,grid in enumerate(grids): com[i] = grid.flatten()[max_cell_index]
+
+    ## now use concentric shells to find an estimate
+    ##  for the center of mass
+    for i in range(1,10):
+        rs = np.sqrt(np.sum((coordinates-com)**2,axis=1))
+        rmax = rs.max()/(2)**i
+
+        rmask = rs <= rmax
+
+        if np.sum(rmask) == 0: 
+            print('no particles, breaking')
+            break
+
+        print("Centering on particles within %.2f kpc"%rmax,'of',f"{com[0]:.2f}, {com[1]:.2f}, {com[2]:.2f}")
+
+        ## compute the center of mass of the particles within this shell
+        com = (np.sum(coordinates[rmask] *
+            masses[rmask][:,None],axis=0) / 
+            np.sum(masses[rmask]))
+    
+    vcom = None
+    if velocities is not None:
+        vcom = (np.sum(velocities[rmask] *
+            masses[rmask][:,None],axis=0) / 
+            np.sum(masses[rmask]))
+    
+    return com,vcom
 
 ## thanks Alex Richings!
 def read_chimes(filename, chimes_species): 
