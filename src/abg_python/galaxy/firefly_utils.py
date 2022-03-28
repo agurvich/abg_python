@@ -114,7 +114,8 @@ class Firefly_helper(object):
             UIname,
             coords,
             decimation_factor,
-            tracked_arrays=tracked_arrays)
+            velocities=which_snap['Velocities'] if mask is None else which_snap['Velocities'][mask],
+            field_arrays=tracked_arrays)
 
         ## start with velocity vectors enabled
         self.reader.settings['showVel'][UIname] = True
