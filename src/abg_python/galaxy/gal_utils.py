@@ -437,7 +437,6 @@ class Galaxy(
             self.scom, self.rvir = load_AHF(
                 self.snapdir,
                 self.snapnum,
-                self.current_redshift,
                 extra_names_to_read = [],
                 ahf_path = self.halo_path,
                 fname = self.halo_fname,
