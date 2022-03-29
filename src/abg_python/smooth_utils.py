@@ -32,13 +32,20 @@ def boxcar_average(
     ys[np.logical_not(np.isfinite(ys))] = np.nan
 
     dts = np.unique(time_edges[1:]-time_edges[:-1])
-    if not np.allclose(dts,dts[0]): raise ValueError("ys must be uniformly spaced for this to work...")
+    if not np.allclose(dts,dts[0]): raise ValueError("xs must be uniformly spaced for this to work...")
 
     ## prepend a dt to the beginning if we were passed something missing an initial bin edge
     if time_edges.shape[0] != (ys.shape[0]+1): time_edges = np.append([time_edges[0]-dts[0]],time_edges)
 
     ## number of points per boxcar is:
     N = int(boxcar_width//dts[0] + ((boxcar_width%dts[0])/dts[0]>=0.5))
+    if N > ys.size:
+        print(
+            f"boxcar width of {boxcar_width:.2f} larger than"+
+            f" extent of data {time_edges[-1]-time_edges[0]:.2f}."+
+            " Returning partial window boxcar instead.")
+        return partial_window_boxcar_average(time_edges,ys,boxcar_width,loud,average,assign)
+
     if loud: print("boxcar'ing %d points/car, dt: %.2e window: %.2e"%(N,dts[0],boxcar_width))
 
     cumsum = np.nancumsum(np.insert(ys, 0, 0).astype(np.float64)) 
@@ -69,6 +76,55 @@ def boxcar_average(
     else: raise ValueError("unknown bin assignment %s, should be left, right, or center"%assign) 
 
     return time_edges,ys
+
+def partial_window_boxcar_average(
+    time_edges,
+    ys,
+    boxcar_width,
+    loud=False,
+    average=True, ## vs. just counting non-nan entries in a window
+    assign='right'):
+
+    dts = np.unique(time_edges[1:]-time_edges[:-1])
+    N = int(boxcar_width//dts[0] + ((boxcar_width%dts[0])/dts[0]>=0.5))
+
+    ## buffer with a window's width on either side so you pass the window
+    ##  over the entire array. 
+    new_ys = np.concatenate([np.repeat(np.nan,N),ys,np.repeat(np.nan,N)])
+
+    if average:
+        ## count the number of points in the window that aren't nan
+        ##  and divide by that number rather than the size of the window
+        ##  this is the secret sauce that allows for partial windows b.c.
+        ##  you're only averaging in the divisor by the finite elements
+        _,divisors = partial_window_boxcar_average(
+            time_edges,
+            np.isfinite(ys),
+            boxcar_width,
+            loud,
+            False,
+            assign)
+
+    cumsum = np.nancumsum(np.insert(new_ys, 0, 0).astype(np.float64)) 
+    new_ys = (cumsum[N:]-cumsum[:-N])
+
+    ## shift the window based on centering
+    ##  because conditionals should default true
+    if assign == 'right':
+        pass
+    ##  shift left by a whole window width
+    elif assign == 'left':
+        new_ys[:-N] = new_ys[N:]
+        #new_ys = new_ys[N:]
+    ##  shift left by a half window width
+    elif assign == 'center':
+        n = max(int(N/2),1)
+        new_ys[:-n] = new_ys[n:]
+        #new_ys = new_ys[n:-n]
+
+    if average: new_ys[:time_edges.size-1] /= divisors
+
+    return time_edges[1:],new_ys[:time_edges.size-1]
     
 def uniform_resampler(xs,arrs,DT=None):
     """resamples xs,[ys,...] arrays evenly by interpolation. """
@@ -188,7 +244,11 @@ def find_first_window(xs,ys,bool_fn,window,last=False):
     bool_xs,bool_ys = boxcar_average(
         xs,
         bool_fn(xs,ys),
-        window) 
+        window,
+        ## this seems backwards at the moment but it is definitely not
+        ##  do not change this, do not convince yourself, do not revisit.
+        ##  this is correct. assert it. believe it. live it.
+        assign='right' if window < (xs[-1]-xs[0]) else 'left') 
 
     ##  by taking the floor, it requires that
     ##   all times in the window fulfill the boolean

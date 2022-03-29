@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import leastsq as opt
+from .array_utils import pairReplace
 
 def fitAXb(xs,ys,yerrs,fixed_a=None,fixed_b=None):
     """Fits a linear trendline to some data"""

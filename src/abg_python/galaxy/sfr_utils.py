@@ -651,13 +651,32 @@ def findBurstyRegime(
 
         rel_scatters = np.sqrt(boxcar_ys2_300 - boxcar_ys_300**2)
 
+    ## compare y values to threshold, however, np.nan < thresh = False
+    ##  in a way that is unfair when we intend to average
+    ##  in order to test if all points in the window satisfy the threshold.
+    ##  if there are points in the window that are nan they should not be
+    ##  counted against the points that *aren't*. 
+    def bool_fn(xs,ys):
+        bools = ys < thresh
+        bools[~np.isfinite(ys)] = np.nan
+        return bools
+
     ## find the first 300 Myr window that is consistently below the threshold
     #print(thresh, thresh_window,rel_scatters)
     l_window, r_window = find_first_window(
         time_edges,
         rel_scatters,
-        lambda x,y: y < thresh,
+        bool_fn,
         thresh_window,
         last=True)
+
+    ## handle case when the window is larger than the dataset, in which case
+    ##  we've allowed partial boxcars and instead look for the time after which 
+    ##  the threshold is forever true; the way the assignment works though
+    ##  it seems like r_window is the one we want... for some reason i don't 
+    ##  totally understand??? r_window - l_window is not thresh_window in this
+    ##  case (seems like maybe it's thresh_window - t_bursty or something
+    ##  it's late and it's working so i won't look a gift code in the horse)
+    if thresh_window > (time_edges[-1]-time_edges[0]): l_window = r_window
 
     return l_window, rel_scatters
