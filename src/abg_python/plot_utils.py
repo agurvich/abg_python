@@ -724,7 +724,7 @@ def nameAxes(
         #ax.xaxis.set_minor_formatter(my_log_ticker))
         ax.xaxis.set_minor_formatter(NullFormatter())
     if logflag[1] :
-        ax.set_yscale('log',nonposy='clip')
+        ax.set_yscale('log',nonpositive='clip')
         ax.yaxis.set_major_formatter(my_log_ticker)
         #ax.yaxis.set_minor_formatter(my_log_ticker))
         ax.yaxis.set_minor_formatter(NullFormatter())
@@ -1162,6 +1162,7 @@ def get_size(fig, dpi=240):
         return width/dpi , height/dpi
 
 def set_size(fig, size, eps=1e-2, give_up=2, min_size_in=0.25):
+
     target_width, target_height = size
     set_width, set_height = target_width, target_height # reasonable starting point
     deltas = [] # how far we have
