@@ -3,7 +3,7 @@ from scipy.spatial.distance import cdist as cdist
 from scipy.interpolate import interp1d
 
 from .selection_utils import sphericalVolumeMask
-from . import Gcode
+from .constants import Gcode
 
 def getSpeedOfSound(U_code):
     """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
