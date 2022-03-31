@@ -1,6 +1,9 @@
 import numpy as np 
 from scipy.spatial.distance import cdist as cdist
+from scipy.interpolate import interp1d
+
 from .selection_utils import sphericalVolumeMask
+from . import Gcode
 
 def getSpeedOfSound(U_code):
     """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
@@ -160,3 +163,47 @@ def getAngularMomentumSquared(vectors,masses,velocities):
     L2i = np.sum(Li*Li,axis=1)
 
     return np.sum(L2i)
+
+def makePotentialProfileFunction(snaps,rmax=30):
+    """ Useful as a lookup table for particles to calculate their
+        vc. In general this is very simple but it would require looping
+        over every particle, making a shell mask, and doing GMenc(r_part)/r_part
+        so we'll make a lookup table instead!
+
+    Parameters
+    ----------
+    snaps : _type_
+        _description_
+    rmax : int, optional
+        _description_, by default 30
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+
+    ## total mass profiles
+    redges = np.linspace(1e-2,rmax,1000)
+    r_masses = np.zeros(redges.size-1)
+    for this_snap in snaps:
+        this_radii = np.sqrt(np.sum(this_snap['Coordinates']**2,axis=1))+1e-3
+        h,redges = np.histogram(this_radii,bins=redges,weights=this_snap['Masses'])
+        r_masses += h
+    r_masses = np.cumsum(r_masses)
+
+    ## use mass profile to calculate potential
+    #old_grid_potential = -Gcode*masses/redges[1:] ## ## kpc km^2/(mcode s^2) * mcode / kpc = km^2/s^2
+
+    from scipy.integrate import cumtrapz
+    grid_potential = Gcode*cumtrapz(r_masses/redges[1:]**2,redges[1:],initial=0)
+    grid_potential -= grid_potential[-1]
+    grid_potential -= Gcode*r_masses[-1]/redges[-1]
+
+    ## gravitational potential as a function of radius (outer bin edge)
+    potential_profile_fn = interp1d(
+        redges[1:],
+        grid_potential,
+        bounds_error=False,fill_value=np.nan)
+
+    return potential_profile_fn
