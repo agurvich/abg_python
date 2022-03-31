@@ -278,6 +278,7 @@ def make_interpolated_snap(time_merged_df,t,polar=True):
     for key in time_merged_df.keys():
         if '_next' in key: continue
         elif 'polarjhat' in key: continue ## will allow jhat_rotangle though
+        elif 'CircularVelocities' in key: continue ## only using to figure out if polar interpolation is appropriate
         interp_snap[key] = linear_interpolate(
             getattr(time_merged_df,key),
             getattr(time_merged_df,key+'_next'),
@@ -372,19 +373,33 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
                 next_vthetas, ## radians / gyr
                 t,t0,t1) ## defaults to order=1
 
+        first_Vcs = np.zeros((time_merged_df.shape[0],3))
+        next_Vcs = np.zeros((time_merged_df.shape[0],3))
+
         ## unpack flattened rpz arrays from pandas dataframe which did our id matching
         for i in range(3):
             jhat_key = 'polarjhats_%d'%i
             first_jhats[:,i] = getattr(time_merged_df,jhat_key).values
             next_jhats[:,i] = getattr(time_merged_df,jhat_key+'_next').values
 
+            Vc_key = f'CircularVelocities_{i:d}'
+            if Vc_key in time_merged_df.keys():
+                first_Vcs[:,i] = getattr(time_merged_df,Vc_key).values,
+                next_Vcs[:,i] = getattr(time_merged_df,Vc_key+'_next').values
+
         ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
         ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
-        ## vphi2/(vr2+vphi2 + vtheta2) = 1/([vr2+vtheta2]/vphi2 + 1)
-        vrot2_frac = 1 / (1 + (
-            first_vRs**2 + next_vRs**2 + 
-            (first_vthetas*first_Rs)**2 + (next_vthetas*next_Rs)**2)/
-            (first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2) 
+        ## vphi2/Vc^2 if we can
+        if Vc_key in time_merged_df.keys():
+            vrot2_frac = ((first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2) / (first_Vcs**2 + next_Vcs**2)
+        ## alright, do vphi2/vtot^2, it's better than nothing.
+        else:
+            ## vphi2/(vr2 + vphi2 + vtheta2) = 1/([vr2+vtheta2]/vphi2 + 1)
+            vrot2_frac = 1 / (1 + (
+                first_vRs**2 + next_vRs**2 + 
+                (first_vthetas*first_Rs)**2 + (next_vthetas*next_Rs)**2)/
+                (first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2) 
+
         return convert_rp_to_xy(
             interp_snap,
             rp_interp_coords,
@@ -552,9 +567,9 @@ def convert_rp_to_xy(
     ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
     ##  make a mask for those particles which are not rotationally supported and need
     ##  to be replaced with a simple cartesian interpolation
-    support_thresh = 0.50  ## 0.5
+    rotate_support_thresh = 0.50  ## 0.5
     non_rot_support = np.logical_or(
-        vrot2_frac < support_thresh,
+        vrot2_frac < rotate_support_thresh,
         rp_interp_coords[:,0] > 30)
 
     for i in range(3): 
