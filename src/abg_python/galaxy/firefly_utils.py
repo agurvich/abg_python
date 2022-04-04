@@ -75,7 +75,37 @@ class Firefly_helper(object):
         keys=None,
         mask=None,
         decimation_factor=1000,
-        color=None):
+        color=None,
+        **settings):
+        """ add particle type ``pname`` to the self.reader instance so it can be output when you're ready.
+
+        Parameters
+        ----------
+        pname : str, optional
+            name of particle type, one of 'gas','star','dark', by default 'gas'
+        UIname : str, optional
+            will inherit pname if not set separately, by default None
+        full_snap : bool, optional
+            _description_, by default False
+        keys : _type_, optional
+            _description_, by default None
+        mask : _type_, optional
+            _description_, by default None
+        decimation_factor : int, optional
+            _description_, by default 1000
+        color : _type_, optional
+            _description_, by default None
+
+        Returns
+        -------
+        _type_
+            _description_
+
+        Raises
+        ------
+        ValueError
+            _description_
+        """
 
         UIname = pname if UIname is None else UIname
 
@@ -95,6 +125,8 @@ class Firefly_helper(object):
             coords = coords[mask]
 
         tracked_arrays = {}
+        velocities=which_snap['Velocities'] if mask is None else which_snap['Velocities'][mask]
+        tracked_arrays['magVelocity'] = np.linalg.norm(velocities,axis=1)
         for key in keys:
 
             if key == 'Radius':
@@ -114,7 +146,7 @@ class Firefly_helper(object):
             UIname,
             coords,
             decimation_factor,
-            velocities=which_snap['Velocities'] if mask is None else which_snap['Velocities'][mask],
+            velocities=velocities,
             field_arrays=tracked_arrays)
 
         ## start with velocity vectors enabled
@@ -135,6 +167,9 @@ class Firefly_helper(object):
             self.reader.settings['color'][UIname] = color
 
         self.reader.settings['sizeMult'][UIname] = 5 if UIname != 'hot' else 8
+
+        ## unpack any settings that are passed along
+        for key,value in settings.items(): self.reader.settings[key][UIname] = value
         
         return this_ParticleGroup 
 
@@ -177,7 +212,7 @@ class Firefly_helper(object):
 
             self.reader.settings['UIparticle'][key] = False 
             self.reader.settings['color'][key] = [1.0,1.0,1.0,1.0]
-            self.reader.settings['sizeMult'][key] = 2.5
+            self.reader.settings['sizeMult'][key] = 0.1
                 
     def track_firefly_particles(
         self,
