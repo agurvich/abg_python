@@ -85,83 +85,18 @@ def index_match_snapshots_with_dataframes(
     
     ## convert snapshot dictionaries to pandas dataframes
     prev_df_snap = convertSnapToDF(prev_sub_snap,**pandas_kwargs)
-    
     next_df_snap = convertSnapToDF(next_sub_snap,**pandas_kwargs)
-
-    ## replace velocities
-    """
-    avg_vscom = (next_sub_snap['scom'] - prev_sub_snap['scom'])/(t1-t0)
-    for i in range(3):
-        ## add on the center of mass velocity measured from halo file
-        ##  which was already subtracted out when we loaded the data
-        prev_df_snap['Velocities_%d'%i]+=prev_sub_snap['vscom'][i]
-        next_df_snap['Velocities_%d'%i]+=next_sub_snap['vscom'][i]
-
-        ## subtract out the average velocity (i.e. change in centering)
-        prev_df_snap['Velocities_%d'%i]-=avg_vscom[i]
-        next_df_snap['Velocities_%d'%i]-=avg_vscom[i]
-    """
 
     ## explicitly handle stars formed between snapshots
     if 'AgeGyr' in keys_to_extract and 'AgeGyr' in next_sub_snap:
-        ## find stars w/ age in last snapshot < snapshot spacing
-        new_star_mask = next_sub_snap['AgeGyr'] < (t1-t0)
-        next_young_star_snap = filterDictionary(next_sub_snap,new_star_mask)
-
-        next_young_star_df = convertSnapToDF(next_young_star_snap,**pandas_kwargs)
-
-        ## now we have to initialize the young stars in the prev_snap
-        prev_young_star_snap = {}
-
-        for key in next_young_star_df.keys():
-            if key == 'AgeGyr': continue
-            ## initialize the array
-            prev_young_star_snap[key] = np.zeros(next_young_star_df[key].size)
-
-        ## set their ages to be negative
-        prev_young_star_snap['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
-
-        ## find who has parents from the gas df
-        if extra_df is not None:
-            next_stars_with_parents_mask = next_young_star_df.index.isin(extra_df.index)
-        ## no one has any parents, extrapolate everyone
-        else:
-            next_stars_with_parents_mask = np.zeros(next_young_star_df.shape[0],dtype=bool)
-
-        ## first handle the particles that don't have gas parents
-        for key in next_young_star_df.keys():
-            if key == 'AgeGyr': continue
-
-            ## copy the field data backwards
-            if 'Coordinates' not in key:
-                prev_young_star_snap[key][~next_stars_with_parents_mask] = next_young_star_df.loc[~next_stars_with_parents_mask,key]
-            ## extrapolate the coordinates backwards
-            else:
-                axis = key[-2:]
-                prev_young_star_snap[key][~next_stars_with_parents_mask] = (
-                next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-                next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1)
-                )
-
-        ## copy whatever data the gas particle had
-        if extra_df is not None:
-            ## filter and reorder
-            gas_parent_df = extra_df.loc[next_young_star_df[next_stars_with_parents_mask].index]
-
-            for key in next_young_star_df.keys():
-                if key == 'AgeGyr': continue
-                prev_young_star_snap[key][next_stars_with_parents_mask] = gas_parent_df[key]
-            
-            del gas_parent_df, extra_df
-
-        ## append young stars to the prev dataframe
-        prev_df_snap = prev_df_snap.append(pd.DataFrame(
-            prev_young_star_snap,
-            index=next_young_star_df.index))
-
-        ## and for good measure let's re-sort now that we 
-        ##  added new indices into the mix
-        prev_df_snap.sort_index(inplace=True)
+        handle_stars_formed_between_snapshots(
+            prev_df_snap, ## prev DF to add data to
+            ## just need next particle data + ids
+            ##  which are in snap, don't need DF
+            next_sub_snap, 
+            extra_df, ## gas particle locations
+            t0,t1,
+            pandas_kwargs)
 
     ## merge rows of dataframes based on particle ID
     prev_next_merged_df_snap = prev_df_snap.join(
@@ -172,12 +107,123 @@ def index_match_snapshots_with_dataframes(
     ## and if we have any repeats, let's keep the first one
     prev_next_merged_df_snap = prev_next_merged_df_snap.loc[
         ~prev_next_merged_df_snap.index.duplicated(keep='first')]
+    
+    ## handle scenarios when you can't find a particle to match
+    ##  TODO currently uses linear extrapolation but consider using 
+    ##  polar where appropriate?
+    handle_missing_matches(prev_next_merged_df_snap,t0,t1)
 
+    ## remove any nans; there shouldn't be any unless someone passed in spooky
+    ##  field values
+    prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
+
+    ## have to add all the angular momentum stuff
+    if polar:
+        ## compute coordinates w.r.t. angular momentum plane of each particle
+        add_polar_jhat_coords(prev_next_merged_df_snap,take_avg_L=take_avg_L)
+
+        ## add jhat rotation angle, compute dot product and take arccos of it
+        rotation_angle = 0
+        for i in range(3):
+            rotation_angle += (
+                prev_next_merged_df_snap['polarjhats_%d'%i] *
+                prev_next_merged_df_snap['polarjhats_%d_next'%i])
+        rotation_angle = np.arccos(np.clip(rotation_angle,-1,1))
+
+        ## doing it this way (setting 0 @ t = t0 and rotation angle at t = t1) 
+        ##  will automatically add 
+        ##  the interpolated jhat_rotangle to the interp_snap in make_interpolated_snap
+        prev_next_merged_df_snap['jhat_rotangle_next'] = rotation_angle
+        prev_next_merged_df_snap['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
+
+    ## store these in the dataframe so we can be sure we have the right times everywhere
+    prev_next_merged_df_snap.first_time = t0
+    prev_next_merged_df_snap.next_time = t1
+
+    return prev_next_merged_df_snap
+
+def handle_stars_formed_between_snapshots(
+    prev_df_snap,
+    next_sub_snap,
+    extra_df,
+    t0,t1,
+    pandas_kwargs):
+
+    ## find stars w/ age in last snapshot < snapshot spacing
+    new_star_mask = next_sub_snap['AgeGyr'] < (t1-t0)
+    next_young_star_snap = filterDictionary(next_sub_snap,new_star_mask)
+
+    next_young_star_df = convertSnapToDF(next_young_star_snap,**pandas_kwargs)
+
+    ## now we have to initialize the young stars in the prev_snap
+    prev_young_star_snap = {}
+
+    for key in next_young_star_df.keys():
+        if key == 'AgeGyr': continue
+        ## initialize the array
+        prev_young_star_snap[key] = np.zeros(next_young_star_df[key].size)
+
+    ## set their ages to be negative
+    prev_young_star_snap['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
+
+    ## find who has parents from the gas df
+    if extra_df is not None:
+        next_stars_with_parents_mask = next_young_star_df.index.isin(extra_df.index)
+    ## no one has any parents, extrapolate everyone
+    else: next_stars_with_parents_mask = np.zeros(next_young_star_df.shape[0],dtype=bool)
+
+    ## first handle the particles that don't have gas parents
+    for key in next_young_star_df.keys():
+        if key == 'AgeGyr': continue
+
+        ## copy the field data backwards
+        if 'Coordinates' not in key:
+            prev_young_star_snap[key][~next_stars_with_parents_mask] = next_young_star_df.loc[~next_stars_with_parents_mask,key]
+        ## extrapolate the coordinates backwards
+        else:
+            axis = key[-2:]
+            prev_young_star_snap[key][~next_stars_with_parents_mask] = (
+            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
+                next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
+            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
+                next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
+            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
+            next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1)
+            )
+
+    ## copy whatever data the gas particle had
+    if extra_df is not None:
+        ## filter and reorder
+        gas_parent_df = extra_df.loc[next_young_star_df[next_stars_with_parents_mask].index]
+
+        for key in next_young_star_df.keys():
+            if key == 'AgeGyr': continue
+            prev_young_star_snap[key][next_stars_with_parents_mask] = gas_parent_df[key]
+        
+        del gas_parent_df, extra_df
+
+    ## append young stars to the prev dataframe
+    prev_df_snap = prev_df_snap.append(pd.DataFrame(
+        prev_young_star_snap,
+        index=next_young_star_df.index))
+
+    ## and for good measure let's re-sort now that we 
+        ## and for good measure let's re-sort now that we 
+    ## and for good measure let's re-sort now that we 
+        ## and for good measure let's re-sort now that we 
+    ## and for good measure let's re-sort now that we 
+    ##  added new indices into the mix
+    prev_df_snap.sort_index(inplace=True)
+
+def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
+    """ extrapolates coordinates/fields forward in time if in prev but not next
+        extrapolats coordinates/fields backward in time if in next but not prev
+        attempts to avoid extrapolation if there is a particle split (looks for parent)"""
     ## appears in this snapshot but not the next
     prev_but_not_next = prev_next_merged_df_snap.isna()['Masses_next']
 
     ## extrapolate the coordinates forward 
-    for i in range(3):
+    for i in range(3): ## should only happen if gas particles are converted into stars
         prev_next_merged_df_snap.loc[prev_but_not_next,f'Coordinates_{i:d}_next'] =(
             prev_next_merged_df_snap.loc[prev_but_not_next,f'Coordinates_{i:d}'] + 
             prev_next_merged_df_snap.loc[prev_but_not_next,f'Velocities_{i:d}']*(t1-t0)*kms_to_kpcgyr)
