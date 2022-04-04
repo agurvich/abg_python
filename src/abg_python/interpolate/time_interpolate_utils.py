@@ -183,13 +183,8 @@ def handle_stars_formed_between_snapshots(
         else:
             axis = key[-2:]
             prev_young_star_snap[key][~next_stars_with_parents_mask] = (
-            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
                 next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-                next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-            next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-            next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1)
-            )
+                next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1))
 
     ## copy whatever data the gas particle had
     if extra_df is not None:
