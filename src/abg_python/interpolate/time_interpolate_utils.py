@@ -236,34 +236,51 @@ def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
     ##  AND have a child ID != 0; suggests they /probably/
     ##  split from their parent between the two snapshots.
     multi_indices = np.array(next_but_not_prev[next_but_not_prev].index.values.tolist())
-    orphaned_splits = multi_indices[multi_indices[:,1] !=0]
-    if len(orphaned_splits):
-        for orphan in orphaned_splits:
+    orphaned_multi_indices = multi_indices[multi_indices[:,1] !=0]
+    if len(orphaned_multi_indices):
+        for orphaned_multi_index in orphaned_multi_indices:
             ## convert to tuple so it can actually index .loc
-            orphan  = tuple(orphan)
+            orphaned_multi_index = tuple(orphaned_multi_index)
             ## find all particles that have a matching base index
-            these_parents = prev_next_merged_df_snap.loc[orphan[0]]
-            ## only handle single split cases since we don'tk now how to handle
-            ##  when there are multiple child indices how to figure out which one is
-            ##  the parent in situations w/ multiple generations
-            if these_parents.shape[0] > 2: 
-                print(
-                    "NOTE: ambiguous parentage for child particle."+
-                    " Assuming parent is generation 0.")
-            elif these_parents.shape[0] == 1:
-                continue ## just extrapolate
-            parent = (orphan[0],0)
+            possible_parents = prev_next_merged_df_snap.loc[orphaned_multi_index[0]]
 
-            if parent not in prev_next_merged_df_snap.index:
-                parent = (orphan[0],these_parents.iloc[0].name)
-                print(
-                    "NOTE: very ambiguous parentage for child particle, no generation 0."+
-                    " Assuming parent is earliest generation.")
+            ## no parents to choose from, we have to just extrapolate
+            ##  tbh this should not really be possible??
+            if possible_parents.shape[0] == 1: continue 
+            ## only one possible candidate it could've split from
+            ##  let's just choose the other particle
+            elif possible_parents.shape[0] == 2:
+                parent_multi_index = (
+                    orphaned_multi_index[0],
+                    possible_parents[possible_parents.index != orphaned_multi_index[1]].index[0])
+            elif possible_parents.shape[0] > 2: 
+                ## new child ID = parent child ID + 2^(number of times split) 
+                generation = prev_next_merged_df_snap.loc[orphaned_multi_index]['ParticleIDGenerationNumber_next']
+                parent_multi_index = (orphaned_multi_index[0],orphaned_multi_index[1]-2**(generation-1))
+
+            ##  okay, the only way this can happen is if
+            ##  prev                        between                                 next
+            ##  grandparent  grandparent || parent; parent||child; parent -> star  child
+            ##  which is a wild set of scenarios, should be pretty unlikely
+            if parent_multi_index not in prev_next_merged_df_snap.index:
+                parent_multi_index = (orphaned_multi_index[0],possible_parents.iloc[0].name)
+                print("NOTE: ambiguous parentage for child particle.")
+
+            ## well, even the parent is missing so i guess we'll give up and extrapolate
+            if np.any(np.isnan(prev_next_merged_df_snap.loc[parent_multi_index])): continue
             
             for key in prev_next_merged_df_snap.keys():
                 if '_next' in key: continue
                 ## copy all fields from the parent particle
-                prev_next_merged_df_snap.loc[orphan,key] = prev_next_merged_df_snap.loc[parent,key]
+                parent_val = prev_next_merged_df_snap.loc[parent_multi_index,key]
+                try: prev_next_merged_df_snap.loc[orphaned_multi_index,key] = parent_val
+                except:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        prev_next_merged_df_snap[key].loc[orphaned_multi_index] = parent_val
+                    if (not np.isnan(parent_val) and 
+                        np.isnan(prev_next_merged_df_snap.loc[orphaned_multi_index,key])):
+                        raise ValueError("Value wasn't changed properly")
         ## redefine next_but_not_prev, after
         ## having filled in the fields from the parent particles
         next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
