@@ -3,7 +3,7 @@ from scipy.spatial.distance import cdist as cdist
 from scipy.interpolate import interp1d
 
 from .selection_utils import sphericalVolumeMask
-from . import Gcode
+from .constants import Gcode
 
 def getSpeedOfSound(U_code):
     """U_code = snapdict['InternalEnergy'] INTERNAL ENERGY_code = VELOCITY_code^2 = (params.txt default = (km/s)^2)
@@ -164,7 +164,7 @@ def getAngularMomentumSquared(vectors,masses,velocities):
 
     return np.sum(L2i)
 
-def makePotentialProfileFunction(snaps,rmax=30):
+def makePotentialProfileFunction(gravitating_snapdicts,rmax=30):
     """ Useful as a lookup table for particles to calculate their
         vc. In general this is very simple but it would require looping
         over every particle, making a shell mask, and doing GMenc(r_part)/r_part
@@ -172,7 +172,7 @@ def makePotentialProfileFunction(snaps,rmax=30):
 
     Parameters
     ----------
-    snaps : _type_
+    gravitating_snapdicts : _type_
         _description_
     rmax : int, optional
         _description_, by default 30
@@ -186,7 +186,7 @@ def makePotentialProfileFunction(snaps,rmax=30):
     ## total mass profiles
     redges = np.linspace(1e-2,rmax,1000)
     r_masses = np.zeros(redges.size-1)
-    for this_snap in snaps:
+    for this_snap in gravitating_snapdicts:
         this_radii = np.sqrt(np.sum(this_snap['Coordinates']**2,axis=1))+1e-3
         h,redges = np.histogram(this_radii,bins=redges,weights=this_snap['Masses'])
         r_masses += h
@@ -204,6 +204,25 @@ def makePotentialProfileFunction(snaps,rmax=30):
     potential_profile_fn = interp1d(
         redges[1:],
         grid_potential,
-        bounds_error=False,fill_value=np.nan)
+        bounds_error=False,
+        fill_value=np.nan)
 
     return potential_profile_fn
+
+def addCircularVelocities(gravitating_snapdicts,sampling_snapdicts=None,rmax=30):
+    if sampling_snapdicts is None: sampling_snapdicts = gravitating_snapdicts
+
+    ## make a lookup table for the gravitational potential
+    potential_profile_fn = makePotentialProfileFunction(
+        gravitating_snapdicts,
+        ## maximum kpc for the lookup table, since it's in linear space
+        ##  we want to concentrate resolution where we actually want it
+        ##  (b.c. outside 30 kpc we use linear interpolation anyway)
+        rmax=rmax)
+
+    for snapdict in sampling_snapdicts:
+        radii = np.sqrt(np.sum(snapdict['Coordinates']**2,axis=1))
+        snapdict['CircularVelocities'] = np.zeros(radii.shape)+np.nan
+        ## avoid the warning message of taking the square root of a nan since we know outside rmax it's going to
+        ##  be nan by design. if we still get a warning message then that's actually interesting.
+        snapdict['CircularVelocities'][radii<rmax] = np.sqrt(-potential_profile_fn(radii[radii < rmax]))
