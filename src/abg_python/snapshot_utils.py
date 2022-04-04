@@ -389,6 +389,8 @@ try:
             if 'ParticleChildIDsNumber' in snap:
                 child_ids = copy_snap.pop('ParticleChildIDsNumber')
                 index.append(child_ids)
+            if 'ParticleIDGenerationNumber' in snap:
+                copy_snap['ParticleIDGenerationNumber'] = snap['ParticleIDGenerationNumber']
             snap_df = pd.DataFrame(copy_snap,index=index)
         else:
             print("You didn't ask for IDs, so I'm not indexing by them")
