@@ -89,7 +89,7 @@ def index_match_snapshots_with_dataframes(
 
     ## explicitly handle stars formed between snapshots
     if 'AgeGyr' in keys_to_extract and 'AgeGyr' in next_sub_snap:
-        handle_stars_formed_between_snapshots(
+        prev_df_snap = handle_stars_formed_between_snapshots(
             prev_df_snap, ## prev DF to add data to
             ## just need next particle data + ids
             ##  which are in snap, don't need DF
@@ -233,6 +233,7 @@ def handle_stars_formed_between_snapshots(
     ## and for good measure let's re-sort now that we 
     ##  added new indices into the mix
     prev_df_snap.sort_index(inplace=True)
+    return prev_df_snap
 
 def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
     """ extrapolates coordinates/fields forward in time if in prev but not next
