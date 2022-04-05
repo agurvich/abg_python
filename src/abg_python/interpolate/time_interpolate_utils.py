@@ -422,7 +422,18 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
         coord_key = 'polarjhatCoordinates_%d'
         vel_key = 'polarjhatVelocities_%d'
 
-        do_theta = coord_key%2 in time_merged_df
+        do_theta = False 
+        for suffix in ['','_next']:
+            for key in [coord_key%2,vel_key%2]:
+                has_this_key = (key+suffix) in time_merged_df.keys()
+                do_theta = do_theta or has_this_key
+                if do_theta and not has_this_key:
+                    ## this happened out of the blue, no idea how this is even possible...
+                    ##  clearly something else is wrong further up the pipeline but at least
+                    ##  here we can catch it and raise the error
+                    raise KeyError(
+                        f"{key+suffix:s} missing but have at least one other theta key:\n"+
+                        f"{repr(list(time_merged_df.keys())):s}")
 
         ## doesn't actually have z because we've rotated into jhat plane
         rp_interp_coords = np.zeros((time_merged_df.shape[0],2+do_theta))
