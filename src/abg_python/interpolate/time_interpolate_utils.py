@@ -114,7 +114,7 @@ def index_match_snapshots_with_dataframes(
     ## don't look for parents split parents if you're a star particle. 
     ##  this happens already in handle_stars_formed_between_snapshots with the
     ##  extra_df
-    if extra_df is None: handle_missing_matches(prev_next_merged_df_snap,t0,t1)
+    if extra_df is None: prev_next_merged_df_snap = handle_missing_matches(prev_next_merged_df_snap,t0,t1)
 
     ## remove any nans; there shouldn't be any unless someone passed in spooky
     ##  field values
@@ -285,6 +285,8 @@ def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
         if '_next' in key: continue
         if 'Coordinates' in key: continue
         prev_next_merged_df_snap.loc[next_but_not_prev,key] = (prev_next_merged_df_snap.loc[next_but_not_prev,key+'_next'])
+
+    return prev_next_merged_df_snap
 
 def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
     for orphaned_multi_index in orphaned_multi_indices:
