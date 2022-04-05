@@ -241,6 +241,7 @@ def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
         attempts to avoid extrapolation if there is a particle split (looks for parent)"""
     ## appears in this snapshot but not the next
     prev_but_not_next = prev_next_merged_df_snap.isna()['Masses_next']
+    #print('prev but not next:',np.sum(prev_but_not_next)/prev_but_not_next.size)
 
     ## extrapolate the coordinates forward 
     for i in range(3): ## should only happen if gas particles are converted into stars
@@ -270,6 +271,8 @@ def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
         ## redefine next_but_not_prev, after
         ## having filled in the fields from the parent particles
         next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
+
+    #print('next but not prev:',np.sum(next_but_not_prev)/next_but_not_prev.size)
 
     ## extrapolate the coordinates backward
     for i in range(3):
