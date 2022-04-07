@@ -50,7 +50,7 @@ def index_match_snapshots_with_dataframes(
     t1=None,
     polar=True,
     extra_df=None,
-    take_avg_L=False):
+    take_avg_L=True):
     """
         if you use Metallicity  or Velocities then the keys will be different when you try to access them
           in your render call using render_kwargs.
@@ -159,15 +159,12 @@ def handle_stars_formed_between_snapshots(
     next_young_star_df = convertSnapToDF(next_young_star_snap,**pandas_kwargs)
 
     ## now we have to initialize the young stars in the prev_snap
-    prev_young_star_snap = {}
-
-    for key in next_young_star_df.keys():
-        if key == 'AgeGyr': continue
-        ## initialize the array
-        prev_young_star_snap[key] = np.zeros(next_young_star_df[key].size)
+    prev_young_star_df = next_young_star_df.copy()
+    prev_young_star_df.iloc[...] = 0
 
     ## set their ages to be negative
-    prev_young_star_snap['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
+    prev_young_star_df['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
+
 
     ##  we were passed a df with (presumably) gas particle data
     if extra_df is not None:
@@ -179,7 +176,7 @@ def handle_stars_formed_between_snapshots(
         ## copy whatever data the gas particle had
         for key in next_young_star_df.keys():
             if key == 'AgeGyr' or '_next' in key: continue
-            prev_young_star_snap[key][next_stars_with_parents_mask] = gas_parent_df[key]
+            prev_young_star_df.loc[next_stars_with_parents_mask,key] = gas_parent_df[key]
         
         #print('before',np.sum(~next_stars_with_parents_mask)/next_stars_with_parents_mask.size)
         ## attempt to find gas particles that split into other gas particles that could've turned into
@@ -195,7 +192,7 @@ def handle_stars_formed_between_snapshots(
                 ## the DF to look for parents in
                 extra_df,
                 ## the DF to store answers in
-                next_young_star_df)
+                prev_young_star_df)
 
         ## we done w/ you
         del gas_parent_df, extra_df
@@ -204,7 +201,7 @@ def handle_stars_formed_between_snapshots(
         ##  remaining orphans can get extrapolated back
         ##  take the logical not so that when we take the not below for 
         ##  extrapolation it will find the remaining particles
-        next_stars_with_parents_mask = ~next_young_star_df.isna()['Masses']
+        next_stars_with_parents_mask = ~(prev_young_star_df['Masses'] == 0)
         #print('after',np.sum(~next_stars_with_parents_mask)/next_stars_with_parents_mask.size)
     ## no one has any parents, extrapolate everyone
     else: next_stars_with_parents_mask = np.zeros(next_young_star_df.shape[0],dtype=bool)
@@ -217,18 +214,16 @@ def handle_stars_formed_between_snapshots(
             if key == 'AgeGyr' or '_next' in key: continue
             ## copy the field data backwards
             if 'Coordinates' not in key:
-                prev_young_star_snap[key][~next_stars_with_parents_mask] = next_young_star_df.loc[~next_stars_with_parents_mask,key]
+                prev_young_star_df.loc[~next_stars_with_parents_mask,key] = next_young_star_df.loc[~next_stars_with_parents_mask,key]
             ## extrapolate the coordinates backwards
             else:
                 axis = key[-2:]
-                prev_young_star_snap[key][~next_stars_with_parents_mask] = (
+                prev_young_star_df.loc[~next_stars_with_parents_mask,key] = (
                     next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
                     next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1))
 
     ## append young stars to the prev dataframe
-    prev_df_snap = prev_df_snap.append(pd.DataFrame(
-        prev_young_star_snap,
-        index=next_young_star_df.index))
+    prev_df_snap = prev_df_snap.append(prev_young_star_df)
 
     ## and for good measure let's re-sort now that we 
     ##  added new indices into the mix
@@ -270,7 +265,7 @@ def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
             prev_next_merged_df_snap) ## df to assign values to
         ## redefine next_but_not_prev, after
         ## having filled in the fields from the parent particles
-        next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
+        next_but_not_prev = prev_next_merged_df_snap['Masses']==0
 
     #print('next but not prev:',np.sum(next_but_not_prev)/next_but_not_prev.size)
 
@@ -712,7 +707,7 @@ def guess_windings(dphi,vphi_dt,period=1):
 
     return (base_windings+adjust_windings)*period+dphi
 
-def add_polar_jhat_coords(merged_df,take_avg_L=False):
+def add_polar_jhat_coords(merged_df,take_avg_L=True):
 
     coords = np.zeros((merged_df.shape[0],3))
     vels = np.zeros((merged_df.shape[0],3))
