@@ -364,7 +364,10 @@ def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
                     np.isnan(orphan_df.loc[orphaned_multi_index,key])):
                     raise ValueError("Value wasn't changed properly")
 
-def make_interpolated_snap(time_merged_df,t,polar=True):
+def make_interpolated_snap(
+    time_merged_df,t,
+    polar=True,
+    rotate_support_thresh=0.5):
     
     interp_snap = {}
 
@@ -386,7 +389,8 @@ def make_interpolated_snap(time_merged_df,t,polar=True):
         t,t0,t1,
         time_merged_df,
         interp_snap,
-        polar=polar)
+        polar=polar,
+        rotate_support_thresh=rotate_support_thresh)
 
     ## remove stars that have not formed yet
     if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
@@ -399,7 +403,12 @@ def linear_interpolate(
     t):
     return x0 + (x1-x0)/(t1-t0)*(t-t0)
 
-def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
+def interpolate_position(
+    t,t0,t1,
+    time_merged_df,
+    interp_snap,
+    polar=True,
+    rotate_support_thresh=0.5):
 
     if not polar:
         ## linear interpolation at time t is already handled for all keys except
@@ -503,6 +512,7 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
                 next_Vdenoms[:,i] = [next_vRs,next_vphis*next_Rs,next_vthetas*next_Rs][i]
 
         vrot2_frac = ((first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2) / np.sum(first_Vdenoms**2 + next_Vdenoms**2,axis=1)
+        #print('polar fraction:',np.sum(vrot2_frac > rotate_support_thresh)/vrot2_frac.size)
 
         ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
         ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
@@ -512,7 +522,9 @@ def interpolate_position(t,t0,t1,time_merged_df,interp_snap,polar=True):
             rp_interp_vels,
             first_jhats,
             next_jhats,
-            vrot2_frac=vrot2_frac)
+            vrot2_frac=vrot2_frac,
+            rotate_support_thresh=rotate_support_thresh  ## 0.5
+            )
 
 def interpolate_at_order(
     this_first_coords,
@@ -566,7 +578,9 @@ def convert_rp_to_xy(
     rp_interp_vels,
     first_jhats,
     next_jhats,
-    vrot2_frac=None):
+    vrot2_frac=None,
+    rotate_support_thresh=0.50  ## 0.5
+    ):
     """ If rp_interp_coords is shape Nx2 then we are to interpret as being r,phi in the rotated frame.
     If rp_interp_coords is shape Nx3 then we are to interpret as it being spherical coordinates in some
     other frame. Typically this will be a fixed frame aligned with the average angular momentum vector between the
@@ -673,11 +687,11 @@ def convert_rp_to_xy(
     ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
     ##  make a mask for those particles which are not rotationally supported and need
     ##  to be replaced with a simple cartesian interpolation
-    rotate_support_thresh = 0.50  ## 0.5
     non_rot_support = np.logical_or(
         vrot2_frac < rotate_support_thresh,
         rp_interp_coords[:,0] > 30)
 
+    #print('linear fraction',np.sum(non_rot_support)/non_rot_support.size)
     for i in range(3): 
         ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
         ##  computed in the loop in our calling function (which put them into interp_snap in the first place)
