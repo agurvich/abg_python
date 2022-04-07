@@ -684,8 +684,8 @@ def convert_rp_to_xy(
         these_coords = interp_snap.pop('Coordinates_%d'%i)
         these_vels = interp_snap.pop('Velocities_%d'%i)
         if np.any(non_rot_support): 
-            coords[non_rot_support][:,i] = these_coords[non_rot_support]
-            vels[non_rot_support][:,i] = these_vels[non_rot_support]
+            coords[non_rot_support,i] = these_coords[non_rot_support]
+            vels[non_rot_support,i] = these_vels[non_rot_support]
     
     return coords,vels
 
