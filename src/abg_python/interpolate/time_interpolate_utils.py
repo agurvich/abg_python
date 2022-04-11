@@ -1,14 +1,11 @@
 import warnings
+import time
 
 import numpy as np
-import pandas as pd
 
 from ..snapshot_utils import convertSnapToDF
-from ..galaxy.gal_utils import Galaxy
 from ..array_utils import filterDictionary
-from ..math_utils import getThetasTaitBryan, rotateEuler
 from ..math_utils import get_primehats,add_jhat_coords
-from ..physics_utils import get_IMass
 from .. import kms_to_kpcgyr
 
 def find_bordering_snapnums(
@@ -41,24 +38,11 @@ def find_bordering_snapnums(
         np.array(list(zip(inds_prev,inds_next))),
         np.array(list(zip(snap_times_gyr[inds_prev],snap_times_gyr[inds_next]))))
 
-def index_match_snapshots_with_dataframes(
-    prev_sub_snap,
-    next_sub_snap,
+def convertToDF(
+    snapshot_dictionary,
     keys_to_extract=None,
-    extra_arrays_function=None,
-    t0=None,
-    t1=None,
     polar=True,
-    extra_df=None,
-    take_avg_L=True):
-    """
-        if you use Metallicity  or Velocities then the keys will be different when you try to access them
-          in your render call using render_kwargs.
-        Velocities ->  Velocities_0,Velocities_1,Velocities_2
-        Metallicity -> Metallicity_0,Metallicity_1,...
-    keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
-    """
-    
+    extra_arrays_function=None):
     ## note, it might make more sense for them to compute it on the interpolated snapshot?
     ##  i guess it depends if they want to interpolate their own thing or compute their thing
     ##  on an interpolated quantity(ies)
@@ -84,214 +68,67 @@ def index_match_snapshots_with_dataframes(
         total_metallicity_only=True)
     
     ## convert snapshot dictionaries to pandas dataframes
-    prev_df_snap = convertSnapToDF(prev_sub_snap,**pandas_kwargs)
-    next_df_snap = convertSnapToDF(next_sub_snap,**pandas_kwargs)
+    return convertSnapToDF(snapshot_dictionary,**pandas_kwargs)
 
-    ## explicitly handle stars formed between snapshots
-    if 'AgeGyr' in keys_to_extract and 'AgeGyr' in next_sub_snap:
-        prev_df_snap = handle_stars_formed_between_snapshots(
-            prev_df_snap, ## prev DF to add data to
-            ## just need next particle data + ids
-            ##  which are in snap, don't need DF
-            next_sub_snap, 
-            extra_df, ## gas particle locations
-            t0,t1,
-            pandas_kwargs)
-
-    ## merge rows of dataframes based on particle ID
-    prev_next_merged_df_snap = prev_df_snap.join(
-        next_df_snap,
-        rsuffix='_next',
-        how='outer')
-
-    ## and if we have any repeats, let's keep the first one
-    prev_next_merged_df_snap = prev_next_merged_df_snap.loc[
-        ~prev_next_merged_df_snap.index.duplicated(keep='first')]
-    
-    ## handle scenarios when you can't find a particle to match
-    ##  TODO currently uses linear extrapolation but consider using 
-    ##  polar where appropriate?
-    ## don't look for parents split parents if you're a star particle. 
-    ##  this happens already in handle_stars_formed_between_snapshots with the
-    ##  extra_df
-    if extra_df is None: prev_next_merged_df_snap = handle_missing_matches(prev_next_merged_df_snap,t0,t1)
-
-    ## remove any nans; there shouldn't be any unless someone passed in spooky
-    ##  field values
-    prev_next_merged_df_snap = prev_next_merged_df_snap.dropna()
-
-    ## have to add all the angular momentum stuff
-    if polar:
-        ## compute coordinates w.r.t. angular momentum plane of each particle
-        add_polar_jhat_coords(prev_next_merged_df_snap,take_avg_L=take_avg_L)
-
-        ## add jhat rotation angle, compute dot product and take arccos of it
-        rotation_angle = 0
-        for i in range(3):
-            rotation_angle += (
-                prev_next_merged_df_snap['polarjhats_%d'%i] *
-                prev_next_merged_df_snap['polarjhats_%d_next'%i])
-        rotation_angle = np.arccos(np.clip(rotation_angle,-1,1))
-
-        ## doing it this way (setting 0 @ t = t0 and rotation angle at t = t1) 
-        ##  will automatically add 
-        ##  the interpolated jhat_rotangle to the interp_snap in make_interpolated_snap
-        prev_next_merged_df_snap['jhat_rotangle_next'] = rotation_angle
-        prev_next_merged_df_snap['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
-
-    ## store these in the dataframe so we can be sure we have the right times everywhere
-    prev_next_merged_df_snap.first_time = t0
-    prev_next_merged_df_snap.next_time = t1
-
-    return prev_next_merged_df_snap
-
-def handle_stars_formed_between_snapshots(
-    prev_df_snap,
-    next_sub_snap,
-    extra_df,
-    t0,t1,
-    pandas_kwargs):
-
-    ## find stars w/ age in last snapshot < snapshot spacing
-    new_star_mask = next_sub_snap['AgeGyr'] < (t1-t0)
-    next_young_star_snap = filterDictionary(next_sub_snap,new_star_mask)
-
-    next_young_star_df = convertSnapToDF(next_young_star_snap,**pandas_kwargs)
-
-    ## now we have to initialize the young stars in the prev_snap
-    prev_young_star_df = next_young_star_df.copy()
-    prev_young_star_df.iloc[...] = 0
-
-    ## set their ages to be negative
-    prev_young_star_df['AgeGyr'] = next_young_star_df['AgeGyr'] - (t1-t0)
-
-
-    ##  we were passed a df with (presumably) gas particle data
-    if extra_df is not None:
-        ## find who has parents from the gas df
-        next_stars_with_parents_mask = next_young_star_df.index.isin(extra_df.index)
-
-        ## handle those stars with direct parents
-        gas_parent_df = extra_df.loc[next_young_star_df[next_stars_with_parents_mask].index]
-        ## copy whatever data the gas particle had
-        for key in next_young_star_df.keys():
-            if key == 'AgeGyr' or '_next' in key: continue
-            prev_young_star_df.loc[next_stars_with_parents_mask,key] = gas_parent_df[key]
-        
-        #print('before',np.sum(~next_stars_with_parents_mask)/next_stars_with_parents_mask.size)
-        ## attempt to find gas particles that split into other gas particles that could've turned into
-        ##  star particles @__@ -- let's call them adoptive parents lol
-        ##  if we don't find a parent for them we end up skipping them, so below we'll redefine
-        ##  the list of stars w/ parents to include the adoptive parents by 
-        ##  checking for unfilled values
-        orphaned_multi_indices = next_young_star_df[~next_stars_with_parents_mask].index
-        if len(orphaned_multi_indices) > 0:
-            assign_from_parent(
-                ## the multi indices of the star particles in question, the "orphans"
-                orphaned_multi_indices,
-                ## the DF to look for parents in
-                extra_df,
-                ## the DF to store answers in
-                prev_young_star_df)
-
-        ## we done w/ you
-        del gas_parent_df, extra_df
-        
-        ## redefine the parent mask to include adoptive parents so the
-        ##  remaining orphans can get extrapolated back
-        ##  take the logical not so that when we take the not below for 
-        ##  extrapolation it will find the remaining particles
-        next_stars_with_parents_mask = ~(prev_young_star_df['Masses'] == 0)
-        #print('after',np.sum(~next_stars_with_parents_mask)/next_stars_with_parents_mask.size)
-    ## no one has any parents, extrapolate everyone
-    else: next_stars_with_parents_mask = np.zeros(next_young_star_df.shape[0],dtype=bool)
-
-    ## then handle the particles that don't have direct or adoptive gas parents
-    if np.sum(~next_stars_with_parents_mask) > 0:
-        for key in next_young_star_df.keys():
-            ## don't really need _next because next_young_star_df is only _next and doesn't
-            ##  have that suffix
-            if key == 'AgeGyr' or '_next' in key: continue
-            ## copy the field data backwards
-            if 'Coordinates' not in key:
-                prev_young_star_df.loc[~next_stars_with_parents_mask,key] = next_young_star_df.loc[~next_stars_with_parents_mask,key]
-            ## extrapolate the coordinates backwards
-            else:
-                axis = key[-2:]
-                prev_young_star_df.loc[~next_stars_with_parents_mask,key] = (
-                    next_young_star_df.loc[~next_stars_with_parents_mask,key] + 
-                    next_young_star_df.loc[~next_stars_with_parents_mask,f'Velocities{axis}']*(t0-t1))
-
-    ## append young stars to the prev dataframe
-    prev_df_snap = prev_df_snap.append(prev_young_star_df)
-
-    ## and for good measure let's re-sort now that we 
-    ##  added new indices into the mix
-    prev_df_snap.sort_index(inplace=True)
-    return prev_df_snap
-
-def handle_missing_matches(prev_next_merged_df_snap,t0,t1):
+def search_multi_ids(
+    lookup_df,
+    target_df,
+    forward=True):
     """ extrapolates coordinates/fields forward in time if in prev but not next
         extrapolats coordinates/fields backward in time if in next but not prev
         attempts to avoid extrapolation if there is a particle split (looks for parent)"""
-    ## appears in this snapshot but not the next
-    prev_but_not_next = prev_next_merged_df_snap.isna()['Masses_next']
-    #print('prev but not next:',np.sum(prev_but_not_next)/prev_but_not_next.size)
 
-    ## extrapolate the coordinates forward 
-    for i in range(3): ## should only happen if gas particles are converted into stars
-        prev_next_merged_df_snap.loc[prev_but_not_next,f'Coordinates_{i:d}_next'] =(
-            prev_next_merged_df_snap.loc[prev_but_not_next,f'Coordinates_{i:d}'] + 
-            prev_next_merged_df_snap.loc[prev_but_not_next,f'Velocities_{i:d}']*(t1-t0)*kms_to_kpcgyr)
+    if forward: target_suffix = '_next'
+    else: target_suffix = ''
 
-    ## carry field values forward as a constant
-    for key in prev_next_merged_df_snap.keys():
-        if '_next' in key: continue
-        if 'Coordinates' in key: continue
-        prev_next_merged_df_snap.loc[prev_but_not_next,key+'_next'] = (prev_next_merged_df_snap.loc[prev_but_not_next,key])
-
-    ## appears in next snapshot but not this one
-    next_but_not_prev = prev_next_merged_df_snap.isna()['Masses']
+    mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
+    init_time = time.time()
+    print(np.sum(target_df.isna()['Masses'+target_suffix]) , np.sum(target_df['Masses'+target_suffix]==0),mask.size)
+    print('fraction missing before:',np.sum(mask)/mask.size)
 
     ## find the particles who don't exist in the prev snapshot
-    ##  AND have a child ID != 0; suggests they /probably/
-    ##  split from their parent between the two snapshots.
-    multi_indices = np.array(next_but_not_prev[next_but_not_prev].index.values.tolist())
-    orphaned_multi_indices = multi_indices[multi_indices[:,1] !=0]
-    if len(orphaned_multi_indices):
-        assign_from_parent(
-            orphaned_multi_indices, 
-            prev_next_merged_df_snap, ## df to look for parents in
-            prev_next_merged_df_snap) ## df to assign values to
-        ## redefine next_but_not_prev, after
-        ## having filled in the fields from the parent particles
-        next_but_not_prev = prev_next_merged_df_snap['Masses']==0
+    multi_indices = np.array(mask[mask].index.values.tolist())
 
-    #print('next but not prev:',np.sum(next_but_not_prev)/next_but_not_prev.size)
+    ## child id !=0 suggests it was a gas split, if == 0 it turned into a star
+    ##  and we won't be able to find it anyway.
+    if lookup_df is target_df: multi_indices = multi_indices[multi_indices[:,1] !=0]
 
-    ## extrapolate the coordinates backward
-    for i in range(3):
-        prev_next_merged_df_snap.loc[next_but_not_prev,f'Coordinates_{i:d}'] =(
-            prev_next_merged_df_snap.loc[next_but_not_prev,f'Coordinates_{i:d}_next'] + 
-            prev_next_merged_df_snap.loc[next_but_not_prev,f'Velocities_{i:d}_next']*(t0-t1)*kms_to_kpcgyr)
+    if len(multi_indices):
+        print('fixing:',len(multi_indices))
+        assign_from_ancestor(
+            multi_indices, 
+            ## df to look for parents in, 
+            ##  pass only relevant particles for improved performance
+            lookup_df.loc[np.unique(multi_indices[:,0])], 
+            target_df,
+            forward=forward) ## df to assign values to
 
-    ## carry field values backward as a constant
-    for key in prev_next_merged_df_snap.keys():
-        if '_next' in key: continue
-        if 'Coordinates' in key: continue
-        prev_next_merged_df_snap.loc[next_but_not_prev,key] = (prev_next_merged_df_snap.loc[next_but_not_prev,key+'_next'])
+    post_mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
+    print('fraction missing after:',np.sum(post_mask)/post_mask.size,f'({time.time()-init_time:.1f} s elapsed)')
 
-    return prev_next_merged_df_snap
+    return target_df
 
-def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
+def assign_from_ancestor(
+    orphaned_multi_indices,
+    lookup_df,
+    target_df,
+    forward=False):
+
+    if forward: 
+        target_suffix = '_next'
+        lookup_suffix = ''
+    else: 
+        target_suffix = ''
+        lookup_suffix='_next'
+
     for orphaned_multi_index in orphaned_multi_indices:
         ## convert to tuple so it can actually index .loc
         orphaned_multi_index = tuple(orphaned_multi_index)
         ## find all particles that have a matching base index
         base_index = orphaned_multi_index[0]
         ## if there are none, then we have to skip :[
-        if base_index not in parent_lookup_df.index: continue
-        possible_parents = parent_lookup_df.loc[base_index]
+        if base_index not in lookup_df.index: continue
+        possible_parents = lookup_df.loc[base_index]
 
         ## no parents to choose from, we have to just extrapolate
         ##  tbh this should not really be possible??
@@ -306,10 +143,8 @@ def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
             ## so there are a bunch of candidates, we'll have to use the formula
             ##  for new child IDs and then check below that the ID is actually contained
             ##      new child ID = parent child ID + 2^(number of times split) 
-            if 'ParticleIDGenerationNumber_next' in orphan_df:
-                generation = orphan_df.loc[orphaned_multi_index]['ParticleIDGenerationNumber_next']
-            else:
-                generation = orphan_df.loc[orphaned_multi_index]['ParticleIDGenerationNumber']
+            gen_key = 'ParticleIDGenerationNumber'
+            generation = target_df.loc[orphaned_multi_index,gen_key+lookup_suffix]
             parent_multi_index = (orphaned_multi_index[0],orphaned_multi_index[1]-2**(generation-1))
 
         ## so this can only happen if we hit the >2 case and the calculated value wasn't there
@@ -321,25 +156,28 @@ def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
         ## ----------------------------------------------------------------------
         ##  which is a wild set of scenarios, should be pretty unlikely and yet it
         ##  happens pretty frequently
-        if parent_multi_index not in parent_lookup_df.index:
+        if parent_multi_index not in lookup_df.index:
             continue
             parent_multi_index = (orphaned_multi_index[0],possible_parents.iloc[0].name)
             print("NOTE: ambiguous parentage for child particle.")
 
+        parent = lookup_df.loc[parent_multi_index]
+
         ## well we found the parent but it's missing a value, somehow, 
         ##  I guess that can happen if you have a grandparent -> parent -> child 
         ##  all between one snapshot but not sure
-        if np.any(np.isnan(parent_lookup_df.loc[parent_multi_index])): continue
+        if np.any(np.isnan(parent)): continue
         
         ## alright, we're here, we made it. now we're going to copy over
         ##  all the keys from the parent to the child
-        for key in parent_lookup_df.keys():
+        for key in lookup_df.keys():
             if '_next' in key: continue
+            if 'AgeGyr' in key: continue
             ## if the parent has more information than the child needs
             ##  that's fine. such is life. we don't need it.
-            if key not in orphan_df.keys(): continue
+            if key+target_suffix not in target_df.keys(): continue
             ## copy all fields from the parent particle
-            parent_val = parent_lookup_df.loc[parent_multi_index,key]
+            parent_val = parent[key+lookup_suffix]
             ## no idea why this fails, probably because the df is too big
             ##  and the hash table is messed up. but i literally went into
             ##  the skunkworks of pandas to debug this and it's a nightmare. 
@@ -348,7 +186,7 @@ def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
             ##  to set an array value with a sequence but right before doing so 
             ##  you try and take the truth value of that array and you get the
             ##  any(), all() exception... very dumb.
-            try: orphan_df.loc[orphaned_multi_index,key] = parent_val
+            try: target_df.loc[orphaned_multi_index,key+target_suffix] = parent_val
             except:
                 ## however, if you index *this* way, pandas asserts there's ambiguity over
                 ##  whether the DF is a copy and it raises a warning (but doesn't seem to
@@ -356,13 +194,73 @@ def assign_from_parent(orphaned_multi_indices,parent_lookup_df,orphan_df):
                 ##  of an array)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    orphan_df[key].loc[orphaned_multi_index] = parent_val
+                    target_df[key+target_suffix].loc[orphaned_multi_index] = parent_val
 
                 ## double check that we didn't change a copy as pandas
                 ##  suspects we might've (i hate you pandas)
                 if (not np.isnan(parent_val) and 
-                    np.isnan(orphan_df.loc[orphaned_multi_index,key])):
+                    np.isnan(target_df.loc[orphaned_multi_index,key+target_suffix])):
                     raise ValueError("Value wasn't changed properly")
+
+def finalize_df(
+    merged_df,
+    polar=True,
+    take_avg_L=True,
+    extrapolate=True):
+    """
+        if you use Metallicity  or Velocities then the keys will be different when you try to access them
+          in your render call using render_kwargs.
+        Velocities ->  Velocities_0,Velocities_1,Velocities_2
+        Metallicity -> Metallicity_0,Metallicity_1,...
+    keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+    """
+
+    if extrapolate:
+        ## fill in any missing values extrapolating
+        extrapolate(merged_df)
+        extrapolate(merged_df,False)
+
+    ## and if we have any repeats, let's keep the first one
+    merged_df = merged_df.loc[~merged_df.index.duplicated(keep='first')]
+    
+    ## handle scenarios when you can't find a particle to match
+    ##  TODO currently uses linear extrapolation but consider using 
+    ##  polar where appropriate?
+    ## don't look for parents split parents if you're a star particle. 
+    ##  this happens already in handle_stars_formed_between_snapshots with the
+    ##  extra_df
+        
+    ## remove any nans; there shouldn't be any unless someone passed in spooky
+    ##  field values
+    #print('fraction nans:',np.sum(np.any(merged_df.isna(),axis=1))/merged_df.shape[0])
+    #foo = merged_df.isna()
+    #for key in merged_df.keys():
+        #print(key,':',np.sum(foo[key]/foo.shape[0]))
+
+    merged_df = merged_df.dropna().copy(deep=True)
+
+    ## have to add all the angular momentum stuff
+    if polar:
+        ## compute coordinates w.r.t. angular momentum plane of each particle
+        add_polar_jhat_coords(merged_df,take_avg_L=take_avg_L)
+
+        ## add jhat rotation angle, compute dot product and take arccos of it
+        rotation_angle = 0
+        for i in range(3):
+            rotation_angle += (
+                merged_df['polarjhats_%d'%i] *
+                merged_df['polarjhats_%d_next'%i])
+        rotation_angle = np.arccos(np.clip(rotation_angle,-1,1))
+
+        ## doing it this way (setting 0 @ t = t0 and rotation angle at t = t1) 
+        ##  will automatically add 
+        ##  the interpolated jhat_rotangle to the interp_snap in make_interpolated_snap
+        merged_df['jhat_rotangle_next'] = rotation_angle
+        merged_df['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
+
+    ## store these in the dataframe so we can be sure we have the right times everywhere
+
+    return merged_df
 
 def make_interpolated_snap(
     time_merged_df,t,
@@ -371,7 +269,7 @@ def make_interpolated_snap(
     
     interp_snap = {}
 
-    t0,t1 = time_merged_df.first_time,time_merged_df.next_time
+    t0,t1 = time_merged_df.prev_time,time_merged_df.next_time
     ## create a new snapshot with linear interpolated values
     ##  between key and key_next using t0, t1, and t.
     for key in time_merged_df.keys():
@@ -392,7 +290,8 @@ def make_interpolated_snap(
         polar=polar,
         rotate_support_thresh=rotate_support_thresh)
 
-    ## remove stars that have not formed yet
+    ## remove stars that have not formed yet or gas particles that have split
+    ##  or turned into stars
     if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
  
     return interp_snap
@@ -402,6 +301,33 @@ def linear_interpolate(
     t0,t1,
     t):
     return x0 + (x1-x0)/(t1-t0)*(t-t0)
+
+def extrapolate(merged_df,forward=True):
+    if forward: 
+        lookup_suffix = ''
+        target_suffix = '_next'
+        t0,t1 = merged_df.prev_time,merged_df.next_time
+    else: 
+        lookup_suffix='_next'
+        target_suffix = ''
+        t1,t0 = merged_df.prev_time,merged_df.next_time
+
+    mask = np.logical_or(
+        merged_df.isna()['Masses'+target_suffix],
+        merged_df['Masses'+target_suffix]==0)
+
+    ## extrapolate the coordinates
+    for i in range(3): ## should only happen if gas particles are converted into stars
+        merged_df.loc[mask,f'Coordinates_{i:d}'+target_suffix] =(
+            merged_df.loc[mask,f'Coordinates_{i:d}'+lookup_suffix] + 
+            merged_df.loc[mask,f'Velocities_{i:d}'+lookup_suffix]*(t1-t0)*kms_to_kpcgyr)
+
+    ## carry field values forward as a constant
+    for key in merged_df.keys():
+        if '_next' in key: continue
+        if 'Coordinates' in key: continue
+        if 'AgeGyr' in key: continue
+        merged_df.loc[mask,key+target_suffix] = (merged_df.loc[mask,key+lookup_suffix])
 
 def interpolate_position(
     t,t0,t1,
@@ -427,16 +353,16 @@ def interpolate_position(
         vel_key = 'polarjhatVelocities_%d'
 
         do_theta = False 
-        for suffix in ['','_next']:
+        for target_suffix in ['','_next']:
             for key in [coord_key%2,vel_key%2]:
-                has_this_key = (key+suffix) in time_merged_df.keys()
+                has_this_key = (key+target_suffix) in time_merged_df.keys()
                 do_theta = do_theta or has_this_key
                 if do_theta and not has_this_key:
                     ## this happened out of the blue, no idea how this is even possible...
                     ##  clearly something else is wrong further up the pipeline but at least
                     ##  here we can catch it and raise the error
                     raise KeyError(
-                        f"{key+suffix:s} missing but have at least one other theta key:\n"+
+                        f"{key+target_suffix:s} missing but have at least one other theta key:\n"+
                         f"{repr(list(time_merged_df.keys())):s}")
 
         ## doesn't actually have z because we've rotated into jhat plane
@@ -532,7 +458,7 @@ def interpolate_at_order(
     this_first_vels,
     this_next_vels,
     t,t0,t1,
-    order=1,
+    order=2,
     periodic=False):
 
     dt = (t-t0)
@@ -728,20 +654,20 @@ def add_polar_jhat_coords(merged_df,take_avg_L=True):
     if take_avg_L:
         avg_Ls = 0
         ## calculate the average angular momentum vector between the two snapshots
-        for suffix in ['','_next']:
+        for target_suffix in ['','_next']:
             for i in range(3):
-                coords[:,i] = merged_df[f'Coordinates_{i:d}{suffix}']
-                vels[:,i] = merged_df[f'Velocities_{i:d}{suffix}']
+                coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
+                vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
             avg_Ls += np.cross(coords,vels)
         avg_Ls/=2
     else: avg_Ls = None
 
     ## calculate the coordinates in the relevant frame
-    for suffix in ['','_next']:
+    for target_suffix in ['','_next']:
         ## fill buffer with pandas dataframe values
         for i in range(3):
-            coords[:,i] = merged_df[f'Coordinates_{i:d}{suffix}']
-            vels[:,i] = merged_df[f'Velocities_{i:d}{suffix}']
+            coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
+            vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
 
         jhat_coords,jhat_vels,jhats = add_jhat_coords(
             ## pass a dictionary because we check if 'AngularMomentum' 
@@ -752,6 +678,6 @@ def add_polar_jhat_coords(merged_df,take_avg_L=True):
                 Velocities=vels))
 
         for i in range(jhat_coords.shape[1]):
-            merged_df[f'polarjhatCoordinates_{i:d}{suffix}'] = jhat_coords[:,i]
-            merged_df[f'polarjhatVelocities_{i:d}{suffix}'] = jhat_vels[:,i]
-        for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{suffix}'] = jhats[:,i]
+            merged_df[f'polarjhatCoordinates_{i:d}{target_suffix}'] = jhat_coords[:,i]
+            merged_df[f'polarjhatVelocities_{i:d}{target_suffix}'] = jhat_vels[:,i]
+        for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{target_suffix}'] = jhats[:,i]
