@@ -217,8 +217,8 @@ def finalize_df(
 
     if extrapolate:
         ## fill in any missing values extrapolating
-        extrapolate(merged_df)
-        extrapolate(merged_df,False)
+        linear_extrapolate(merged_df)
+        linear_extrapolate(merged_df,False)
 
     ## and if we have any repeats, let's keep the first one
     merged_df = merged_df.loc[~merged_df.index.duplicated(keep='first')]
@@ -262,47 +262,7 @@ def finalize_df(
 
     return merged_df
 
-def make_interpolated_snap(
-    time_merged_df,t,
-    polar=True,
-    rotate_support_thresh=0.5):
-    
-    interp_snap = {}
-
-    t0,t1 = time_merged_df.prev_time,time_merged_df.next_time
-    ## create a new snapshot with linear interpolated values
-    ##  between key and key_next using t0, t1, and t.
-    for key in time_merged_df.keys():
-        if '_next' in key: continue
-        elif 'polarjhat' in key: continue ## will allow jhat_rotangle though
-        elif 'CircularVelocities' in key: continue ## only using to figure out if polar interpolation is appropriate
-        interp_snap[key] = linear_interpolate(
-            getattr(time_merged_df,key),
-            getattr(time_merged_df,key+'_next'),
-            t0,t1,t).values
-
-    ## interpolate coordinates using higher order/more complicated interpolations
-    ##  will remove the Coordinates_i and Velocities_i keys from interp_snap
-    interp_snap['Coordinates'],interp_snap['Velocities'] = interpolate_position(
-        t,t0,t1,
-        time_merged_df,
-        interp_snap,
-        polar=polar,
-        rotate_support_thresh=rotate_support_thresh)
-
-    ## remove stars that have not formed yet or gas particles that have split
-    ##  or turned into stars
-    if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
- 
-    return interp_snap
-
-def linear_interpolate(
-    x0,x1,
-    t0,t1,
-    t):
-    return x0 + (x1-x0)/(t1-t0)*(t-t0)
-
-def extrapolate(merged_df,forward=True):
+def linear_extrapolate(merged_df,forward=True):
     if forward: 
         lookup_suffix = ''
         target_suffix = '_next'
@@ -329,25 +289,90 @@ def extrapolate(merged_df,forward=True):
         if 'AgeGyr' in key: continue
         merged_df.loc[mask,key+target_suffix] = (merged_df.loc[mask,key+lookup_suffix])
 
+def add_polar_jhat_coords(merged_df,take_avg_L=True):
+
+    coords = np.zeros((merged_df.shape[0],3))
+    vels = np.zeros((merged_df.shape[0],3))
+    if take_avg_L:
+        avg_Ls = 0
+        ## calculate the average angular momentum vector between the two snapshots
+        for target_suffix in ['','_next']:
+            for i in range(3):
+                coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
+                vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
+            avg_Ls += np.cross(coords,vels)
+        avg_Ls/=2
+    else: avg_Ls = None
+
+    ## calculate the coordinates in the relevant frame
+    for target_suffix in ['','_next']:
+        ## fill buffer with pandas dataframe values
+        for i in range(3):
+            coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
+            vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
+
+        jhat_coords,jhat_vels,jhats = add_jhat_coords(
+            ## pass a dictionary because we check if 'AngularMomentum' 
+            ##  is a key of the snapdict argument
+            dict( 
+                AngularMomentum=avg_Ls,
+                Coordinates=coords,
+                Velocities=vels))
+
+        for i in range(jhat_coords.shape[1]):
+            merged_df[f'polarjhatCoordinates_{i:d}{target_suffix}'] = jhat_coords[:,i]
+            merged_df[f'polarjhatVelocities_{i:d}{target_suffix}'] = jhat_vels[:,i]
+        for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{target_suffix}'] = jhats[:,i]
+
+def make_interpolated_snap(
+    merged_df,t,
+    polar=True,
+    rotate_support_thresh=0.5):
+    
+    interp_snap = {}
+
+    t0,t1 = merged_df.prev_time,merged_df.next_time
+    ## create a new snapshot with linear interpolated values
+    ##  between key and key_next using t0, t1, and t.
+    for key in merged_df.keys():
+        if '_next' in key: continue
+        elif 'polarjhat' in key: continue ## will allow jhat_rotangle though
+        elif 'CircularVelocities' in key: continue ## only using to figure out if polar interpolation is appropriate
+        elif 'Coordinates' == key: continue
+        interp_snap[key] = linear_interpolate(
+            getattr(merged_df,key),
+            getattr(merged_df,key+'_next'),
+            t0,t1,t).values
+
+    ## interpolate coordinates using higher order/more complicated interpolations
+    ##  will remove the Coordinates_i and Velocities_i keys from interp_snap
+    interp_snap['Coordinates'],interp_snap['Velocities'] = interpolate_position(
+        t,t0,t1,
+        merged_df,
+        interp_snap,
+        polar=polar,
+        rotate_support_thresh=rotate_support_thresh)
+
+    ## remove stars that have not formed yet or gas particles that have split
+    ##  or turned into stars
+    if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
+ 
+    return interp_snap
+
+def linear_interpolate(
+    x0,x1,
+    t0,t1,
+    t):
+    return x0 + (x1-x0)/(t1-t0)*(t-t0)
+
 def interpolate_position(
     t,t0,t1,
-    time_merged_df,
+    merged_df,
     interp_snap,
     polar=True,
     rotate_support_thresh=0.5):
 
-    if not polar:
-        ## linear interpolation at time t is already handled for all keys except
-        ##  the polar coordinates. see make_interpolated_snap first loop
-        coords = np.zeros((time_merged_df.shape[0],3))
-        coords[:,0] = interp_snap.pop('Coordinates_0')
-        coords[:,1] = interp_snap.pop('Coordinates_1')
-        coords[:,2] = interp_snap.pop('Coordinates_2')
-        vels = np.zeros((time_merged_df.shape[0],3))
-        vels[:,0] = interp_snap.pop('Velocities_0')
-        vels[:,1] = interp_snap.pop('Velocities_1')
-        vels[:,2] = interp_snap.pop('Velocities_2')
-        return coords,vels
+    if not polar: return cartesian_interpolate(t,t0,t1,merged_df)
     else:
         coord_key = 'polarjhatCoordinates_%d'
         vel_key = 'polarjhatVelocities_%d'
@@ -355,7 +380,7 @@ def interpolate_position(
         do_theta = False 
         for target_suffix in ['','_next']:
             for key in [coord_key%2,vel_key%2]:
-                has_this_key = (key+target_suffix) in time_merged_df.keys()
+                has_this_key = (key+target_suffix) in merged_df.keys()
                 do_theta = do_theta or has_this_key
                 if do_theta and not has_this_key:
                     ## this happened out of the blue, no idea how this is even possible...
@@ -363,99 +388,134 @@ def interpolate_position(
                     ##  here we can catch it and raise the error
                     raise KeyError(
                         f"{key+target_suffix:s} missing but have at least one other theta key:\n"+
-                        f"{repr(list(time_merged_df.keys())):s}")
+                        f"{repr(list(merged_df.keys())):s}")
 
-        ## doesn't actually have z because we've rotated into jhat plane
-        rp_interp_coords = np.zeros((time_merged_df.shape[0],2+do_theta))
-        rp_interp_vels = np.zeros((time_merged_df.shape[0],2+do_theta))
+        ## may not actually have z because we've rotated into jhat plane
+        ##  if take_avg_L = False (non-default)
+        rp_interp_coords = np.zeros((merged_df.shape[0],2+do_theta))
+        rp_interp_vels = np.zeros((merged_df.shape[0],2+do_theta))
 
-        first_jhats = np.zeros((time_merged_df.shape[0],3))
-        next_jhats = np.zeros((time_merged_df.shape[0],3))
+        prev_jhats = np.zeros((merged_df.shape[0],3))
+        next_jhats = np.zeros((merged_df.shape[0],3))
 
         this_coord_key = coord_key%0
         this_vel_key = vel_key%0
         ## interpolate r coordinate
-        first_Rs = getattr(time_merged_df,this_coord_key).values
-        next_Rs = getattr(time_merged_df,this_coord_key+'_next').values
-        first_vRs = getattr(time_merged_df,this_vel_key).values
-        next_vRs = getattr(time_merged_df,this_vel_key+'_next').values
+        prev_Rs = getattr(merged_df,this_coord_key).values
+        next_Rs = getattr(merged_df,this_coord_key+'_next').values
+        prev_vRs = getattr(merged_df,this_vel_key).values
+        next_vRs = getattr(merged_df,this_vel_key+'_next').values
 
         rp_interp_coords[:,0], rp_interp_vels[:,0] = interpolate_at_order(
-            first_Rs,
+            prev_Rs,
             next_Rs,
-            first_vRs,
+            prev_vRs,
             next_vRs,
             t,t0,t1) ## defaults to order=1
 
         this_coord_key = coord_key%1
         this_vel_key = vel_key%1
         ## interpolate phi coordinate
-        first_vphis = getattr(time_merged_df,this_vel_key).values 
-        next_vphis = getattr(time_merged_df,this_vel_key+'_next').values 
+        prev_vphis = getattr(merged_df,this_vel_key).values 
+        next_vphis = getattr(merged_df,this_vel_key+'_next').values 
 
         rp_interp_coords[:,1], rp_interp_vels[:,1] = interpolate_at_order(
-            getattr(time_merged_df,this_coord_key).values,
-            getattr(time_merged_df,this_coord_key+'_next').values,
-            first_vphis, ## radians / gyr
+            getattr(merged_df,this_coord_key).values,
+            getattr(merged_df,this_coord_key+'_next').values,
+            prev_vphis, ## radians / gyr
             next_vphis, ## radians / gyr
             t,t0,t1,
             order=3,
             periodic=True)
         
-        if not do_theta: first_vthetas=next_vthetas=0
+        if not do_theta: prev_vthetas=next_vthetas=0
         else:
             this_coord_key = coord_key%2
             this_vel_key = vel_key%2
             ## interpolate phi coordinate
-            first_vthetas = getattr(time_merged_df,this_vel_key).values 
-            next_vthetas = getattr(time_merged_df,this_vel_key+'_next').values 
+            prev_vthetas = getattr(merged_df,this_vel_key).values 
+            next_vthetas = getattr(merged_df,this_vel_key+'_next').values 
 
             rp_interp_coords[:,2], rp_interp_vels[:,2] = interpolate_at_order(
-                getattr(time_merged_df,this_coord_key).values,
-                getattr(time_merged_df,this_coord_key+'_next').values,
-                first_vthetas, ## radians / gyr
+                getattr(merged_df,this_coord_key).values,
+                getattr(merged_df,this_coord_key+'_next').values,
+                prev_vthetas, ## radians / gyr
                 next_vthetas, ## radians / gyr
                 t,t0,t1) ## defaults to order=1
 
-        first_Vdenoms = np.zeros((time_merged_df.shape[0],3))
-        next_Vdenoms = np.zeros((time_merged_df.shape[0],3))
+        prev_Vdenoms = np.zeros((merged_df.shape[0],3))
+        next_Vdenoms = np.zeros((merged_df.shape[0],3))
 
         Vc_key = f'CircularVelocities'
         ## use vphi2/Vc^2 if we can
-        if Vc_key in time_merged_df.keys():
-            first_Vdenoms[:,0] = getattr(time_merged_df,Vc_key).values
-            next_Vdenoms[:,0] = getattr(time_merged_df,Vc_key+'_next').values
+        if Vc_key in merged_df.keys():
+            prev_Vdenoms[:,0] = getattr(merged_df,Vc_key).values
+            next_Vdenoms[:,0] = getattr(merged_df,Vc_key+'_next').values
 
         ## unpack flattened rpz arrays from pandas dataframe which did our id matching
         for i in range(3):
             jhat_key = 'polarjhats_%d'%i
-            first_jhats[:,i] = getattr(time_merged_df,jhat_key).values
-            next_jhats[:,i] = getattr(time_merged_df,jhat_key+'_next').values
+            prev_jhats[:,i] = getattr(merged_df,jhat_key).values
+            next_jhats[:,i] = getattr(merged_df,jhat_key+'_next').values
 
             ## alright, do vphi2/vtot^2, it's better than nothing.
-            if Vc_key not in time_merged_df.keys():
-                first_Vdenoms[:,i] = [first_vRs,first_vphis*first_Rs,first_vthetas*first_Rs][i]
+            if Vc_key not in merged_df.keys():
+                prev_Vdenoms[:,i] = [prev_vRs,prev_vphis*prev_Rs,prev_vthetas*prev_Rs][i]
                 next_Vdenoms[:,i] = [next_vRs,next_vphis*next_Rs,next_vthetas*next_Rs][i]
 
-        vrot2_frac = ((first_vphis*first_Rs)**2 + (next_vphis*next_Rs)**2) / np.sum(first_Vdenoms**2 + next_Vdenoms**2,axis=1)
+        vrot2_frac = ((prev_vphis*prev_Rs)**2 + (next_vphis*next_Rs)**2) / np.sum(prev_Vdenoms**2 + next_Vdenoms**2,axis=1)
         #print('polar fraction:',np.sum(vrot2_frac > rotate_support_thresh)/vrot2_frac.size)
 
         ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
         ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
         return convert_rp_to_xy(
+            t,t0,t1,
+            merged_df,
             interp_snap,
             rp_interp_coords,
             rp_interp_vels,
-            first_jhats,
+            prev_jhats,
             next_jhats,
             vrot2_frac=vrot2_frac,
             rotate_support_thresh=rotate_support_thresh  ## 0.5
             )
 
+def cartesian_interpolate(
+    t,t0,t1,
+    merged_df,
+    coords=None,
+    vels=None,
+    non_rot_support=None,
+    order=3):
+
+    if coords is None: coords = np.zeros((merged_df.shape[0],3))
+    if vels is None: vels = np.zeros((merged_df.shape[0],3))
+
+    if non_rot_support is None: non_rot_support = np.ones(merged_df.shape[0],dtype=bool)
+    if not np.any(non_rot_support): return coords,vels
+
+    for i in range(3):
+        prev_coords = merged_df['Coordinates_%d'%i]
+        prev_vels = merged_df['Velocities_%d'%i]
+
+        next_coords = merged_df['Coordinates_%d_next'%i]
+        next_vels = merged_df['Velocities_%d_next'%i]
+
+        (coords[non_rot_support,i],
+        vels[non_rot_support,i]) = interpolate_at_order(
+            prev_coords[non_rot_support],
+            next_coords[non_rot_support],
+            prev_vels[non_rot_support],
+            next_vels[non_rot_support],
+            t,t0,t1,
+            order=order)
+
+    return coords,vels
+
 def interpolate_at_order(
-    this_first_coords,
+    this_prev_coords,
     this_next_coords,
-    this_first_vels,
+    this_prev_vels,
     this_next_vels,
     t,t0,t1,
     order=2,
@@ -466,43 +526,45 @@ def interpolate_at_order(
     time_frac = dt/dsnap ## 'tau' in Phil's notation
 
     if this_next_coords is not None:
-        dcoord = this_next_coords - this_first_coords
+        dcoord = this_next_coords - this_prev_coords
         if periodic:
             ## how far would we guess each particle goes at tfirst?
             ##  let's guess how many times it actually went around, basically
             ##  want to determine which of (N)*2pi + dcoord  
             ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
             ##  closest to approx_radians, (N = approx_radians//2pi)
-            dcoord = guess_windings(dcoord,(this_first_vels+this_next_vels)/2*dsnap,2*np.pi)
+            dcoord = guess_windings(dcoord,(this_prev_vels+this_next_vels)/2*dsnap,2*np.pi)
     else:
         ## handle extrapolation case
-        dcoord = this_first_vels*dsnap
+        dcoord = this_prev_vels*dsnap
         #if periodic:dcoord = np.mod(dcoord,2*np.pi)
     
     ## basic linear interpolation
     if order == 1:
-        interp_coords = this_first_coords + dcoord*time_frac
+        interp_coords = this_prev_coords + dcoord*time_frac
     ## correction factor to minimize velocity difference, apparently
     elif order == 2:
-        x2 = (this_next_vels - this_first_vels)/2 * dsnap
+        x2 = (this_next_vels - this_prev_vels)/2 * dsnap
         x1 = dcoord - x2
-        interp_coords = this_first_coords + x1*time_frac * x2*time_frac*time_frac
+        interp_coords = this_prev_coords + x1*time_frac * x2*time_frac*time_frac
     ## "enables exact matching of x,v but can 'overshoot' " - phil
     elif order == 3:
-        x2 = 3*dcoord - (2*this_first_vels+this_next_vels)*dsnap
-        x3 = -2*dcoord + (this_first_vels+this_next_vels)*dsnap
-        interp_coords = this_first_coords + this_first_vels*dt + x2*time_frac**2 + x3*time_frac**3
+        x2 = 3*dcoord - (2*this_prev_vels+this_next_vels)*dsnap
+        x3 = -2*dcoord + (this_prev_vels+this_next_vels)*dsnap
+        interp_coords = this_prev_coords + this_prev_vels*dt + x2*time_frac**2 + x3*time_frac**3
     else: raise Exception("Bad order, should be 1,2, or 3")
 
     ## do a simple 1st order interpolation for the velocities
     ##  while we have them in scope
-    return interp_coords, this_first_vels + (this_next_vels - this_first_vels)*(t-t0)/(t1-t0)
+    return interp_coords, this_prev_vels + (this_next_vels - this_prev_vels)*(t-t0)/(t1-t0)
 
 def convert_rp_to_xy(
+    t,t0,t1,
+    merged_df,
     interp_snap,
     rp_interp_coords,
     rp_interp_vels,
-    first_jhats,
+    prev_jhats,
     next_jhats,
     vrot2_frac=None,
     rotate_support_thresh=0.50  ## 0.5
@@ -521,7 +583,7 @@ def convert_rp_to_xy(
         _description_
     rp_interp_vels : _type_
         _description_
-    first_jhats : _type_
+    prev_jhats : _type_
         _description_
     next_jhats : _type_
         _description_
@@ -543,20 +605,20 @@ def convert_rp_to_xy(
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
     rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
 
-    khats = np.cross(first_jhats,next_jhats) ## vector about which jhat is rotated
-    ohats = np.cross(khats,first_jhats) ## vector pointing from ji toward jf in plane of rotation
+    khats = np.cross(prev_jhats,next_jhats) ## vector about which jhat is rotated
+    ohats = np.cross(khats,prev_jhats) ## vector pointing from ji toward jf in plane of rotation
 
     ## make sure all our vectors are normalized properly 
-    first_jhats = first_jhats/np.linalg.norm(first_jhats,axis=1)[:,None]
+    prev_jhats = prev_jhats/np.linalg.norm(prev_jhats,axis=1)[:,None]
     knorms = np.linalg.norm(khats,axis=1)
     khats[knorms>0] /= knorms[knorms>0,None]
     onorms = np.linalg.norm(ohats,axis=1)
     ohats[onorms>0] /= onorms[onorms>0,None]
 
     ## last term is canceled b.c. by definition k . j_i = 0
-    interp_jhats = first_jhats*np.cos(rotangle)[:,None] + ohats*np.sin(rotangle)[:,None] #+ khats*(np.dot(khats,first_jhats))*(1-np.cos(rotangle))
+    interp_jhats = prev_jhats*np.cos(rotangle)[:,None] + ohats*np.sin(rotangle)[:,None] #+ khats*(np.dot(khats,prev_jhats))*(1-np.cos(rotangle))
     interp_jhats/=np.linalg.norm(interp_jhats,axis=1)[:,None]
-    ## note that in case rotangle = 0 then interp_jhats = first_jhats (= next_jhats)
+    ## note that in case rotangle = 0 then interp_jhats = prev_jhats (= next_jhats)
 
     xprimehats,yprimehats = get_primehats(interp_jhats) ## x' & y' in x,y,z coordinates
 
@@ -603,7 +665,7 @@ def convert_rp_to_xy(
 
     ## check for rotational support, inspired by Phil's routine
     ## average 1D velocity between snapshots
-    #avg_vels2 = (rp_first_vels**2+rp_next_vels**2)/2
+    #avg_vels2 = (rp_prev_vels**2+rp_next_vels**2)/2
     ## time interpolated 1D velocity 
     if vrot2_frac is None: 
         avg_vels2 = rp_interp_vels**2
@@ -618,14 +680,13 @@ def convert_rp_to_xy(
         rp_interp_coords[:,0] > 30)
 
     #print('linear fraction',np.sum(non_rot_support)/non_rot_support.size)
-    for i in range(3): 
-        ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
-        ##  computed in the loop in our calling function (which put them into interp_snap in the first place)
-        these_coords = interp_snap.pop('Coordinates_%d'%i)
-        these_vels = interp_snap.pop('Velocities_%d'%i)
-        if np.any(non_rot_support): 
-            coords[non_rot_support,i] = these_coords[non_rot_support]
-            vels[non_rot_support,i] = these_vels[non_rot_support]
+    ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
+    ##  computed in the loop in our calling function (which put them into interp_snap in the first place)
+    cartesian_interpolate(
+        t,t0,t1,
+        merged_df,
+        coords,vels,
+        non_rot_support) 
     
     return coords,vels
 
@@ -646,38 +707,3 @@ def guess_windings(dphi,vphi_dt,period=1):
     adjust_windings-=1
 
     return (base_windings+adjust_windings)*period+dphi
-
-def add_polar_jhat_coords(merged_df,take_avg_L=True):
-
-    coords = np.zeros((merged_df.shape[0],3))
-    vels = np.zeros((merged_df.shape[0],3))
-    if take_avg_L:
-        avg_Ls = 0
-        ## calculate the average angular momentum vector between the two snapshots
-        for target_suffix in ['','_next']:
-            for i in range(3):
-                coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
-                vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
-            avg_Ls += np.cross(coords,vels)
-        avg_Ls/=2
-    else: avg_Ls = None
-
-    ## calculate the coordinates in the relevant frame
-    for target_suffix in ['','_next']:
-        ## fill buffer with pandas dataframe values
-        for i in range(3):
-            coords[:,i] = merged_df[f'Coordinates_{i:d}{target_suffix}']
-            vels[:,i] = merged_df[f'Velocities_{i:d}{target_suffix}']
-
-        jhat_coords,jhat_vels,jhats = add_jhat_coords(
-            ## pass a dictionary because we check if 'AngularMomentum' 
-            ##  is a key of the snapdict argument
-            dict( 
-                AngularMomentum=avg_Ls,
-                Coordinates=coords,
-                Velocities=vels))
-
-        for i in range(jhat_coords.shape[1]):
-            merged_df[f'polarjhatCoordinates_{i:d}{target_suffix}'] = jhat_coords[:,i]
-            merged_df[f'polarjhatVelocities_{i:d}{target_suffix}'] = jhat_vels[:,i]
-        for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{target_suffix}'] = jhats[:,i]
