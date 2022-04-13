@@ -353,6 +353,10 @@ def make_interpolated_snap(
         polar=polar,
         rotate_support_thresh=rotate_support_thresh)
 
+    ids = np.array([*merged_df.index.values])
+    interp_snap['ParticleIDs'] = ids[:,0]
+    interp_snap['ParticleChildIDsNumber'] = ids[:,1]
+
     ## remove stars that have not formed yet or gas particles that have split
     ##  or turned into stars
     if 'AgeGyr' in interp_snap: interp_snap = filterDictionary(interp_snap,interp_snap['AgeGyr']>0)
@@ -486,7 +490,7 @@ def cartesian_interpolate(
     coords=None,
     vels=None,
     non_rot_support=None,
-    order=3):
+    order=2):
 
     if coords is None: coords = np.zeros((merged_df.shape[0],3))
     if vels is None: vels = np.zeros((merged_df.shape[0],3))
@@ -518,7 +522,7 @@ def interpolate_at_order(
     this_prev_vels,
     this_next_vels,
     t,t0,t1,
-    order=2,
+    order=1,
     periodic=False):
 
     dt = (t-t0)
@@ -546,7 +550,7 @@ def interpolate_at_order(
     elif order == 2:
         x2 = (this_next_vels - this_prev_vels)/2 * dsnap
         x1 = dcoord - x2
-        interp_coords = this_prev_coords + x1*time_frac * x2*time_frac*time_frac
+        interp_coords = this_prev_coords + x1*time_frac + x2*time_frac*time_frac
     ## "enables exact matching of x,v but can 'overshoot' " - phil
     elif order == 3:
         x2 = 3*dcoord - (2*this_prev_vels+this_next_vels)*dsnap
