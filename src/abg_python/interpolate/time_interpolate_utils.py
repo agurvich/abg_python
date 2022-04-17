@@ -2,6 +2,7 @@ import warnings
 import time
 
 import numpy as np
+import pandas as pd
 
 from ..snapshot_utils import convertSnapToDF
 from ..array_utils import filterDictionary
@@ -70,137 +71,58 @@ def convertToDF(
     ## convert snapshot dictionaries to pandas dataframes
     return convertSnapToDF(snapshot_dictionary,**pandas_kwargs)
 
-def search_multi_ids(
-    lookup_df,
-    target_df,
-    forward=True):
-    """ extrapolates coordinates/fields forward in time if in prev but not next
-        extrapolats coordinates/fields backward in time if in next but not prev
-        attempts to avoid extrapolation if there is a particle split (looks for parent)"""
+## find which stars in the previous gas df are now in the 
+def cross_match_starformed_gas(
+    t0,t1,
+    prev_gas_df,next_gas_df,
+    prev_star_df,next_star_df):
+    ##  next star df (i.e. which ones turned into stars)
+    starformed = prev_gas_df.index[prev_gas_df.index.isin(next_star_df.index)]
+    ages = next_star_df.loc[starformed,'AgeGyr']
+    dsnap = t1 - t0
+    #print(starformed.shape[0],'many starformed particles')
+    
+    ## add gas data to the stars and set the ages s.t. they will
+    ##  appear at the correct time.
+    ## -----------
+    ##  append the rows, but only columns which are shared
+    which_keys = prev_gas_df.keys()[prev_gas_df.keys().isin(prev_star_df.keys())]
+    prev_star_df = pd.concat([
+        prev_star_df, ## df to modify
+        prev_gas_df.loc[starformed,which_keys]], ## new rows
+        axis=0, ## add rows
+        )
+    ##  linear interpolation from ages-dt -> ages-dt + dt = ages
+    ##   will result in star particles disappearing at correct time
+    prev_star_df.loc[starformed,'AgeGyr'] = ages-dsnap
 
-    if forward: target_suffix = '_next'
-    else: target_suffix = ''
+    ##  copy the field values from the future for keys that aren't shared
+    ##   between gas and stars
+    other_keys = prev_star_df.keys()[~prev_star_df.keys().isin(prev_gas_df.keys())]
+    if len(other_keys):
+        prev_star_df.loc[starformed,other_keys] = next_star_df.loc[starformed,other_keys]
 
-    mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
-    init_time = time.time()
-    print(np.sum(target_df.isna()['Masses'+target_suffix]) , np.sum(target_df['Masses'+target_suffix]==0),mask.size)
-    print('fraction missing before:',np.sum(mask)/mask.size)
+    ## add star data to the gas and set the ages s.t. they will
+    ##  disappear at the correct time.
+    ## -----------
+    ##  append the rows, but only columns which are shared
+    which_keys = next_star_df.keys()[next_star_df.keys().isin(next_gas_df.keys())]
+    next_gas_df = pd.concat([
+        next_gas_df, ## df to modify 
+        next_star_df.loc[starformed,which_keys]], ## new rows
+        axis=0, ## add rows
+        )
+    ## tauf = age/(age-dt) -- derivation on remarkable 4/9/22
+    ##  starting at 1, will cross 0 at age
+    next_gas_df.loc[starformed,'AgeGyr'] = ages/(ages-dsnap)
 
-    ## find the particles who don't exist in the prev snapshot
-    multi_indices = np.array(mask[mask].index.values.tolist())
+    ##  copy the field values from the past for keys that aren't shared
+    ##   between gas and stars
+    other_keys = next_gas_df.keys()[~next_gas_df.keys().isin(next_star_df.keys())]
+    if len(other_keys):
+        next_gas_df.loc[starformed,other_keys] = prev_gas_df.loc[starformed,other_keys]
 
-    ## child id !=0 suggests it was a gas split, if == 0 it turned into a star
-    ##  and we won't be able to find it anyway.
-    if lookup_df is target_df: multi_indices = multi_indices[multi_indices[:,1] !=0]
-
-    if len(multi_indices):
-        print('fixing:',len(multi_indices))
-        assign_from_ancestor(
-            multi_indices, 
-            ## df to look for parents in, 
-            ##  pass only relevant particles for improved performance
-            lookup_df.loc[np.unique(multi_indices[:,0])], 
-            target_df,
-            forward=forward) ## df to assign values to
-
-    post_mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
-    print('fraction missing after:',np.sum(post_mask)/post_mask.size,f'({time.time()-init_time:.1f} s elapsed)')
-
-    return target_df
-
-def assign_from_ancestor(
-    orphaned_multi_indices,
-    lookup_df,
-    target_df,
-    forward=False):
-
-    if forward: 
-        target_suffix = '_next'
-        lookup_suffix = ''
-    else: 
-        target_suffix = ''
-        lookup_suffix='_next'
-
-    for orphaned_multi_index in orphaned_multi_indices:
-        ## convert to tuple so it can actually index .loc
-        orphaned_multi_index = tuple(orphaned_multi_index)
-        ## find all particles that have a matching base index
-        base_index = orphaned_multi_index[0]
-        ## if there are none, then we have to skip :[
-        if base_index not in lookup_df.index: continue
-        possible_parents = lookup_df.loc[base_index]
-
-        ## no parents to choose from, we have to just extrapolate
-        ##  tbh this should not really be possible??
-        if possible_parents.shape[0] == 1: continue 
-        ## only one possible candidate it could've split from
-        ##  let's just choose the other particle
-        elif possible_parents.shape[0] == 2:
-            parent_multi_index = (
-                orphaned_multi_index[0],
-                possible_parents[possible_parents.index != orphaned_multi_index[1]].index[0])
-        elif possible_parents.shape[0] > 2: 
-            ## so there are a bunch of candidates, we'll have to use the formula
-            ##  for new child IDs and then check below that the ID is actually contained
-            ##      new child ID = parent child ID + 2^(number of times split) 
-            gen_key = 'ParticleIDGenerationNumber'
-            generation = target_df.loc[orphaned_multi_index,gen_key+lookup_suffix]
-            parent_multi_index = (orphaned_multi_index[0],orphaned_multi_index[1]-2**(generation-1))
-
-        ## so this can only happen if we hit the >2 case and the calculated value wasn't there
-        ##  in this scenario there is lots of splitting happening rapidly, I guess,
-        ##  here is one scenario that I can imagine where this is possible:
-        ## ----------------------------------------------------------------------
-        ##  prev                        between                                 next
-        ##  grandparent  grandparent || parent; parent||child; parent -> star  child
-        ## ----------------------------------------------------------------------
-        ##  which is a wild set of scenarios, should be pretty unlikely and yet it
-        ##  happens pretty frequently
-        if parent_multi_index not in lookup_df.index:
-            continue
-            parent_multi_index = (orphaned_multi_index[0],possible_parents.iloc[0].name)
-            print("NOTE: ambiguous parentage for child particle.")
-
-        parent = lookup_df.loc[parent_multi_index]
-
-        ## well we found the parent but it's missing a value, somehow, 
-        ##  I guess that can happen if you have a grandparent -> parent -> child 
-        ##  all between one snapshot but not sure
-        if np.any(np.isnan(parent)): continue
-        
-        ## alright, we're here, we made it. now we're going to copy over
-        ##  all the keys from the parent to the child
-        for key in lookup_df.keys():
-            if '_next' in key: continue
-            if 'AgeGyr' in key: continue
-            ## if the parent has more information than the child needs
-            ##  that's fine. such is life. we don't need it.
-            if key+target_suffix not in target_df.keys(): continue
-            ## copy all fields from the parent particle
-            parent_val = parent[key+lookup_suffix]
-            ## no idea why this fails, probably because the df is too big
-            ##  and the hash table is messed up. but i literally went into
-            ##  the skunkworks of pandas to debug this and it's a nightmare. 
-            ##  basically what happens is that you try and fill a scalar value
-            ##  with a scalar value but somewhere along the way you end up trying
-            ##  to set an array value with a sequence but right before doing so 
-            ##  you try and take the truth value of that array and you get the
-            ##  any(), all() exception... very dumb.
-            try: target_df.loc[orphaned_multi_index,key+target_suffix] = parent_val
-            except:
-                ## however, if you index *this* way, pandas asserts there's ambiguity over
-                ##  whether the DF is a copy and it raises a warning (but doesn't seem to
-                ##  try and set an array value with a sequence or compute the truth value
-                ##  of an array)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    target_df[key+target_suffix].loc[orphaned_multi_index] = parent_val
-
-                ## double check that we didn't change a copy as pandas
-                ##  suspects we might've (i hate you pandas)
-                if (not np.isnan(parent_val) and 
-                    np.isnan(target_df.loc[orphaned_multi_index,key+target_suffix])):
-                    raise ValueError("Value wasn't changed properly")
+    return prev_gas_df,next_gas_df,prev_star_df,next_star_df
 
 def finalize_df(
     merged_df,
@@ -327,7 +249,7 @@ def add_polar_jhat_coords(merged_df,take_avg_L=True):
 def make_interpolated_snap(
     merged_df,t,
     polar=True,
-    rotate_support_thresh=0.5):
+    rotate_support_thresh=0.333):
     
     interp_snap = {}
 
@@ -711,3 +633,135 @@ def guess_windings(dphi,vphi_dt,period=1):
     adjust_windings-=1
 
     return (base_windings+adjust_windings)*period+dphi
+
+def search_multi_ids(
+    lookup_df,
+    target_df,
+    forward=True):
+    """ extrapolates coordinates/fields forward in time if in prev but not next
+        extrapolats coordinates/fields backward in time if in next but not prev
+        attempts to avoid extrapolation if there is a particle split (looks for parent)"""
+
+    if forward: target_suffix = '_next'
+    else: target_suffix = ''
+
+    mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
+    init_time = time.time()
+    print(np.sum(target_df.isna()['Masses'+target_suffix]) , np.sum(target_df['Masses'+target_suffix]==0),mask.size)
+    print('fraction missing before:',np.sum(mask)/mask.size)
+
+    ## find the particles who don't exist in the prev snapshot
+    multi_indices = np.array(mask[mask].index.values.tolist())
+
+    ## child id !=0 suggests it was a gas split, if == 0 it turned into a star
+    ##  and we won't be able to find it anyway.
+    if lookup_df is target_df: multi_indices = multi_indices[multi_indices[:,1] !=0]
+
+    if len(multi_indices):
+        print('fixing:',len(multi_indices))
+        assign_from_ancestor(
+            multi_indices, 
+            ## df to look for parents in, 
+            ##  pass only relevant particles for improved performance
+            lookup_df.loc[np.unique(multi_indices[:,0])], 
+            target_df,
+            forward=forward) ## df to assign values to
+
+    post_mask = (target_df.isna()['Masses'+target_suffix]) | (target_df['Masses'+target_suffix]==0)
+    print('fraction missing after:',np.sum(post_mask)/post_mask.size,f'({time.time()-init_time:.1f} s elapsed)')
+
+    return target_df
+
+def assign_from_ancestor(
+    orphaned_multi_indices,
+    lookup_df,
+    target_df,
+    forward=False):
+
+    if forward: 
+        target_suffix = '_next'
+        lookup_suffix = ''
+    else: 
+        target_suffix = ''
+        lookup_suffix='_next'
+
+    for orphaned_multi_index in orphaned_multi_indices:
+        ## convert to tuple so it can actually index .loc
+        orphaned_multi_index = tuple(orphaned_multi_index)
+        ## find all particles that have a matching base index
+        base_index = orphaned_multi_index[0]
+        ## if there are none, then we have to skip :[
+        if base_index not in lookup_df.index: continue
+        possible_parents = lookup_df.loc[base_index]
+
+        ## no parents to choose from, we have to just extrapolate
+        ##  tbh this should not really be possible??
+        if possible_parents.shape[0] == 1: continue 
+        ## only one possible candidate it could've split from
+        ##  let's just choose the other particle
+        elif possible_parents.shape[0] == 2:
+            parent_multi_index = (
+                orphaned_multi_index[0],
+                possible_parents[possible_parents.index != orphaned_multi_index[1]].index[0])
+        elif possible_parents.shape[0] > 2: 
+            ## so there are a bunch of candidates, we'll have to use the formula
+            ##  for new child IDs and then check below that the ID is actually contained
+            ##      new child ID = parent child ID + 2^(number of times split) 
+            gen_key = 'ParticleIDGenerationNumber'
+            generation = target_df.loc[orphaned_multi_index,gen_key+lookup_suffix]
+            parent_multi_index = (orphaned_multi_index[0],orphaned_multi_index[1]-2**(generation-1))
+
+        ## so this can only happen if we hit the >2 case and the calculated value wasn't there
+        ##  in this scenario there is lots of splitting happening rapidly, I guess,
+        ##  here is one scenario that I can imagine where this is possible:
+        ## ----------------------------------------------------------------------
+        ##  prev                        between                                 next
+        ##  grandparent  grandparent || parent; parent||child; parent -> star  child
+        ## ----------------------------------------------------------------------
+        ##  which is a wild set of scenarios, should be pretty unlikely and yet it
+        ##  happens pretty frequently
+        if parent_multi_index not in lookup_df.index:
+            continue
+            parent_multi_index = (orphaned_multi_index[0],possible_parents.iloc[0].name)
+            print("NOTE: ambiguous parentage for child particle.")
+
+        parent = lookup_df.loc[parent_multi_index]
+
+        ## well we found the parent but it's missing a value, somehow, 
+        ##  I guess that can happen if you have a grandparent -> parent -> child 
+        ##  all between one snapshot but not sure
+        if np.any(np.isnan(parent)): continue
+        
+        ## alright, we're here, we made it. now we're going to copy over
+        ##  all the keys from the parent to the child
+        for key in lookup_df.keys():
+            if '_next' in key: continue
+            if 'AgeGyr' in key: continue
+            ## if the parent has more information than the child needs
+            ##  that's fine. such is life. we don't need it.
+            if key+target_suffix not in target_df.keys(): continue
+            ## copy all fields from the parent particle
+            parent_val = parent[key+lookup_suffix]
+            ## no idea why this fails, probably because the df is too big
+            ##  and the hash table is messed up. but i literally went into
+            ##  the skunkworks of pandas to debug this and it's a nightmare. 
+            ##  basically what happens is that you try and fill a scalar value
+            ##  with a scalar value but somewhere along the way you end up trying
+            ##  to set an array value with a sequence but right before doing so 
+            ##  you try and take the truth value of that array and you get the
+            ##  any(), all() exception... very dumb.
+            try: target_df.loc[orphaned_multi_index,key+target_suffix] = parent_val
+            except:
+                ## however, if you index *this* way, pandas asserts there's ambiguity over
+                ##  whether the DF is a copy and it raises a warning (but doesn't seem to
+                ##  try and set an array value with a sequence or compute the truth value
+                ##  of an array)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    target_df[key+target_suffix].loc[orphaned_multi_index] = parent_val
+
+                ## double check that we didn't change a copy as pandas
+                ##  suspects we might've (i hate you pandas)
+                if (not np.isnan(parent_val) and 
+                    np.isnan(target_df.loc[orphaned_multi_index,key+target_suffix])):
+                    raise ValueError("Value wasn't changed properly")
