@@ -82,7 +82,7 @@ def add_many_to_legend(
 
 
 
-def detach_legend(ax,legend=None,**legend_kwargs):
+def detach_legend(ax,legend=None,transpose=False,**legend_kwargs):
     if legend is None:
         legend = ax.get_legend()
 
@@ -93,9 +93,28 @@ def detach_legend(ax,legend=None,**legend_kwargs):
     lines = legend.get_lines()
     labels = [text.get_text() for text in legend.get_texts()]
 
+    if transpose and 'ncol' in legend_kwargs:
+        ncol = legend_kwargs['ncol']
+        if len(lines)%ncol > 0: to_add = [None]*(ncol-len(lines)%ncol)
+        else: to_add = []
+
+        new_lines = lines+to_add
+        new_lines = np.array(new_lines).reshape(-1,ncol)
+
+        new_lines = new_lines.T.flatten()
+
+        new_labels = labels+to_add
+        new_labels = np.array(new_labels).reshape(-1,ncol)
+        new_labels = new_labels.T.flatten()
+
+        lines = new_lines[new_lines != None]
+        labels = new_labels[new_labels != None]
+        
+
     ## clear out the current legend
     ax.legend([])
-    ax.legend(lines,labels,**legend_kwargs)
+    legend = ax.legend(lines,labels,**legend_kwargs)
+    return legend
         
 def add_to_legend(
     ax,
@@ -1178,3 +1197,28 @@ def set_size(fig, size, eps=1e-2, give_up=2, min_size_in=0.25):
             return False
         if set_width < min_size_in or set_height < min_size_in:
             return False
+    
+def clean_savefig(fig,figname,width,height,plotdir=None,savefig_flag=True):
+
+    if plotdir is None: plotdir = os.getcwd()
+    elif plotdir[0] != os.sep: plotdir = os.path.abspath(os.path.join(os.getcwd(),plotdir))
+
+    set_size(fig,(width,height))
+
+    """
+    fig.subplots_adjust(hspace=0,wspace=0)#,left=0,right=1,bottom=0,top=1)
+    if column == 1:
+        set_size(fig,(latex_columnwidth,latex_columnwidth*h_scale_factor))
+    elif column == 2:
+        set_size(fig,(latex_pagewidth,latex_pagewidth*h_scale_factor))
+    else:
+        raise ValueError("Column %d should be 1 or 2")
+    """
+
+    fig.set_facecolor('white')
+
+    print("saving:",plotdir,figname)
+    if not savefig_flag:
+        print('skipping saving')
+        return
+    fig.savefig(os.path.join(plotdir,figname),bbox_inches='tight')
