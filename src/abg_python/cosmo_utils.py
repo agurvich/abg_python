@@ -295,7 +295,7 @@ def load_rockstar(
 
         ## in physical kpc? lmao
         rvir = handle['radius'][main_host_index]
-        extra_values = [handle[key][()] for key in extra_names_to_read]
+        extra_values = [handle[key][()][main_host_index] for key in extra_names_to_read]
 
     return tuple([rcom*scalefactor,rvir] + extra_values)
         
