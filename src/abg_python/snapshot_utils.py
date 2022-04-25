@@ -146,6 +146,12 @@ def openSnapshot(
     ## let the user know what snapshot file we're trying to open
         if loud: print(fname)
         with h5py.File(fname,'r') as handle:
+            ## determine if the coordinates are in double precision, by default they are not
+            if ('Flag_DoublePrecision' in handle['Header'].attrs and 
+                'Flag_DoublePrecision' in handle['Header'].attrs['Flag_DoublePrecision']): 
+                coord_dtype = np.float64
+            else: coord_dtype = np.float32
+
             if i == 0:
                 ## read header once
                 if not no_header_keys: fillHeader(new_dictionary,handle)
@@ -171,11 +177,6 @@ def openSnapshot(
                 if 'PartType%d'%ptype not in handle: continue
                 ## load snapshot data
                 if not header_only:
-                    ## decide if the coordinates are in double precision, by default they are not
-                    if ('Flag_DoublePrecision' in new_dictionary and 
-                        new_dictionary['Flag_DoublePrecision']): coord_dtype = np.float64
-                    else: coord_dtype = np.float32
-
                     ## initialize particle arrays
                     for pkey in handle['PartType%d'%ptype].keys():
                         if (
