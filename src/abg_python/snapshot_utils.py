@@ -148,7 +148,7 @@ def openSnapshot(
         with h5py.File(fname,'r') as handle:
             ## determine if the coordinates are in double precision, by default they are not
             if ('Flag_DoublePrecision' in handle['Header'].attrs and 
-                'Flag_DoublePrecision' in handle['Header'].attrs['Flag_DoublePrecision']): 
+                handle['Header'].attrs['Flag_DoublePrecision']): 
                 coord_dtype = np.float64
             else: coord_dtype = np.float32
 
