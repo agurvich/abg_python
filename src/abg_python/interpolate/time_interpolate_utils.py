@@ -128,13 +128,15 @@ def finalize_df(
     merged_df,
     polar=True,
     take_avg_L=True,
-    extrapolate=True):
+    extrapolate=False,
+    rotate_support_thresh=0.333):
     """
-        if you use Metallicity  or Velocities then the keys will be different when you try to access them
-          in your render call using render_kwargs.
-        Velocities ->  Velocities_0,Velocities_1,Velocities_2
-        Metallicity -> Metallicity_0,Metallicity_1,...
     keys_to_extract = ['Coordinates','Masses','SmoothingLength','ParticleIDs','ParticleChildIDsNumber']
+
+    1. extrapolates missing values if extrapolate == True (it's False by default)
+    2. adds polar coordinates in angular momentum frame of particles
+    3. sets interpolation order and method by adding a column of interpolation flags
+
     """
 
     if extrapolate:
@@ -180,7 +182,22 @@ def finalize_df(
         merged_df['jhat_rotangle_next'] = rotation_angle
         merged_df['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
 
-    ## store these in the dataframe so we can be sure we have the right times everywhere
+    ## set interpolation order and method flag for each particle
+
+    ## 0: polar -> 3rd in phi and 1st in R and theta
+    ## 1: cartesian -> 3rd
+    ## 2: cartesian -> 2nd
+    ## 3: cartesian -> 1st
+    interpolation_flags = np.zeros(merged_df.shape[0],dtype=int)
+    cartesian_mask = get_cartesian_interpolation_mask(merged_df,rotate_support_thresh)
+    
+    ## the ones we know are going to need cartesian should start at cartesian
+    interpolation_flags[cartesian_mask]+=1
+
+    ## check if the 3rd order interpolation scheme will introduce extrema, if so
+    ##  then fall back to the 2nd, if the 2nd will introduce extrema then fall back
+    ##  to the first order scheme (which is guaranteed not to).
+    interpolation_flags = increment_interpolation_flags(merged_df,interpolation_flags)
 
     return merged_df
 
@@ -246,6 +263,124 @@ def add_polar_jhat_coords(merged_df,take_avg_L=True):
             merged_df[f'polarjhatVelocities_{i:d}{target_suffix}'] = jhat_vels[:,i]
         for i in range(jhats.shape[1]): merged_df[f'polarjhats_{i:d}{target_suffix}'] = jhats[:,i]
 
+def get_cartesian_interpolation_mask(merged_df,rotate_support_thresh=0.333):
+    ## check for rotational support, inspired by Phil's routine
+    ## average 1D velocity between snapshots
+    #avg_vels2 = (rp_prev_vels**2+rp_next_vels**2)/2
+    ## time interpolated 1D velocity 
+    Vdenoms = np.zeros((merged_df.shape[0]))
+
+    Vc_key = f'CircularVelocities'
+    vel_key = 'polarjhatVelocities_%d'
+    coord_key = 'polarjhatCoordinates_0'
+
+    ## read radii
+    prev_rs = merged_df[coord_key]
+    next_rs = merged_df[coord_key+'_next']
+
+    ## read phi velocity
+    prev_vphis = getattr(merged_df,vel_key%1).values 
+    next_vphis = getattr(merged_df,vel_key%1+'_next').values 
+
+    ## use Vc^2 in the denominator if we can
+    if Vc_key in merged_df.keys():
+        Vdenoms += getattr(merged_df,Vc_key).values**2
+        Vdenoms += getattr(merged_df,Vc_key+'_next').values**2
+    
+    ## don't have CircularVelocities so we need to fill denominator with Vtot rather than Vc
+    else:
+        for i in range(3):
+            ## can happen when theta is 0 when take_avg_L = False
+            if vel_key%i not in merged_df.keys(): continue
+
+            if i == 0 :
+                Vdenoms += getattr(merged_df,vel_key%i).values**2
+                Vdenoms += getattr(merged_df,vel_key%i+'_next').values**2
+            else:
+                Vdenoms += (getattr(merged_df,vel_key%i)*prev_rs).values**2
+                Vdenoms += (getattr(merged_df,vel_key%i+'_next')*next_rs).values**2
+
+    ## vphi^2 / denom^2
+    vrot2_frac = ( (prev_vphis*prev_rs)**2 + (next_vphis*next_rs)**2 ) / Vdenoms
+    #print('polar fraction:',np.sum(vrot2_frac > rotate_support_thresh)/vrot2_frac.size)
+
+    ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
+    ##  make a mask for those particles which are not rotationally supported and need
+    ##  to be replaced with a simple cartesian interpolation
+    cartesian_mask = np.logical_or(
+        vrot2_frac < rotate_support_thresh,
+        np.logical_or(prev_rs > 30,next_rs > 30))
+    
+    return cartesian_mask
+
+def increment_interpolation_flags(merged_df,interpolation_flags):
+
+    ## check the third order cartesian interpolation points,
+    ##  are any of those going to introduce extrema? if so
+    ##  then drop them to 2nd order
+    third_order_mask = interpolation_flags == 1
+    bad_mask = check_third_order_extrema(merged_df,third_order_mask)
+    interpolation_flags[bad_mask]+=1
+
+    ## now check the 2nd order cartesian interpolation points,
+    ##  are any of those going to introduce extrema? if so
+    ##  then drop them to 1st order (which is guaranteed to not introduce extrema)
+    second_order_mask = interpolation_flags == 2
+    bad_mask = check_second_order_extrema(merged_df,second_order_mask)
+    interpolation_flags[bad_mask]+=1
+
+    return interpolation_flags
+
+def check_third_order_extrema(merged_df,mask):
+    dsnap = merged_df.next_time - merged_df.prev_time
+    merged_df = merged_df[mask]
+    bad_mask = np.zeros(mask.shape,dtype=bool)
+    arg_mask = np.argwhere(mask)
+    for i in range(3):
+        ## unpack this coordinate array
+        prev_coords = merged_df['Coordinates_%d'%i]
+        next_coords = merged_df['Coordinates_%d_next'%i]
+        prev_vels = merged_df['Velocities_%d'%i]
+        next_vels = merged_df['Velocities_%d_next'%i]
+
+        ## define helper variables
+        dcoord = next_coords - prev_coords
+        x2 = 3*dcoord - (2*prev_vels+next_vels)*dsnap
+        x3 = -2*dcoord + (prev_vels+next_vels)*dsnap
+
+        ## handle velocity extremum
+        bad_mask[arg_mask[np.logical_and(0 < -x2/(3*x3), -x2/(3*x3) < 1)]] = True
+
+        ## handle + position extremum
+        extremum = (-x2+np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
+        bad_mask[arg_mask[np.logical_and(0 < extremum, extremum < 1)]] = True
+        ## handle - position extremum
+        extremum = (-x2-np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
+        bad_mask[arg_mask[np.logical_and(0 < extremum, extremum < 1)]] = True
+        
+    return bad_mask
+
+def check_second_order_extrema(merged_df,mask):
+    dsnap = merged_df.next_time - merged_df.prev_time
+    merged_df = merged_df[mask]
+    bad_mask = np.zeros(mask.shape,dtype=bool)
+    arg_mask = np.argwhere(mask)
+    for i in range(3):
+        prev_coords = merged_df['Coordinates_%d'%i]
+        next_coords = merged_df['Coordinates_%d_next'%i]
+        prev_vels = merged_df['Velocities_%d'%i]
+        next_vels = merged_df['Velocities_%d_next'%i]
+
+        ## define helper variables
+        dcoord = next_coords - prev_coords
+        x2 = (next_vels - prev_vels)/2 * dsnap
+        x1 = dcoord - x2
+
+        ## handle position extremum
+        bad_mask[arg_mask[np.logical_and(0 < -x1/(2*x2), -x1/(2*x2) < 1)]]= True
+
+    return bad_mask
+
 def make_interpolated_snap(
     merged_df,t,
     polar=True,
@@ -295,130 +430,40 @@ def interpolate_position(
     t,t0,t1,
     merged_df,
     interp_snap,
-    polar=True,
-    rotate_support_thresh=0.5):
+    interpolation_flags,
+    ):
 
-    if not polar: return cartesian_interpolate(t,t0,t1,merged_df)
-    else:
-        coord_key = 'polarjhatCoordinates_%d'
-        vel_key = 'polarjhatVelocities_%d'
+    
+    coords = np.zeros((merged_df.shape[0],3))
+    vels = np.zeros((merged_df.shape[0],3))
 
-        do_theta = False 
-        for target_suffix in ['','_next']:
-            for key in [coord_key%2,vel_key%2]:
-                has_this_key = (key+target_suffix) in merged_df.keys()
-                do_theta = do_theta or has_this_key
-                if do_theta and not has_this_key:
-                    ## this happened out of the blue, no idea how this is even possible...
-                    ##  clearly something else is wrong further up the pipeline but at least
-                    ##  here we can catch it and raise the error
-                    raise KeyError(
-                        f"{key+target_suffix:s} missing but have at least one other theta key:\n"+
-                        f"{repr(list(merged_df.keys())):s}")
-
-        ## may not actually have z because we've rotated into jhat plane
-        ##  if take_avg_L = False (non-default)
-        rp_interp_coords = np.zeros((merged_df.shape[0],2+do_theta))
-        rp_interp_vels = np.zeros((merged_df.shape[0],2+do_theta))
-
-        prev_jhats = np.zeros((merged_df.shape[0],3))
-        next_jhats = np.zeros((merged_df.shape[0],3))
-
-        this_coord_key = coord_key%0
-        this_vel_key = vel_key%0
-        ## interpolate r coordinate
-        prev_Rs = getattr(merged_df,this_coord_key).values
-        next_Rs = getattr(merged_df,this_coord_key+'_next').values
-        prev_vRs = getattr(merged_df,this_vel_key).values
-        next_vRs = getattr(merged_df,this_vel_key+'_next').values
-
-        rp_interp_coords[:,0], rp_interp_vels[:,0] = interpolate_at_order(
-            prev_Rs,
-            next_Rs,
-            prev_vRs,
-            next_vRs,
-            t,t0,t1) ## defaults to order=1
-
-        this_coord_key = coord_key%1
-        this_vel_key = vel_key%1
-        ## interpolate phi coordinate
-        prev_vphis = getattr(merged_df,this_vel_key).values 
-        next_vphis = getattr(merged_df,this_vel_key+'_next').values 
-
-        rp_interp_coords[:,1], rp_interp_vels[:,1] = interpolate_at_order(
-            getattr(merged_df,this_coord_key).values,
-            getattr(merged_df,this_coord_key+'_next').values,
-            prev_vphis, ## radians / gyr
-            next_vphis, ## radians / gyr
-            t,t0,t1,
-            order=3,
-            periodic=True)
-        
-        if not do_theta: prev_vthetas=next_vthetas=0
-        else:
-            this_coord_key = coord_key%2
-            this_vel_key = vel_key%2
-            ## interpolate phi coordinate
-            prev_vthetas = getattr(merged_df,this_vel_key).values 
-            next_vthetas = getattr(merged_df,this_vel_key+'_next').values 
-
-            rp_interp_coords[:,2], rp_interp_vels[:,2] = interpolate_at_order(
-                getattr(merged_df,this_coord_key).values,
-                getattr(merged_df,this_coord_key+'_next').values,
-                prev_vthetas, ## radians / gyr
-                next_vthetas, ## radians / gyr
-                t,t0,t1) ## defaults to order=1
-
-        prev_Vdenoms = np.zeros((merged_df.shape[0],3))
-        next_Vdenoms = np.zeros((merged_df.shape[0],3))
-
-        Vc_key = f'CircularVelocities'
-        ## use vphi2/Vc^2 if we can
-        if Vc_key in merged_df.keys():
-            prev_Vdenoms[:,0] = getattr(merged_df,Vc_key).values
-            next_Vdenoms[:,0] = getattr(merged_df,Vc_key+'_next').values
-
-        ## unpack flattened rpz arrays from pandas dataframe which did our id matching
-        for i in range(3):
-            jhat_key = 'polarjhats_%d'%i
-            prev_jhats[:,i] = getattr(merged_df,jhat_key).values
-            next_jhats[:,i] = getattr(merged_df,jhat_key+'_next').values
-
-            ## alright, do vphi2/vtot^2, it's better than nothing.
-            if Vc_key not in merged_df.keys():
-                prev_Vdenoms[:,i] = [prev_vRs,prev_vphis*prev_Rs,prev_vthetas*prev_Rs][i]
-                next_Vdenoms[:,i] = [next_vRs,next_vphis*next_Rs,next_vthetas*next_Rs][i]
-
-        vrot2_frac = ((prev_vphis*prev_Rs)**2 + (next_vphis*next_Rs)**2) / np.sum(prev_Vdenoms**2 + next_Vdenoms**2,axis=1)
-        #print('polar fraction:',np.sum(vrot2_frac > rotate_support_thresh)/vrot2_frac.size)
-
-        ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
-        ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
-        return convert_rp_to_xy(
-            t,t0,t1,
-            merged_df,
-            interp_snap,
-            rp_interp_coords,
-            rp_interp_vels,
-            prev_jhats,
-            next_jhats,
-            vrot2_frac=vrot2_frac,
-            rotate_support_thresh=rotate_support_thresh  ## 0.5
-            )
+    ## successively fall back to worse and worse interpolation schemes
+    ##  as determined by the interpolation limiter in finalize_df
+    for i in range(interpolation_flags.max()):
+        this_mask = interpolation_flags == i
+        ## 0 = polar
+        if i == 0: coords[this_mask],vels[this_mask] = polar_interpolate(
+            t,t0,t1,merged_df,interp_snap,this_mask)
+        ## 1,2,3 = third, second, and first order
+        else: coords[this_mask],vels[this_mask] = cartesian_interpolate(
+            t,t0,t1,merged_df,coords,vels,mask=this_mask,order=4-i)
 
 def cartesian_interpolate(
     t,t0,t1,
     merged_df,
     coords=None,
     vels=None,
-    non_rot_support=None,
+    mask=None,
     order=2):
 
     if coords is None: coords = np.zeros((merged_df.shape[0],3))
     if vels is None: vels = np.zeros((merged_df.shape[0],3))
 
-    if non_rot_support is None: non_rot_support = np.ones(merged_df.shape[0],dtype=bool)
-    if not np.any(non_rot_support): return coords,vels
+    if mask is None: mask = np.ones(merged_df.shape[0],dtype=bool)
+    if not np.any(mask): return coords,vels
+
+    ## apply the mask once to the df
+    merged_df = merged_df[mask]
 
     for i in range(3):
         prev_coords = merged_df['Coordinates_%d'%i]
@@ -427,14 +472,97 @@ def cartesian_interpolate(
         next_coords = merged_df['Coordinates_%d_next'%i]
         next_vels = merged_df['Velocities_%d_next'%i]
 
-        (coords[non_rot_support,i],
-        vels[non_rot_support,i]) = interpolate_at_order(
-            prev_coords[non_rot_support],
-            next_coords[non_rot_support],
-            prev_vels[non_rot_support],
-            next_vels[non_rot_support],
+        (coords[mask,i],
+        vels[mask,i]) = interpolate_at_order(
+            prev_coords,
+            next_coords,
+            prev_vels,
+            next_vels,
             t,t0,t1,
             order=order)
+
+    return coords,vels
+
+def polar_interpolate(t,t0,t1,merged_df,interp_snap,mask=None):
+    if mask is None: mask = np.ones(merged_df.shape[0],dtype=bool)
+
+    ## mask the df so we only compute what we need to
+    merged_df = merged_df[mask]
+
+    coord_key = 'polarjhatCoordinates_%d'
+    vel_key = 'polarjhatVelocities_%d'
+
+    do_theta = False 
+    for target_suffix in ['','_next']:
+        for key in [coord_key%2,vel_key%2]:
+            has_this_key = (key+target_suffix) in merged_df.keys()
+            do_theta = do_theta or has_this_key
+            if do_theta and not has_this_key:
+                ## this happened out of the blue, no idea how this is even possible...
+                ##  clearly something else is wrong further up the pipeline but at least
+                ##  here we can catch it and raise the error
+                raise KeyError(
+                    f"{key+target_suffix:s} missing but have at least one other theta key:\n"+
+                    f"{repr(list(merged_df.keys())):s}")
+
+    ## may not actually have z because we've rotated into jhat plane
+    ##  if take_avg_L = False (non-default)
+    interpd_polar_coords = np.zeros((merged_df.shape[0],2+do_theta))
+    interpd_polar_vels = np.zeros((merged_df.shape[0],2+do_theta))
+
+    this_coord_key = coord_key%0
+    this_vel_key = vel_key%0
+    ## interpolate r coordinate
+    prev_Rs = getattr(merged_df,this_coord_key).values
+    next_Rs = getattr(merged_df,this_coord_key+'_next').values
+    prev_vRs = getattr(merged_df,this_vel_key).values
+    next_vRs = getattr(merged_df,this_vel_key+'_next').values
+
+    interpd_polar_coords[:,0], interpd_polar_vels[:,0] = interpolate_at_order(
+        prev_Rs,
+        next_Rs,
+        prev_vRs,
+        next_vRs,
+        t,t0,t1) ## defaults to order=1
+
+    this_coord_key = coord_key%1
+    this_vel_key = vel_key%1
+    ## interpolate phi coordinate
+    prev_vphis = getattr(merged_df,this_vel_key).values 
+    next_vphis = getattr(merged_df,this_vel_key+'_next').values 
+
+    interpd_polar_coords[:,1], interpd_polar_vels[:,1] = interpolate_at_order(
+        getattr(merged_df,this_coord_key).values,
+        getattr(merged_df,this_coord_key+'_next').values,
+        prev_vphis, ## radians / gyr
+        next_vphis, ## radians / gyr
+        t,t0,t1,
+        order=3,
+        periodic=True)
+    
+    if not do_theta: prev_vthetas=next_vthetas=0
+    else:
+        this_coord_key = coord_key%2
+        this_vel_key = vel_key%2
+        ## interpolate phi coordinate
+        prev_vthetas = getattr(merged_df,this_vel_key).values 
+        next_vthetas = getattr(merged_df,this_vel_key+'_next').values 
+
+        interpd_polar_coords[:,2], interpd_polar_vels[:,2] = interpolate_at_order(
+            getattr(merged_df,this_coord_key).values,
+            getattr(merged_df,this_coord_key+'_next').values,
+            prev_vthetas, ## radians / gyr
+            next_vthetas, ## radians / gyr
+            t,t0,t1) ## defaults to order=1
+
+    ## need to convert interpd_polar_coords and interpd_polar_vels from r' p' to x,y,z
+    ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
+    coords,vels = convert_polar_to_cartesian(
+        t,t0,t1,
+        merged_df,
+        interp_snap,
+        interpd_polar_coords,
+        interpd_polar_vels)
 
     return coords,vels
 
@@ -456,10 +584,6 @@ def interpolate_at_order(
         ## how far would we guess each particle goes at tfirst?
         ##  let's guess how many times it actually went around, basically
         ##  want to determine which of (N)*2pi + dcoord  
-            ##  want to determine which of (N)*2pi + dcoord  
-        ##  want to determine which of (N)*2pi + dcoord  
-        ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
-            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
         ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
         ##  closest to approx_radians, (N = approx_radians//2pi)
         dcoord = guess_windings(dcoord,(this_prev_vels+this_next_vels)/2*dsnap,2*np.pi)
