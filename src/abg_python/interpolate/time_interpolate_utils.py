@@ -126,6 +126,7 @@ def cross_match_starformed_gas(
 
 def finalize_df(
     merged_df,
+    t0,t1,
     polar=True,
     take_avg_L=True,
     extrapolate=False,
@@ -141,8 +142,8 @@ def finalize_df(
 
     if extrapolate:
         ## fill in any missing values extrapolating
-        linear_extrapolate(merged_df)
-        linear_extrapolate(merged_df,False)
+        linear_extrapolate(t0,t1,merged_df)
+        linear_extrapolate(t0,t1,merged_df,False)
 
     ## and if we have any repeats, let's keep the first one
     merged_df = merged_df.loc[~merged_df.index.duplicated(keep='first')]
@@ -182,34 +183,33 @@ def finalize_df(
         merged_df['jhat_rotangle_next'] = rotation_angle
         merged_df['jhat_rotangle'] = np.zeros(rotation_angle.values.shape)
 
-    ## set interpolation order and method flag for each particle
+    
+        interpolation_flags = np.zeros(merged_df.shape[0],dtype=int)
+        ## the non-rotationally supported particles should be cartesian (3rd,2nd, or 1st order TBD)
+        interpolation_flags[get_cartesian_interpolation_mask(merged_df,rotate_support_thresh)]+=1
+    ## all particles should be interpolated in cartesian coordinates
+    else: interpolation_flags = np.ones(merged_df.shape[0],dtype=int)
 
+    ## set interpolation order and method flag for each particle
+    ##  and check if the 3rd order interpolation scheme will introduce extrema, if so
+    ##  then fall back to the 2nd, if the 2nd will introduce extrema then fall back
+    ##  to the first order scheme (which is guaranteed not to).
     ## 0: polar -> 3rd in phi and 1st in R and theta
     ## 1: cartesian -> 3rd
     ## 2: cartesian -> 2nd
     ## 3: cartesian -> 1st
-    interpolation_flags = np.zeros(merged_df.shape[0],dtype=int)
-    cartesian_mask = get_cartesian_interpolation_mask(merged_df,rotate_support_thresh)
-    
-    ## the ones we know are going to need cartesian should start at cartesian
-    interpolation_flags[cartesian_mask]+=1
-
-    ## check if the 3rd order interpolation scheme will introduce extrema, if so
-    ##  then fall back to the 2nd, if the 2nd will introduce extrema then fall back
-    ##  to the first order scheme (which is guaranteed not to).
-    interpolation_flags = increment_interpolation_flags(merged_df,interpolation_flags)
+    merged_df['interpolation_flags'] = increment_interpolation_flags(t0,t1,merged_df,interpolation_flags)
 
     return merged_df
 
-def linear_extrapolate(merged_df,forward=True):
+def linear_extrapolate(t0,t1,merged_df,forward=True):
     if forward: 
         lookup_suffix = ''
         target_suffix = '_next'
-        t0,t1 = merged_df.prev_time,merged_df.next_time
     else: 
         lookup_suffix='_next'
         target_suffix = ''
-        t1,t0 = merged_df.prev_time,merged_df.next_time
+        t1,t0 = t0,t1
 
     mask = np.logical_or(
         merged_df.isna()['Masses'+target_suffix],
@@ -331,8 +331,8 @@ def increment_interpolation_flags(merged_df,interpolation_flags):
 
     return interpolation_flags
 
-def check_third_order_extrema(merged_df,mask):
-    dsnap = merged_df.next_time - merged_df.prev_time
+def check_third_order_extrema(t0,t1,merged_df,mask):
+    dsnap = t1-t0
     merged_df = merged_df[mask]
     bad_mask = np.zeros(mask.shape,dtype=bool)
     arg_mask = np.argwhere(mask)
@@ -360,8 +360,8 @@ def check_third_order_extrema(merged_df,mask):
         
     return bad_mask
 
-def check_second_order_extrema(merged_df,mask):
-    dsnap = merged_df.next_time - merged_df.prev_time
+def check_second_order_extrema(t0,t1,merged_df,mask):
+    dsnap = t1-t0
     merged_df = merged_df[mask]
     bad_mask = np.zeros(mask.shape,dtype=bool)
     arg_mask = np.argwhere(mask)
@@ -381,14 +381,10 @@ def check_second_order_extrema(merged_df,mask):
 
     return bad_mask
 
-def make_interpolated_snap(
-    merged_df,t,
-    polar=True,
-    rotate_support_thresh=0.333):
+def make_interpolated_snap(t0,t1,merged_df,t):
     
     interp_snap = {}
 
-    t0,t1 = merged_df.prev_time,merged_df.next_time
     ## create a new snapshot with linear interpolated values
     ##  between key and key_next using t0, t1, and t.
     for key in merged_df.keys():
@@ -407,8 +403,7 @@ def make_interpolated_snap(
         t,t0,t1,
         merged_df,
         interp_snap,
-        polar=polar,
-        rotate_support_thresh=rotate_support_thresh)
+        merged_df['interpolation_flags'])
 
     ids = np.array([*merged_df.index.values])
     interp_snap['ParticleIDs'] = ids[:,0]
