@@ -457,6 +457,10 @@ def interpolate_at_order(
             ## how far would we guess each particle goes at tfirst?
             ##  let's guess how many times it actually went around, basically
             ##  want to determine which of (N)*2pi + dcoord  
+        ##  want to determine which of (N)*2pi + dcoord  
+            ##  want to determine which of (N)*2pi + dcoord  
+            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
+        ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
             ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
             ##  closest to approx_radians, (N = approx_radians//2pi)
             dcoord = guess_windings(dcoord,(this_prev_vels+this_next_vels)/2*dsnap,2*np.pi)
@@ -484,19 +488,13 @@ def interpolate_at_order(
     ##  while we have them in scope
     return interp_coords, this_prev_vels + (this_next_vels - this_prev_vels)*(t-t0)/(t1-t0)
 
-def convert_rp_to_xy(
-    t,t0,t1,
+def convert_polar_to_cartesian(
     merged_df,
     interp_snap,
-    rp_interp_coords,
-    rp_interp_vels,
-    prev_jhats,
-    next_jhats,
-    vrot2_frac=None,
-    rotate_support_thresh=0.50  ## 0.5
-    ):
-    """ If rp_interp_coords is shape Nx2 then we are to interpret as being r,phi in the rotated frame.
-    If rp_interp_coords is shape Nx3 then we are to interpret as it being spherical coordinates in some
+    interpd_polar_coords,
+    interpd_polar_vels):
+    """ If interpd_polar_coords is shape Nx2 then we are to interpret as being r,phi in the rotated frame.
+    If interpd_polar_coords is shape Nx3 then we are to interpret as it being spherical coordinates in some
     other frame. Typically this will be a fixed frame aligned with the average angular momentum vector between the
     two snapshots. In this case rotangle will be 0, but in principle can be in any two frames and this will still 
     work.
@@ -505,13 +503,9 @@ def convert_rp_to_xy(
     ----------
     interp_snap : _type_
         _description_
-    rp_interp_coords : _type_
+    interpd_polar_coords : _type_
         _description_
-    rp_interp_vels : _type_
-        _description_
-    prev_jhats : _type_
-        _description_
-    next_jhats : _type_
+    interpd_polar_vels : _type_
         _description_
     vrot2_frac : _type_, optional
         _description_, by default None
@@ -521,13 +515,19 @@ def convert_rp_to_xy(
     _type_
         _description_
     """
+    prev_jhats = np.zeros((merged_df.shape[0],3))
+    next_jhats = np.zeros((merged_df.shape[0],3))
+    for i in range(3):
+        jhat_key = 'polarjhats_%d'%i
+        prev_jhats[:,i] = getattr(merged_df,jhat_key).values
+        next_jhats[:,i] = getattr(merged_df,jhat_key+'_next').values
 
     ## if we were only passed r and phi then we don't need to convert
     ##  fixed theta, everything is at z=0 in the rotated frame
-    if rp_interp_coords.shape[1] != 3: thetas = np.pi/2 
-    else: thetas = rp_interp_coords[:,2]
+    if interpd_polar_coords.shape[1] != 3: thetas = np.pi/2 
+    else: thetas = interpd_polar_coords[:,2]
 
-    ## need to convert rp_interp_coords and rp_interp_vels from r' p' to x,y,z
+    ## need to convert interpd_polar_coords and interpd_polar_vels from r' p' to x,y,z
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
     rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
 
@@ -548,72 +548,47 @@ def convert_rp_to_xy(
 
     xprimehats,yprimehats = get_primehats(interp_jhats) ## x' & y' in x,y,z coordinates
 
-    xy_interp_vels = np.zeros((rp_interp_vels.shape[0],3))
-    xy_interp_coords = np.zeros((rp_interp_vels.shape[0],3))
+    interpd_xyz_vels = np.zeros((interpd_polar_vels.shape[0],3))
+    interpd_xyz_coords = np.zeros((interpd_polar_vels.shape[0],3))
 
     ## replace rp w/ xy
     #  vx = vr * cos(phi) * sin(theta) + ...
-    xy_interp_vels[:,0] +=  rp_interp_vels[:,0]*np.cos(rp_interp_coords[:,1])*np.sin(thetas) 
+    interpd_xyz_vels[:,0] +=  interpd_polar_vels[:,0]*np.cos(interpd_polar_coords[:,1])*np.sin(thetas) 
     #  vy = vr * cos(phi) * sin(theta) + ...
-    xy_interp_vels[:,1] +=  rp_interp_vels[:,0]*np.sin(rp_interp_coords[:,1])*np.sin(thetas)
+    interpd_xyz_vels[:,1] +=  interpd_polar_vels[:,0]*np.sin(interpd_polar_coords[:,1])*np.sin(thetas)
     #  vz = vr * cos(theta) + ...
-    xy_interp_vels[:,2] +=  rp_interp_vels[:,0]*np.cos(thetas)
+    interpd_xyz_vels[:,2] +=  interpd_polar_vels[:,0]*np.cos(thetas)
 
     # vx = [-vphi/r * sin(phi)]*r + ...
-    xy_interp_vels[:,0] += -rp_interp_vels[:,1]*np.sin(rp_interp_coords[:,1])*rp_interp_coords[:,0]
+    interpd_xyz_vels[:,0] += -interpd_polar_vels[:,1]*np.sin(interpd_polar_coords[:,1])*interpd_polar_coords[:,0]
     # vx =  [vphi/r * cos(phi)]*r + ...
-    xy_interp_vels[:,1] +=  rp_interp_vels[:,1]*np.cos(rp_interp_coords[:,1])*rp_interp_coords[:,0]
+    interpd_xyz_vels[:,1] +=  interpd_polar_vels[:,1]*np.cos(interpd_polar_coords[:,1])*interpd_polar_coords[:,0]
     ## no contribution to vz from vphi
 
-    if rp_interp_vels.shape[1] == 3:
+    if interpd_polar_vels.shape[1] == 3:
         #  vx = [vtheta/r * cos(phi) * sin(theta)]*r + ...
-        xy_interp_vels[:,0] +=  -rp_interp_vels[:,2]*np.cos(rp_interp_coords[:,1])*np.cos(thetas)*rp_interp_coords[:,0]
+        interpd_xyz_vels[:,0] +=  -interpd_polar_vels[:,2]*np.cos(interpd_polar_coords[:,1])*np.cos(thetas)*interpd_polar_coords[:,0]
         #  vy = [vtheta/r * cos(phi) * sin(theta)]*r + ...
-        xy_interp_vels[:,1] +=  rp_interp_vels[:,2]*np.sin(rp_interp_coords[:,1])*np.cos(thetas)*rp_interp_coords[:,0]
+        interpd_xyz_vels[:,1] +=  interpd_polar_vels[:,2]*np.sin(interpd_polar_coords[:,1])*np.cos(thetas)*interpd_polar_coords[:,0]
         #  vz = [-vtheta/r * cos(theta)]*r + ...
-        xy_interp_vels[:,2] +=  -rp_interp_vels[:,2]*np.sin(thetas)*rp_interp_coords[:,0]
+        interpd_xyz_vels[:,2] +=  -interpd_polar_vels[:,2]*np.sin(thetas)*interpd_polar_coords[:,0]
 
-    xy_interp_coords[:,0] = rp_interp_coords[:,0]*np.cos(rp_interp_coords[:,1])*np.sin(thetas) # r * cos(phi) * sin(theta)
-    xy_interp_coords[:,1] = rp_interp_coords[:,0]*np.sin(rp_interp_coords[:,1])*np.sin(thetas) # r * sin(phi) * sin(theta)
-    xy_interp_coords[:,2] = rp_interp_coords[:,0]*np.cos(thetas) # r * cos(theta)
+    interpd_xyz_coords[:,0] = interpd_polar_coords[:,0]*np.cos(interpd_polar_coords[:,1])*np.sin(thetas) # r * cos(phi) * sin(theta)
+    interpd_xyz_coords[:,1] = interpd_polar_coords[:,0]*np.sin(interpd_polar_coords[:,1])*np.sin(thetas) # r * sin(phi) * sin(theta)
+    interpd_xyz_coords[:,2] = interpd_polar_coords[:,0]*np.cos(thetas) # r * cos(theta)
 
     ## unit primehat vectors are in simulation coordinate frame, multiply by 
     ##  components in jhat frame to get simulation coordinates
     coords = (
-        xy_interp_coords[:,0,None]*xprimehats +
-        xy_interp_coords[:,1,None]*yprimehats +
-        xy_interp_coords[:,2,None]*interp_jhats)
+        interpd_xyz_coords[:,0,None]*xprimehats +
+        interpd_xyz_coords[:,1,None]*yprimehats +
+        interpd_xyz_coords[:,2,None]*interp_jhats)
 
     vels = (
-        xy_interp_vels[:,0,None]*xprimehats +
-        xy_interp_vels[:,1,None]*yprimehats +
-        xy_interp_vels[:,2,None]*interp_jhats)
+        interpd_xyz_vels[:,0,None]*xprimehats +
+        interpd_xyz_vels[:,1,None]*yprimehats +
+        interpd_xyz_vels[:,2,None]*interp_jhats)
 
-    ## check for rotational support, inspired by Phil's routine
-    ## average 1D velocity between snapshots
-    #avg_vels2 = (rp_prev_vels**2+rp_next_vels**2)/2
-    ## time interpolated 1D velocity 
-    if vrot2_frac is None: 
-        avg_vels2 = rp_interp_vels**2
-        norms2 = np.sum(avg_vels2,axis=1)
-        vrot2_frac = avg_vels2[:,1]/norms2
-
-    ## non-rotationally supported <==> |vphi|/|v| < 0.5; |vphi| comes from sqrt above
-    ##  make a mask for those particles which are not rotationally supported and need
-    ##  to be replaced with a simple cartesian interpolation
-    non_rot_support = np.logical_or(
-        vrot2_frac < rotate_support_thresh,
-        rp_interp_coords[:,0] > 30)
-
-    #print('linear fraction',np.sum(non_rot_support)/non_rot_support.size)
-    ## replace the masked coordinates with their simulation-cartesian interpolated counterparts
-    ##  computed in the loop in our calling function (which put them into interp_snap in the first place)
-    cartesian_interpolate(
-        t,t0,t1,
-        merged_df,
-        coords,vels,
-        non_rot_support) 
-    
     return coords,vels
 
 def guess_windings(dphi,vphi_dt,period=1):
