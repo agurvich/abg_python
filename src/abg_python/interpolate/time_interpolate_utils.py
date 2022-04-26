@@ -451,42 +451,46 @@ def interpolate_at_order(
     dsnap = (t1-t0)
     time_frac = dt/dsnap ## 'tau' in Phil's notation
 
-    if this_next_coords is not None:
-        dcoord = this_next_coords - this_prev_coords
-        if periodic:
-            ## how far would we guess each particle goes at tfirst?
-            ##  let's guess how many times it actually went around, basically
-            ##  want to determine which of (N)*2pi + dcoord  
+    dcoord = this_next_coords - this_prev_coords
+    if periodic:
+        ## how far would we guess each particle goes at tfirst?
+        ##  let's guess how many times it actually went around, basically
         ##  want to determine which of (N)*2pi + dcoord  
             ##  want to determine which of (N)*2pi + dcoord  
-            ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
+        ##  want to determine which of (N)*2pi + dcoord  
         ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
             ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
-            ##  closest to approx_radians, (N = approx_radians//2pi)
-            dcoord = guess_windings(dcoord,(this_prev_vels+this_next_vels)/2*dsnap,2*np.pi)
-    else:
-        ## handle extrapolation case
-        dcoord = this_prev_vels*dsnap
-        #if periodic:dcoord = np.mod(dcoord,2*np.pi)
+        ##  or (N+1)*2pi + dcoord, or (N-1)*2pi + dcoord is 
+        ##  closest to approx_radians, (N = approx_radians//2pi)
+        dcoord = guess_windings(dcoord,(this_prev_vels+this_next_vels)/2*dsnap,2*np.pi)
+    #if periodic:dcoord = np.mod(dcoord,2*np.pi)
     
     ## basic linear interpolation
     if order == 1:
         interp_coords = this_prev_coords + dcoord*time_frac
+        #interp_vels = this_prev_vels + (this_next_vels - this_prev_vels)*time_frac
+        ## corresponds to the constant velocity that the particle is traveling with
+        ##  for this interpolation scheme
+        interp_vels = dcoord/dsnap 
     ## correction factor to minimize velocity difference, apparently
     elif order == 2:
         x2 = (this_next_vels - this_prev_vels)/2 * dsnap
         x1 = dcoord - x2
         interp_coords = this_prev_coords + x1*time_frac + x2*time_frac*time_frac
+        ## splits the vf-v0 centered on dcoord/dsnap rather than
+        ## splits the vf-v0 centered on dcoord/dsnap rather than on (vf+v0)/2
+        interp_vels = x1/dsnap + 2*x2*time_frac/dsnap 
     ## "enables exact matching of x,v but can 'overshoot' " - phil
     elif order == 3:
         x2 = 3*dcoord - (2*this_prev_vels+this_next_vels)*dsnap
         x3 = -2*dcoord + (this_prev_vels+this_next_vels)*dsnap
         interp_coords = this_prev_coords + this_prev_vels*dt + x2*time_frac**2 + x3*time_frac**3
+        interp_vels = this_prev_vels + 2*x2*time_frac/dsnap + 3*x3*time_frac**2/dsnap
     else: raise Exception("Bad order, should be 1,2, or 3")
 
     ## do a simple 1st order interpolation for the velocities
     ##  while we have them in scope
-    return interp_coords, this_prev_vels + (this_next_vels - this_prev_vels)*(t-t0)/(t1-t0)
+    return interp_coords,interp_vels
 
 def convert_polar_to_cartesian(
     merged_df,
