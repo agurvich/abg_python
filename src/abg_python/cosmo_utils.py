@@ -181,7 +181,7 @@ def trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
             hubble_param = handle['cosmology:hubble'][()]
             scalefactors[i] = handle['snapshot:scalefactor'][()]
 
-            main_host_index = handle['host.index'][0]
+            main_host_index = np.nanargmax(handle['mass']) # handle['host.index'][0] <-- removed from wetzel's code :[
             ## skip the first step because we have nothing to compare to
             if i != 0 and fancy_trace: 
                 prev_rcom = rcoms[i-1]
@@ -278,15 +278,16 @@ def load_rockstar(
     fname = 'halo_%03d.hdf5'%snapnum if fname is None else fname
 
 
-    if which_host == 0:
-        which_host = 'host'
-    elif which_host == 1:
-        which_host = 'host2'
+    if 'elvis' in snapdir:
+        if which_host == 0: which_host = 'host'
+        elif which_host == 1: which_host = 'host2'
+        main_index_fn = lambda handle: handle[which_host+'.index'][0]
+    else: main_index_fn = lambda handle: np.argmax(handle['mass'])
     
     path = os.path.join(rockstar_path,'catalog_hdf5',fname)
 
     with h5py.File(path,'r') as handle:
-        main_host_index = handle[which_host+'.index'][0]
+        main_host_index = main_index_fn(handle)
         hubble_param = handle['cosmology:hubble'][()]
         ## in comoving kpc (NOT comoving kpc/h)
         rcom = handle['position'][main_host_index]
