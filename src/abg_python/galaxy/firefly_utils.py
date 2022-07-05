@@ -19,43 +19,32 @@ colors = {
 
 class Firefly_helper(object):
 
-    def initialize_reader(self,JSONdir=None,write_startup='append',firefly_data_dir=None,**kwargs):
+    def initialize_reader(self,datadir=None,write_startup='append',firefly_data_dir=None,**kwargs):
         """Kwargs passed to this function will create a new self.reader instance:\n"""
         
         if firefly_data_dir is None: firefly_data_dir = os.path.join(self.datadir,'firefly')
 
-        if JSONdir is None:
-            JSONdir = os.path.join(
+        if datadir is None:
+            datadir = os.path.join(
                 firefly_data_dir,
                 '%s_%03d'%(self.name,self.snapnum))
-        if not os.path.isdir(os.path.dirname(JSONdir)):
-            os.makedirs(os.path.dirname(JSONdir))
+        if not os.path.isdir(os.path.dirname(datadir)):
+            os.makedirs(os.path.dirname(datadir))
 
-        self.reader = Reader(JSONdir=JSONdir,clean_JSONdir=True,write_startup=write_startup,**kwargs)
+        self.reader = Reader(datadir=datadir,clean_datadir=True,write_startup=write_startup,**kwargs)
         return self.reader
-    try:
-        initialize_reader.__doc__ += Reader.__init__.__doc__
-    ## Reader won't exist if we didn't successfully import
-    except NameError as e1:
-        try:
-            from firefly_api.reader import Reader
-            from firefly_api.particlegroup import ParticleGroup
-            raise e1
-        except ImportError:
-            pass
-        
 
     @property
     def reader(self):
         if not hasattr(self,'_reader'):
             print('initializing')
-            JSONdir = os.path.join(
+            datadir = os.path.join(
                 self.datadir,
                 'firefly',
                 '%s_%03d'%(self.name,self.snapnum))
             self._reader = Reader(
-                JSONdir=JSONdir,
-                clean_JSONdir=True,
+                datadir=datadir,
+                clean_datadir=True,
                 write_startup='append')
         return self._reader
 
@@ -177,8 +166,11 @@ class Firefly_helper(object):
         self,
         reorient_angles=None,
         radius=None,
-        height=None):
+        height=None,
+        color=None,
+        label=None):
     
+        if color is None: color = [1.0,1.0,1.0,1.0]
 
         ## handle default arguments
         radius = 5*self.rstar_half if radius is None else radius
@@ -193,9 +185,8 @@ class Firefly_helper(object):
 
         zaxis_coords = np.zeros((20,3))
         zaxis_coords[:,-1] = np.linspace(-height,height,20,endpoint=True)
-
-        for key,coords in zip(
-            ['disk','zaxis'],[disk_coords,zaxis_coords]):
+        #,zaxis_coords
+        for key,coords in zip(['disk','zaxis'],[disk_coords]):
 
             if reorient_angles is not None:
                 ## unpack the angles
@@ -205,14 +196,17 @@ class Firefly_helper(object):
                 coords = rotateEuler(unrotate_theta,unrotate_phi,0,coords,inverse=True, loud=False)
                 coords = rotateEuler(fixed_theta,fixed_phi,0,coords,loud=False)
 
-            if reorient_angles is not None:
-                key+='_orient'
+            if reorient_angles is not None: key+='_orient'
 
-            self.track_firefly_particles(key,coords,1)
+            ## disable the entire entry in the UI else use the UI as a legend
+            GUIExcludeList = [''] if label is None else ['dropdown','colorPicker/onclick','sizeSlider'] 
 
-            self.reader.settings['UIparticle'][key] = False 
-            self.reader.settings['color'][key] = [1.0,1.0,1.0,1.0]
-            self.reader.settings['sizeMult'][key] = 0.1
+            self.track_firefly_particles(
+                key if label is None else label,
+                coords,
+                GUIExcludeList=GUIExcludeList,
+                color=color,
+                sizeMult=0.1)
                 
     def track_firefly_particles(
         self,
