@@ -413,7 +413,7 @@ class Galaxy(
 
     def load_ahf(self,halo_fname=None,halo_path=None,**kwargs):
 
-        #raise Exception("We don't use ahf, only rockstar. join us.")
+        raise Exception("We don't use ahf, only rockstar. join us.")
 
         if 'elvis' in self.snapdir:
             raise IOError("No AHF files for Elvis runs")
@@ -587,6 +587,9 @@ class Galaxy(
         assert_cached=False,
         force_from_file=False,
         **kwargs):
+
+        raise Exception("We don't use ahf, only rockstar. join us.")
+
         @metadata_cache(
             'ahf_history',
             ['snapnums','rcoms','rvirs'],
