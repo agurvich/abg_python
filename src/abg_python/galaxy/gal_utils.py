@@ -496,7 +496,7 @@ class Galaxy(
         loud=True,
         assert_cached=False,
         force_from_file=False,
-        fancy_trace=True,
+        fancy_trace=False,
         smooth=None,#0.1, ## results in snapshots that are way mis-centered
         **kwargs):
         """fancy_trace=True - use additional phase space info to minimize jumps in rcom coordinates.
@@ -531,13 +531,16 @@ class Galaxy(
             loud=loud,
             assert_cached=assert_cached,
             force_from_file=force_from_file)
-        def compute_rockstar_file_output(self,fancy_trace=True,smooth=0.1):
+        def compute_rockstar_file_output(self,fancy_trace=False,smooth=0.1):
 
-            print(f'Tracing the rockstar halo files with fancy:{fancy_trace} and {smooth} Gyr smoothing.')
+            #print(f'Tracing the rockstar halo files with fancy:{fancy_trace} and {smooth} Gyr smoothing.')
             snapnums,rcoms,rvirs = trace_rockstar(self.snapdir,fancy_trace=fancy_trace)
-            new_rcoms = copy.copy(rcoms)
+            self.get_snapshotTimes()
+            scale_factors = 1/(1+self.snap_zs[snapnums])
+            rcoms*=scale_factors[:,None]
+
             if smooth is not None:
-                self.get_snapshotTimes()
+                new_rcoms = copy.copy(rcoms)
                 for i in range(3):
                     smooth_times,smooth_coords,_,_,_ = smooth_x_varying_curve(
                         self.snap_gyrs[-len(snapnums):],
@@ -560,6 +563,7 @@ class Galaxy(
 
             return snapnums,rcoms,rvirs
 
+        """
         ## try loading from a cached trace
         if os.path.isfile(hdf5_path) and use_metadata:
             if loud: print("reading from",hdf5_path)
@@ -569,8 +573,10 @@ class Galaxy(
                 rvirs = handle[prefix+'rockstar_history'][prefix+'rvirs'][()]
         ## trace the halo and save it if allowed
         else:
-            snapnums,rcoms,rvirs = compute_rockstar_file_output(self,**kwargs)
             if save_meta: self.metadata.export_to_file(hdf5_path,prefix+'rockstar_history',write_mode='w')
+        """
+
+        snapnums,rcoms,rvirs = compute_rockstar_file_output(self,**kwargs)
         return snapnums,rcoms,rvirs
     
     def get_ahf_file_output(
