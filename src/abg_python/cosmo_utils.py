@@ -139,7 +139,120 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
 
-def trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
+def load_rockstar_tree(
+    snapdir,
+    rockstar_path=None,
+    loud=False,
+    which_halo=0,
+    fancy_trace=False):
+    """ from awetzel.halo_analysis.halo_io: 
+Default/stored properties (the most important ones)
+
+If you read the halo catalog (out_*.list, halos_*.ascii, or halo_*.hdf5) you have:
+    'id' : catalog ID, valid at given snapshot (starts at 0)
+    'position' : 3-D position, along simulations's (cartesian) x,y,z grid [kpc comoving]
+    'velocity' : 3-D velocity, along simulations's (cartesian) x,y,z grid [km / s]
+    'mass' : default total mass - M_200m is default overdensity definition [M_sun]
+    'radius' : halo radius, for 'default' overdensity definition of R_200m [kpc physical]
+    'scale.radius' : NFW scale radius [kpc physical]
+    'mass' : total mass defined via 200 x mean matter density [M_sun]
+    'mass.vir' : total mass defined via Bryan & Norman 1998
+    'mass.200c' : total mass defined via 200 x critical density [M_sun]
+    'mass.bound' : total mass within R_200m that is bound to the halo [M_sun]
+    'vel.circ.max' : maximum of the circular velocity profile [km / s]
+    'vel.std' : standard deviation of the velocity of particles [km / s]
+    'mass.lowres' : mass from low-resolution dark-matter particles in halo [M_sun]
+    'host.index' : catalog index of the primary host (highest halo mass) in catalog
+    'host.distance' : 3-D distance wrt center of primary host [kpc physical]
+    'host.velocity' : 3-D velocity wrt center of primary host [km / s]
+    'host.velocity.tan' : tangential velocity wrt primary host [km / s]
+    'host.velocity.rad' : radial velocity wrt primary host (negative = inward) [km / s]
+
+If you read the halo main progenitor histories (hlist*.list or halo_*.hdf5) you also have:
+    'major.merger.snapshot' : snapshot index of last major merger
+    'mass.half.snapshot' : snapshot when first had half of current mass
+    'mass.peak' : maximum of mass throughout history [M_sun]
+    'mass.peak.snapshot': snapshot index at which above occurs
+    'vel.circ.peak' : maximum of vel.circ.max throughout history [km / s]
+    'infall.snapshot' : snapshot index when most recently fell into a host halo
+    'infall.mass' : mass when most recently fell into host halo [M_sun]
+    'infall.vel.circ.max' : vel.circ.max when most recently fell into a host halo [km / s]
+    'infall.first.snapshot' : snapshot index when first became a satellite
+    'infall.first.mass' : mass when first fell into a host halo (became a satellite) [M_sun]
+    'infall.first.vel.circ.max' : vel.circ.max when first became a satellite [km / s]
+    'accrete.rate' : instantaneous accretion rate [M_sun / yr]
+    'accrete.rate.100Myr : mass growth rate averaged over 100 Myr [M_sun / yr]
+    'accrete.rate.tdyn : mass growth rate averaged over dynamical time [M_sun / yr]
+
+If you read the halo merger trees (tree*.dat or tree.hdf5) you have:
+    'tid' : tree ID, unique across all halos across all snapshots (starts at 0)
+    'snapshot' : snapshot index of halo
+    'am.phantom' : whether halo is interpolated across snapshots
+    'descendant.snapshot' : snapshot index of descendant
+    'descendant.index' : tree index of descendant
+    'am.progenitor.main' : whether am most massive progenitor of my descendant
+    'progenitor.number' : number of progenitors
+    'progenitor.main.index' : index of main (most massive) progenitor
+    'progenitor.co.index' : index of next co-progenitor (with same descendant)
+    'final.index' : tree index at final snapshot
+    'dindex' : depth-first order (index) within tree
+    'progenitor.co.dindex' : depth-first index of next co-progenitor
+    'progenitor.last.dindex' : depth-first index of last progenitor - includes *all* progenitors
+    'progenitor.main.last.dindex' : depth-first index of last progenitor - only via main progenitors
+    'central.index' : tree index of most massive central halo (which must be a central)
+    'central.local.index' : tree index of local (lowest-mass) central (which could be a satellite)
+    'host.index' : tree index of the primary host (following back main progenitor branch)
+    'host.distance' : 3-D distance wrt center of primary host [kpc physical]
+    'host.velocity' : 3-D velocity wrt center of primary host [km / s]
+    'host.velocity.tan' : tangential velocity wrt primary host [km / s]
+    'host.velocity.rad' : radial velocity wrt primary host (negative = inward) [km / s]
+    """
+
+    if fancy_trace: raise ValueError("Fancy tracing not implemented yet for this")
+
+    if rockstar_path is None:
+        rockstar_path = '../halo/rockstar_dm/catalog_hdf5'
+        rockstar_path = os.path.realpath(os.path.join(snapdir,rockstar_path))
+
+    treefile = os.path.join(rockstar_path,'tree.hdf5')
+    my_tree = {}
+    with h5py.File(treefile,'r') as handle:
+        halo_index = handle['progenitor.last.dindex'][0]+1
+
+        while which_halo > 0:
+            halo_index = handle['progenitor.last.dindex'][halo_index]+1
+            which_halo -=1
+
+        for key in handle.keys():
+            try: my_tree[key] = handle[key][:halo_index]
+            except: my_tree[key] = handle[key][()]
+            
+    return my_tree 
+
+def trace_rockstar(*args,**kwargs):
+
+    ## load the merger tree for this halo
+    my_tree = load_rockstar_tree(*args,**kwargs)
+
+    ## follow the progenitor.main.index chain, 
+    ##  each main progenitor has its own main progenitor (and a snapshot
+    ##  corresponding to that progenitor). 
+    ##  Ideally this halo appears in each snapshot but you never know :\
+    chain = [0]
+    index = chain[-1]
+    while index > -1:
+        chain += [my_tree['progenitor.main.index'][index]]
+        index = chain[-1]
+    chain = chain[:-1]
+
+    snapshots = my_tree['snapshot'][chain]
+    sort_inds = np.argsort(snapshots)
+    halo_traj = my_tree['position'][chain] ## in comoving kpc!
+    r200s = my_tree['radius'][chain]
+
+    return snapshots[sort_inds],halo_traj[sort_inds],r200s[sort_inds]
+
+def fancy_trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
 
     if 'elvis' in snapdir:
         raise NotImplementedError("Can't handle multiple halos, yet")
