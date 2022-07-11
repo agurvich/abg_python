@@ -125,8 +125,8 @@ def cross_match_starformed_gas(
     return prev_gas_df,next_gas_df,prev_star_df,next_star_df
 
 def finalize_df(
-    merged_df,
     t0,t1,
+    merged_df,
     polar=True,
     take_avg_L=True,
     extrapolate=False,
@@ -313,20 +313,20 @@ def get_cartesian_interpolation_mask(merged_df,rotate_support_thresh=0.333):
     
     return cartesian_mask
 
-def increment_interpolation_flags(merged_df,interpolation_flags):
+def increment_interpolation_flags(t0,t1,merged_df,interpolation_flags):
 
     ## check the third order cartesian interpolation points,
     ##  are any of those going to introduce extrema? if so
     ##  then drop them to 2nd order
     third_order_mask = interpolation_flags == 1
-    bad_mask = check_third_order_extrema(merged_df,third_order_mask)
+    bad_mask = check_third_order_extrema(t0,t1,merged_df,third_order_mask)
     interpolation_flags[bad_mask]+=1
 
     ## now check the 2nd order cartesian interpolation points,
     ##  are any of those going to introduce extrema? if so
     ##  then drop them to 1st order (which is guaranteed to not introduce extrema)
     second_order_mask = interpolation_flags == 2
-    bad_mask = check_second_order_extrema(merged_df,second_order_mask)
+    bad_mask = check_second_order_extrema(t0,t1,merged_df,second_order_mask)
     interpolation_flags[bad_mask]+=1
 
     return interpolation_flags
@@ -352,10 +352,16 @@ def check_third_order_extrema(t0,t1,merged_df,mask):
         bad_mask[arg_mask[np.logical_and(0 < -x2/(3*x3), -x2/(3*x3) < 1)]] = True
 
         ## handle + position extremum
-        extremum = (-x2+np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
+        ## easier than gating +ive discriminant
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            extremum = (-x2+np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
         bad_mask[arg_mask[np.logical_and(0 < extremum, extremum < 1)]] = True
         ## handle - position extremum
-        extremum = (-x2-np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
+        ## easier than gating +ive discriminant
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            extremum = (-x2-np.sqrt(x2**2-3*x3-prev_vels*dsnap))/(3*x3)
         bad_mask[arg_mask[np.logical_and(0 < extremum, extremum < 1)]] = True
         
     return bad_mask
@@ -392,6 +398,7 @@ def make_interpolated_snap(t0,t1,merged_df,t):
         elif 'polarjhat' in key: continue ## will allow jhat_rotangle though
         elif 'CircularVelocities' in key: continue ## only using to figure out if polar interpolation is appropriate
         elif 'Coordinates' == key: continue
+        elif 'interpolation_flags' == key: continue
         interp_snap[key] = linear_interpolate(
             getattr(merged_df,key),
             getattr(merged_df,key+'_next'),
@@ -434,31 +441,34 @@ def interpolate_position(
 
     ## successively fall back to worse and worse interpolation schemes
     ##  as determined by the interpolation limiter in finalize_df
-    for i in range(interpolation_flags.max()):
-        this_mask = interpolation_flags == i
+    for i in [3]:#range(interpolation_flags.max()):
+        this_mask = np.ones(interpolation_flags.shape[0],dtype=bool)#interpolation_flags == i
         ## 0 = polar
-        if i == 0: coords[this_mask],vels[this_mask] = polar_interpolate(
-            t,t0,t1,merged_df,interp_snap,this_mask)
+        if i == 0 and False: 
+            coords[this_mask],vels[this_mask] = polar_interpolate(
+                t,t0,t1,merged_df,interp_snap,this_mask)
         ## 1,2,3 = third, second, and first order
-        else: coords[this_mask],vels[this_mask] = cartesian_interpolate(
-            t,t0,t1,merged_df,coords,vels,mask=this_mask,order=4-i)
+        else: 
+            coords[this_mask],vels[this_mask] = cartesian_interpolate(
+                t,t0,t1,merged_df,mask=this_mask,order=4-i)
+
+    return coords,vels
 
 def cartesian_interpolate(
     t,t0,t1,
     merged_df,
-    coords=None,
-    vels=None,
     mask=None,
     order=2):
 
-    if coords is None: coords = np.zeros((merged_df.shape[0],3))
-    if vels is None: vels = np.zeros((merged_df.shape[0],3))
 
     if mask is None: mask = np.ones(merged_df.shape[0],dtype=bool)
     if not np.any(mask): return coords,vels
 
     ## apply the mask once to the df
     merged_df = merged_df[mask]
+
+    coords = np.zeros((merged_df.shape[0],3))
+    vels = np.zeros((merged_df.shape[0],3))
 
     for i in range(3):
         prev_coords = merged_df['Coordinates_%d'%i]
@@ -467,8 +477,7 @@ def cartesian_interpolate(
         next_coords = merged_df['Coordinates_%d_next'%i]
         next_vels = merged_df['Velocities_%d_next'%i]
 
-        (coords[mask,i],
-        vels[mask,i]) = interpolate_at_order(
+        coords[:,i], vels[:,i] = interpolate_at_order(
             prev_coords,
             next_coords,
             prev_vels,
@@ -553,9 +562,8 @@ def polar_interpolate(t,t0,t1,merged_df,interp_snap,mask=None):
     ## need to convert interpd_polar_coords and interpd_polar_vels from r' p' to x,y,z
     ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
     coords,vels = convert_polar_to_cartesian(
-        t,t0,t1,
         merged_df,
-        interp_snap,
+        interp_snap.pop('jhat_rotangle')[mask],
         interpd_polar_coords,
         interpd_polar_vels)
 
@@ -570,7 +578,7 @@ def interpolate_at_order(
     order=1,
     periodic=False):
 
-    dt = (t-t0)
+    dt = (t-t0) 
     dsnap = (t1-t0)
     time_frac = dt/dsnap ## 'tau' in Phil's notation
 
@@ -613,7 +621,7 @@ def interpolate_at_order(
 
 def convert_polar_to_cartesian(
     merged_df,
-    interp_snap,
+    rotangle,
     interpd_polar_coords,
     interpd_polar_vels):
     """ If interpd_polar_coords is shape Nx2 then we are to interpret as being r,phi in the rotated frame.
@@ -649,10 +657,6 @@ def convert_polar_to_cartesian(
     ##  fixed theta, everything is at z=0 in the rotated frame
     if interpd_polar_coords.shape[1] != 3: thetas = np.pi/2 
     else: thetas = interpd_polar_coords[:,2]
-
-    ## need to convert interpd_polar_coords and interpd_polar_vels from r' p' to x,y,z
-    ##  do that by getting interpolated jhat vectors and then associated x',y' vectors
-    rotangle = interp_snap.pop('jhat_rotangle') ## interpolated value computed in calling function
 
     khats = np.cross(prev_jhats,next_jhats) ## vector about which jhat is rotated
     ohats = np.cross(khats,prev_jhats) ## vector pointing from ji toward jf in plane of rotation
