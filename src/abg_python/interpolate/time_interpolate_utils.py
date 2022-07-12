@@ -441,10 +441,10 @@ def interpolate_position(
 
     ## successively fall back to worse and worse interpolation schemes
     ##  as determined by the interpolation limiter in finalize_df
-    for i in [3]:#range(interpolation_flags.max()):
+    for i in range(interpolation_flags.max()):
         this_mask = np.ones(interpolation_flags.shape[0],dtype=bool)#interpolation_flags == i
         ## 0 = polar
-        if i == 0 and False: 
+        if i == 0: 
             coords[this_mask],vels[this_mask] = polar_interpolate(
                 t,t0,t1,merged_df,interp_snap,this_mask)
         ## 1,2,3 = third, second, and first order
