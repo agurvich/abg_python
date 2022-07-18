@@ -79,6 +79,24 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
     age *= 0.001*UnitTime_in_Megayears/HubbleParam
     return age
 
+def RydenLookbackTime(HubbleParam,Omega_Matter,scale_factors):
+    """Compute the lookback time to a (list of) scale factor(s) analytically
+        assuming a flat cosmology. """
+
+    km_per_kpc = 3.086e16
+    UnitTime_in_seconds = km_per_kpc / HubbleParam #/ 1 kms suppressed
+    UnitTime_in_Megayears = UnitTime_in_seconds/3.1536e13
+    
+    Hubble_H0_CodeUnits = 3.2407789e-18 * UnitTime_in_seconds
+    
+    
+    prefactor = 2/3 * 1/np.sqrt(1-Omega_Matter)
+    prefactor *= 0.001*UnitTime_in_Megayears/HubbleParam/Hubble_H0_CodeUnits
+    
+    aml3 = (Omega_Matter/(1-Omega_Matter))
+    
+    return prefactor * np.log( scale_factors**(3/2)/np.sqrt(aml3) + np.sqrt(1+scale_factors**3/aml3))
+
 def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs):
 
     ## many zs..., uniformly in log(1+z) from z=0 to z=15
@@ -89,7 +107,7 @@ def approximateRedshiftFromGyr(HubbleParam,Omega0,gyrs):
     #Omega0 = 0.272
 
     scale_factors = 1./(1+zs)
-    close_times = convertStellarAges(HubbleParam,Omega0,1e-16,scale_factors)
+    close_times = RydenLookbackTime(HubbleParam,Omega0,scale_factors)
 
     ## find indices of close_times that match closest to gyrs
     indices = findArrayClosestIndices(gyrs,close_times)
@@ -110,7 +128,7 @@ def convertReadsnapTimeToGyr(snap):
     cur_time = snap['Time']
     HubbleParam = snap['HubbleParam']
     Omega0 = snap['Omega0']
-    cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
+    cur_time_gyr = RydenLookbackTime(HubbleParam,Omega0,cur_time)
     return cur_time_gyr
 
 def getAgesGyrs(open_snapshot):
@@ -135,7 +153,7 @@ def convertSnapSFTsToGyr(open_snapshot,snapshot_handle=None,arr=None):
     else:
         raise Exception("Unimplemented you lazy bum!")
 
-    cur_time_gyr = convertStellarAges(HubbleParam,Omega0,1e-16,cur_time)
+    cur_time_gyr = RydenLookbackTime(HubbleParam,Omega0,cur_time)
     sfts = cur_time_gyr - convertStellarAges(HubbleParam,Omega0,cosmo_sfts,cur_time)
     return sfts,cur_time_gyr
 
@@ -535,10 +553,9 @@ def addRedshiftAxis(ax,
     #0**np.linspace(0,np.log10(1000),np.max([2*gyrs.size,1e4]),endpoint=True)-1
     ## standard FIRE cosmology... #HubbleParam = 0.7 #Omega0 = 0.272
     scale_factors = 1./(1+zs)
-    close_times = convertStellarAges(
+    close_times = RydenLookbackTime(
         HubbleParam,
         Omega0,
-        1e-16,
         scale_factors)
 
     ax1 = ax.twiny()

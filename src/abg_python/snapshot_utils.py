@@ -5,7 +5,7 @@ import numpy as np
 
 from .math_utils import get_cylindrical_velocities,get_cylindrical_coordinates,get_spherical_coordinates,get_spherical_velocities
 from .physics_utils import getTemperature
-from .cosmo_utils import getAgesGyrs,convertStellarAges
+from .cosmo_utils import RydenLookbackTime, getAgesGyrs
 
 def get_fnames(snapdir,snapnum,snapdir_name=''):
     fnames = [
@@ -293,10 +293,9 @@ def openSnapshot(
                 Omega0 = new_dictionary['Omega0']
             else:
                 Omega0 = new_dictionary['Omega_Matter']
-            new_dictionary['TimeGyr'] = convertStellarAges(
+            new_dictionary['TimeGyr'] = RydenLookbackTime(
                 new_dictionary['HubbleParam'],
                 Omega0,
-                1e-12,
                 new_dictionary['Time'])
             new_dictionary['ScaleFactor'] = new_dictionary['Time']
         else:
