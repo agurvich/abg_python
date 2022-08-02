@@ -59,7 +59,25 @@ def contained_hernquist_profile(MR,R,a,r):
 
 ### Lookback time (in context of converting stellar ages)
 def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
-    """ Assumes a flat cosmology"""
+    """ Assumes a flat cosmology
+
+        a0 = stellar_tform;
+        a2 = All.Time;        
+
+        /* use exact solution for flat universe, ignoring the radiation-dominated epoch [no stars forming then] */
+            /* use simple trap rule integration */
+            a1 = 0.5*(a0+a2);
+            x0 = 1./(a0*hubble_function(a0));
+            x1 = 1./(a1*hubble_function(a1));
+            x2 = 1./(a2*hubble_function(a2));
+            age = (a2-a0)*(x0+4.*x1+x2)/6.;
+        }
+    } 
+    age *= UNIT_TIME_IN_GYR; // convert to absolute Gyr
+    if((age<=1.e-5)||(isnan(age))) {age=1.e-5;}
+    return age;
+}
+    """
     
     km_per_kpc = 3.086e16
     UnitTime_in_seconds = km_per_kpc / HubbleParam #/ 1 kms suppressed
