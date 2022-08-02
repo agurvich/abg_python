@@ -13,11 +13,12 @@ from ..snapshot_utils import openSnapshot,get_unit_conversion
 from ..plot_utils import add_to_legend
 from ..color_utils import get_distinct
 from ..array_utils import findIntersection
-from ..system_utils import getfinsnapnum
+from ..system_utils import getfinsnapnum, printProgressBar
 from ..physics_utils import iterativeCoM
 from ..cosmo_utils import load_AHF,load_rockstar,trace_rockstar
 from ..smooth_utils import smooth_x_varying_curve
 from ..math_utils import add_jhat_coords
+from ..cosmo_utils import convertStellarAges
 
 from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from .movie_utils import Draw_helper,FIREstudio_helper
@@ -673,7 +674,11 @@ class Galaxy(
 
         return self.scom,self.rvir,self.rstar_half
 
-    def get_snapshotTimes(self,snaptimes='snapshot_times',assert_cached=False): 
+    def get_snapshotTimes(
+        self,
+        snaptimes='my_snapshot_times',
+        assert_cached=False,
+        use_metadata=True): 
         ## try looking in the simulation directory for a snapshot_times.txt file
         #snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
         ## try loading from the datadir
@@ -695,7 +700,7 @@ class Galaxy(
 
         data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
 
-        if os.path.isfile(data_FIRE_SN_times):
+        if os.path.isfile(data_FIRE_SN_times) and use_metadata:
             (self.snapnums,
                 self.snap_sfs,
                 self.snap_zs,
@@ -703,51 +708,63 @@ class Galaxy(
                 self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
             return
 
-        data_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
+        ## well alright, I guess we have to create the file then...
+        ##  check if there's a list of scale factors we can just convert
+        FIRE_SN_times = os.path.join(self.snapdir,'..','snapshot_times.txt')
 
-        if os.path.isfile(data_FIRE_SN_times):
-            (self.snapnums,
-                self.snap_sfs,
-                self.snap_zs,
-                self.snap_gyrs,
-                self.dTs) = np.genfromtxt(data_FIRE_SN_times,unpack=1)
-            return
+        if os.path.isfile(FIRE_SN_times):
+            (snapnums,
+                sfs,
+                zs,
+                _,
+                dTs) = np.genfromtxt(FIRE_SN_times,unpack=1)
 
+            if 'Omega0' in self.header.keys(): Omega0 = self.header['Omega0']
+            else: Omega0 = self.header['Omega_Matter']
 
-        if assert_cached:
-            raise AssertionError("User asserted that the snapshot times should be saved to disk.")
+            gyrs = convertStellarAges(
+                self.header['HubbleParam'],
+                Omega0,
+                1e-12,
+                sfs)
 
-        finsnap = getfinsnapnum(self.snapdir)
-        print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
+        else:
+            ## well, alright I guess. then we have to open every snapshot :[
+            if assert_cached:
+                raise AssertionError("User asserted that the snapshot times should be saved to disk.")
 
-        snapnums = []
-        sfs = []
-        gyrs = []
-        zs = []
-        dTs = [0]
+            finsnap = getfinsnapnum(self.snapdir)
+            print("Oh boy, have to open %d files to output their snapshot timings"%finsnap)
 
-        for snapnum in range(finsnap+1):
-            try:
-                ## open the snapshot, but only load the header info
-                header_snap = openSnapshot(
-                    self.snapdir,
-                    snapnum,
-                    0, ## dummy particle index, ignored for header_only = True
-                    header_only=True)
+            snapnums = []
+            sfs = []
+            gyrs = []
+            zs = []
+            dTs = [0]
 
-                ## save each one to a list
-                snapnums += [snapnum]
-                sfs += [header_snap['ScaleFactor']]
-                gyrs += [header_snap['TimeGyr']]
-                zs += [header_snap['Redshift']]
+            printProgressBar(0,finsnap+1)
+            for snapnum in range(finsnap+1):
+                printProgressBar(snapnum+1,finsnap+1)
+                try:
+                    ## open the snapshot, but only load the header info
+                    header_snap = openSnapshot(
+                        self.snapdir,
+                        snapnum,
+                        0, ## dummy particle index, ignored for header_only = True
+                        header_only=True)
 
-                if len(gyrs) >= 2 :
-                    dTs += [gyrs[-1]-gyrs[-2]]
+                    ## save each one to a list
+                    snapnums += [snapnum]
+                    sfs += [header_snap['ScaleFactor']]
+                    gyrs += [header_snap['TimeGyr']]
+                    zs += [header_snap['Redshift']]
 
-            ## this snapshot doesn't exist, but maybe there are others
-            except IOError:
-                print("snapshot %d doesn't exist, skipping..."%snapnum)
-                continue
+                    if len(gyrs) >= 2 : dTs += [gyrs[-1]-gyrs[-2]]
+
+                ## this snapshot doesn't exist, but maybe there are others
+                except IOError:
+                    print("snapshot %d doesn't exist, skipping..."%snapnum)
+                    continue
 
 
         ## write out our snapshot_times.txt to datadir
@@ -1558,10 +1575,9 @@ class ManyGalaxy(Galaxy):
             ## filler values
             self.finsnap=self.minsnap=None
 
-        try:
-            self.get_snapshotTimes(assert_cached=True)
-        except AssertionError:
-            print("No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
+        try: self.get_snapshotTimes(assert_cached=True)
+        except (AssertionError,AttributeError): print(
+            "No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
 
         ## for anything else you'd like to pass to future loaded galaxies
         self.galaxy_kwargs = galaxy_kwargs
