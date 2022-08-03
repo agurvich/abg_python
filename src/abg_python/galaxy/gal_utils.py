@@ -339,10 +339,6 @@ class Galaxy(
                         self.rstar_half = getattr(self.metadata,attr)
                         break
 
-                ## if not, then be loud about it (unless we're quiet little mice)
-                if self.rstar_half is None and self.metadata.loud_metadata:
-                    print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
-
         self.current_redshift = self.header['Redshift']
         self.current_time_Gyr = self.header['TimeGyr']
 
@@ -474,6 +470,7 @@ class Galaxy(
         if smooth is not None:
             prefix+='smoothed%.3fGyr_'%smooth
 
+        """
         ## separate cachefile that we can save to that all snapshots can use
         hdf5_path = os.path.join(
             os.environ['HOME'],
@@ -482,16 +479,14 @@ class Galaxy(
             self.suite_name,
             self.name,
             prefix+'rockstar_trace.hdf5')
+        """
 
         kwargs['smooth'] = smooth
         kwargs['fancy_trace'] = fancy_trace
-
-        self.halo_path = os.path.dirname(hdf5_path)
-        self.halo_fname = os.path.basename(hdf5_path)
-            
+ 
         @metadata_cache(
             prefix+'rockstar_history',
-            [prefix+'snapnums',prefix+'rcoms',prefix+'rvirs'],
+            [prefix+'snapnums',prefix+'rcoms',prefix+'rvirs',prefix+'treefile'],
             use_metadata=use_metadata,
             save_meta=save_meta,
             loud=loud,
@@ -500,7 +495,8 @@ class Galaxy(
         def compute_rockstar_file_output(self,fancy_trace=False,smooth=0.1):
 
             #print(f'Tracing the rockstar halo files with fancy:{fancy_trace} and {smooth} Gyr smoothing.')
-            snapnums,rcoms,rvirs = trace_rockstar(self.snapdir,fancy_trace=fancy_trace)
+            snapnums,rcoms,rvirs,treefile = trace_rockstar(self.snapdir,fancy_trace=fancy_trace)
+
             self.get_snapshotTimes()
             scale_factors = 1/(1+self.snap_zs[snapnums])
             rcoms*=scale_factors[:,None]
@@ -527,7 +523,7 @@ class Galaxy(
                     new_rcoms[outside_window_mask,i] = rcoms[outside_window_mask,i]
                 rcoms = new_rcoms
 
-            return snapnums,rcoms,rvirs
+            return snapnums,rcoms,rvirs,treefile
 
         """
         ## try loading from a cached trace
@@ -542,7 +538,10 @@ class Galaxy(
             if save_meta: self.metadata.export_to_file(hdf5_path,prefix+'rockstar_history',write_mode='w')
         """
 
-        snapnums,rcoms,rvirs = compute_rockstar_file_output(self,**kwargs)
+        snapnums,rcoms,rvirs,treefile = compute_rockstar_file_output(self,**kwargs)
+
+        self.halo_file = str(treefile)
+
         return snapnums,rcoms,rvirs
     
     def get_ahf_file_output(
@@ -613,6 +612,7 @@ class Galaxy(
             self.rstar_half = None
 
         except IOError:
+            raise
             if 'elvis' in self.snapdir:
                 which_host = self.snapdir.split('m12_elvis_')[1].split('_')[0]
                 if which_host[:len(self.pretty_name)] == self.pretty_name:
@@ -794,11 +794,11 @@ class Galaxy(
 ####  and optionally output this new "sub-snapshot" to a cache file
     def extractMainHalo(
         self,
-        save_meta = False, 
-        orient_stars = True, ## which angular momentum axis to orient along
-        overwrite_full_snaps_with_rotated_versions = False,
-        free_mem = True, ## delete the full snapshot from RAM
-        extract_DM = True, ## do we want the DM particles? 
+        save_meta=False, 
+        orient_stars=True, ## which angular momentum axis to orient along
+        overwrite_full_snaps_with_rotated_versions=False,
+        free_mem=True, ## delete the full snapshot from RAM
+        extract_DM=True, ## do we want the DM particles? 
         compute_stellar_hsml=False,
         loud=True,
         jhat_coords=False,
