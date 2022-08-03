@@ -163,7 +163,7 @@ def get_cylindrical_velocities(vels,coords):
 
     ## allow for x,y being passed in only if z = 0
     ##  and we're trying not to waste memory
-    if len(vels.shape) == 3: vzs = vels[:,2]
+    if vels.shape[-1] == 3: vzs = vels[:,2]
     else: vzs = 0
 
     vphis = np.sqrt(np.sum(vels**2,axis=1) - vrs**2 - vzs**2)
