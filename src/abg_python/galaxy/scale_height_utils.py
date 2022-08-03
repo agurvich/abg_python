@@ -207,8 +207,8 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
         if rmax_rvirs is None: rmax_rvirs = np.linspace(0.05,1,20)
 
-        for rmax_rvir in rmax_rvirs:
-            for component in list(self.prefix_dict.keys())+['cold_gas+warm_gas']:
+        for component in self.components:
+            for rmax_rvir in rmax_rvirs:
                 self.get_simple_radius_and_height(component,rmax_rvir=rmax_rvir,**kwargs)
                 self.get_simple_radius_and_height('ann_'+component,rmax_rvir=rmax_rvir,**kwargs)
                 self.get_inertia_ellipsoid(component,rmax_rvir=rmax_rvir,**kwargs)
