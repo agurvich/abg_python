@@ -1148,11 +1148,6 @@ def place_text(ax,percentage):
 
 try: import palettable
 except: print("palettable colormaps are not installed")
-try:
-    from pfh_colormaps import load_my_custom_color_tables
-    load_my_custom_color_tables()
-except:
-    print("don't have phil's colormaps")
 
 def get_cmap(cmap_name):
     try: cmap = plt.get_cmap(cmap_name)
