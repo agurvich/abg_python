@@ -263,12 +263,12 @@ If you read the halo merger trees (tree*.dat or tree.hdf5) you have:
             try: my_tree[key] = handle[key][:halo_index]
             except: my_tree[key] = handle[key][()]
             
-    return my_tree 
+    return my_tree,treefile
 
 def trace_rockstar(*args,**kwargs):
 
     ## load the merger tree for this halo
-    my_tree = load_rockstar_tree(*args,**kwargs)
+    my_tree,treefile = load_rockstar_tree(*args,**kwargs)
 
     ## follow the progenitor.main.index chain, 
     ##  each main progenitor has its own main progenitor (and a snapshot
@@ -286,7 +286,7 @@ def trace_rockstar(*args,**kwargs):
     halo_traj = my_tree['position'][chain] ## in comoving kpc!
     r200s = my_tree['radius'][chain]
 
-    return snapshots[sort_inds],halo_traj[sort_inds],r200s[sort_inds]
+    return snapshots[sort_inds],halo_traj[sort_inds],r200s[sort_inds],treefile
 
 def fancy_trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
 
