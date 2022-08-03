@@ -82,7 +82,7 @@ def get_elvis_snapdir_name(savename):
     ## check each of the partners and see if they're in the savename
     ##  savename should be of the form ex.: Romeo_res3500
     for partner in elvis_partners.keys():
-        if partner in savename:
+        if (partner in savename) and (len(savename.split('_')) == 2):
             ## which one do we want and what resolution
             this,resolution = savename.split('_')
             ## get the matching partner and figure which_host we are
@@ -160,34 +160,17 @@ class Galaxy(
         self,
         name,
         snapnum,
+        suite_name = 'metal_diffusion',
         snapdir=None,
         datadir=None,
-        datadir_name = None,
-        snapdir_name = None,
-        plot_color = 0,
-        multi_thread = 1,
-        save_header_to_table = True,
-        meta_name = None,
-        suite_name = 'metal_diffusion',
-        use_rockstar_first=True,
-        **metadata_kwargs 
-        ):
-
-        if meta_name is None:
-            meta_name = 'meta_Galaxy'
-
-        #if suite_name is None:
-            #if 'metal_diffusion' in snapdir:
-                #self.suite_name = 'metal_diffusion'
-            #elif 'HL000' in snapdir:
-                #self.suite_name = 'xiangcheng'
-            #elif 'core' in snapdir:
-                #self.suite_name = 'core'
-            #elif 'cr_heating_fix' in snapdir:
-                #self.suite_name = 'cr_heating_fix'
-            #else: ## set myself up for failure below
-                #self.suite_name = 'unknown'
-        #else:
+        datadir_name=None,
+        snapdir_name=None,
+        plot_color=0,
+        multi_thread=1,
+        full_init=True,
+        save_header_to_table=True,
+        meta_name='meta_Galaxy',
+        **metadata_kwargs):
 
 
         if suite_name == 'metal_diffusion' and name in cr_heating_fixed:
@@ -202,7 +185,6 @@ class Galaxy(
                 name +='/cr_700'
             name=name.replace('cr_700/cr_700','cr_700')
             
-
         ## bind input
         self.snapnum = snapnum
         self.multi_thread = multi_thread
@@ -214,18 +196,13 @@ class Galaxy(
             suite_name,
             name,
             'output')
+        elif snapdir[-1]==os.sep: snapdir = snapdir[:-1]
 
-        if snapdir is not None:
-            ## will replace name with name if not an elvis name
-            ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
-            ##  or Juliet_res3500 w/ RomeoJuliet_res3500
-            snapdir = snapdir.replace(name,get_elvis_snapdir_name(name))
+        ## will replace name with name if not an elvis name
+        ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
+        ##  or Juliet_res3500 w/ RomeoJuliet_res3500
+        snapdir = snapdir.replace(name,get_elvis_snapdir_name(name))
 
-        ## snapdir is sometimes None if an instance is 
-        ##  created just to access the metadata and cached
-        ##  methods
-        if snapdir is not None and snapdir[-1]==os.sep:
-            snapdir = snapdir[:-1]
         self.snapdir = snapdir
 
         ## determine what the final snapshot of this simulation is
@@ -234,10 +211,6 @@ class Galaxy(
 
         self.datadir_name = self.name if datadir_name is None else datadir_name
         self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
-
-        ## append _md to the name for my own sanity
-        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            #self.name = self.name + '_md'
 
         ## name that should appear on plots
         ##  i.e. remove the resXXX from the name
@@ -258,67 +231,40 @@ class Galaxy(
         elif suite_name == 'metal_diffusion/cr_heating_fix':
             #self.pretty_name += '+'
             pass
+        elif suite_name == 'fire3_compatability':
+            self.pretty_name += '_fire3'
 
+        colors = get_distinct(9)
         if type(plot_color) is int:
-            try:
-                plot_color=get_distinct(9)[plot_color] # this is a dumb way to do this
-            except:
-                plot_color="C%d"%((plot_color-9)%13)
+            if plot_color < len(colors): plot_color=colors[plot_color] 
+            else: plot_color="C%d"%((plot_color-len(colors))%13)
 
         self.plot_color = plot_color
         
-        ## handle datadir creation
-        if datadir is None:
-            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
-        else:
-            self.datadir = datadir
+        if datadir is None: self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
+        else: self.datadir = datadir
 
         ## make top level datadir if it doesn't exist...
-        if not os.path.isdir(self.datadir):
-            os.makedirs(self.datadir)
+        if not os.path.isdir(self.datadir): os.makedirs(self.datadir)
 
-        if name not in self.datadir and name!='temp':
+        if self.name not in self.datadir and self.name!='temp':
             self.datadir = os.path.join(self.datadir,self.datadir_name)
 
-        if not os.path.isdir(self.datadir):
-            os.makedirs(self.datadir)
+        ## handle datadir creation
+        if not os.path.isdir(self.datadir): os.makedirs(self.datadir)
 
         ## handle metadatadir creation
         self.metadatadir = os.path.join(self.datadir,'metadata')
-        if not os.path.isdir(self.metadatadir):
-            os.makedirs(self.metadatadir)
+        if not os.path.isdir(self.metadatadir): os.makedirs(self.metadatadir)
 
         ## handle plotdir creation
         self.plotdir = os.path.join(self.datadir,'plots')
-        if not os.path.isdir(self.plotdir):
-            os.makedirs(self.plotdir)
+        if not os.path.isdir(self.plotdir): os.makedirs(self.plotdir)
 
-        ## are we just trying to open this simulation's constant header info?
-        if self.snapnum is None:
-            ## load the header from my catalog file
-            ##  if it's not in the header, let this raise an 
-            ##  unholy error
-            self.header = self.loadHeaderFromCatalog() 
-
-            ## set filler values for variables that would be set if we were
-            ##  actually opening the hdf5 file
-
-            ## metadata file 
-            self.metapath = None
-
-            ## simulation timing
-            self.current_time_Gyr = None
-            self.current_redshift = None
-
-            ## main halo information
-            self.scom = None
-            self.rvir = None
-            self.rstar_half = None
-
+        ## there is no metadata file for a Galaxy w.o. a snapshot
+        if self.snapnum is None: self.metapath = None
+        ## open/create the metadata object & file
         else:
-            ## open/create the metadata object & file
-            ##  nb that file will only be created after
-            ##  first entry is saved to metadata
             self.metapath = os.path.join(
                 self.metadatadir,
                 '%s_%03d.hdf5'%(meta_name,self.snapnum))
@@ -326,40 +272,58 @@ class Galaxy(
                 self.metapath,
                 **metadata_kwargs)
 
-            ## attempt to open the header in the hdf5 file
+        ## let's try and make a header object, shall we?
+        if self.snapnum is None:
+            ## load the header from my catalog file
+            self.header = self.loadHeaderFromCatalog() 
+
+            ## snapshot timing is not available because snapnum is None
+            self.header['Redshift'] = None
+            self.header['TimeGyr'] = None
+        else: 
+            ## attempt to open the header from the hdf5 file
+            ##  let openSnapshot attempt to parse the snapdir/snapnum
+            ##  situation and it'll raise an IOError if it can't find the file
             try:
-                self.header = openSnapshot(
-                    self.snapdir,
-                    self.snapnum,
-                    0, ## dummy particle index, not used if header_only is True
-                    header_only=True)
-
-                ## save the header to our catalog of simulation headers
-                ##  so that we can open the header in scenarios where
-                ##  snapnum is None, as above.
-                if save_header_to_table:
-                    try:
-                        self.saveHeaderToCatalog()
-                    except (ValueError,OSError):
-                        ## OSError is when parallel processes try to write to header at the same time...
-                        ##  Value Error is probably when the simulation is already in the file?
-                        pass
-
-
-            except IOError as e:
-                print("Couldn't find header.")
-                print(e) 
+                self.open_header(save_header_to_table=save_header_to_table)
+                self.__set_snapshot_info(dummy=not full_init)
                 return 
+            except IOError as e:
+                print(f"Couldn't find snapshot {self.snapnum:d} in {self.snapdir}.")
+                print(e) 
 
-            ## simulation timing
-            ##  load snapshot times to convert between snapnum and time_Gyr
-            self.current_redshift = self.header['Redshift']
-            self.current_time_Gyr = self.header['TimeGyr']
+        self.__set_snapshot_info(dummy=True)
+ 
+    def open_header(self,save_header_to_table=True):
+        self.header = openSnapshot(
+            self.snapdir,
+            self.snapnum,
+            0, ## dummy particle index, not used if header_only is True
+            header_only=True)
 
-        
-            if self.header['cosmological']:
-                ## opens the halo file to find the halo center and virial radius
-                self.load_halo_file(use_rockstar_first=use_rockstar_first)
+        if save_header_to_table:
+            ## save the header to our catalog of simulation headers
+            ##  so that we can open the header in scenarios where
+            ##  snapnum is None, as above.
+            try: self.saveHeaderToCatalog()
+            ## OSError is when parallel processes try to write to header at the same time...
+            ##  Value Error is probably when the simulation is already in the file?
+            except (ValueError,OSError): pass
+
+    def __set_snapshot_info(
+        self,
+        use_rockstar_first=True,
+        dummy=False):
+
+        if dummy:
+            ## main halo information
+            self.scom = None
+            self.rvir = None
+            self.rstar_half = None
+
+        else:
+            ## opens the halo file to find the halo center and virial radius
+            if self.header['cosmological']: self.load_halo_file()#use_rockstar_first=use_rockstar_first)
             else:
                 self.scom = np.zeros(3)
                 self.rvir = 300 ## what should i do here...
@@ -368,18 +332,19 @@ class Galaxy(
                 if 'r30r' in self.snapdir:
                     self.scom = get_idealized_center(self.name,self.snapnum)
 
-
-            ## have we already calculated it and cached it?
             if self.rstar_half is None:
+                ## have we already calculated it and cached it?
                 for attr in ['gas_extract_rstar_half','star_extract_rstar_half']:
                     if hasattr(self.metadata,attr):
                         self.rstar_half = getattr(self.metadata,attr)
                         break
 
-                ## I guess not
-                if self.rstar_half is None:
-                    if self.metadata.loud_metadata:
-                        print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
+                ## if not, then be loud about it (unless we're quiet little mice)
+                if self.rstar_half is None and self.metadata.loud_metadata:
+                    print("No rstar 1/2 in halo or metadata files, we will need to calculate it ourselves.")
+
+        self.current_redshift = self.header['Redshift']
+        self.current_time_Gyr = self.header['TimeGyr']
 
     def load_halo_file(
         self,
@@ -1466,118 +1431,32 @@ class ManyGalaxy(Galaxy):
     def __init__(
         self,
         name,
-        snapdir=None,
-        datadir=None,
-        datadir_name=None,
-        snapdir_name=None,
+        name_append='',
         load_snapnums=None,
         population_kwargs=None,
-        name_append='',
-        suite_name='metal_diffusion',
         **galaxy_kwargs):
         """ a wrapper that will allow one to open multiple galaxies at the same time,
             most useful for creating and accessing MultiMetadata instances while 
             using the same plotting scripts that a Galaxy instance would work for 
             (in general, this must be done consciously while making a plotting script). """
+        
+        ## do all the snapdir, datadir, w.e. voodoo but don't do any of the hard stuff
+        Galaxy.__init__(self,name,None,**galaxy_kwargs,full_init=False)
 
-        if suite_name == 'metal_diffusion' and name in cr_heating_fixed:
-            suite_name = 'metal_diffusion/cr_heating_fix'
- 
-
-        if suite_name == 'cr_suite':
-            if name == 'm12i_res7100':
-                name = 'm12i_mass7000_MHDCR_tkFIX/cr_700'
-            else:
-                name +='/cr_700'
-            name=name.replace('cr_700/cr_700','cr_700')
-
+        ## now do the ManyGalaxy specific stuff
         self.name = name+name_append
-        self.datadir_name = self.name if datadir_name is None else datadir_name
-        self.snapdir_name = self.datadir_name if snapdir_name is None else snapdir_name
-        self.suite_name = suite_name
-
-        if snapdir is None: snapdir = os.path.join(
-            os.environ['HOME'],
-            'snaps',
-            suite_name,
-            name,
-            'output')
-
-        if snapdir is not None:
-            ## will replace name with name if not an elvis name
-            ##  otherwise will replace Romeo_res3500 w/ RomeoJuliet_res3500
-            ##  or Juliet_res3500 w/ RomeoJuliet_res3500
-            snapdir = snapdir.replace(name,get_elvis_snapdir_name(name))
-
-        ## snapdir is sometimes None if an instance is 
-        ##  created just to access the metadata and cached
-        ##  methods
-        if snapdir is not None and snapdir[-1]==os.sep:
-            snapdir = snapdir[:-1]
-
-        ## bind input
-        self.snapdir = snapdir
-
-
-        ## save this for any Galaxy instances we create as well
-        galaxy_kwargs['suite_name'] = suite_name
-
-
-        ## append _md to the datadir_name for my own sanity
-        #if '_md' not in self.name and 'metal_diffusion' in self.snapdir:
-            #self.name = self.name + '_md'
-
-        ## name that should appear on plots
-        ##  i.e. remove the resXXX from the name
-        pretty_name = self.name.split('_')
-        pretty_name = np.array([
-            strr if 'res' not in strr else '' 
-            for strr in pretty_name])
-        pretty_name = pretty_name[pretty_name!= '']
-        self.pretty_name = '_'.join(pretty_name)
-        self.pretty_name = self.pretty_name.replace('__','_')
-
-        if suite_name == 'cr_suite':
-            self.pretty_name = self.pretty_name.split('_')[0]+'_cr'
-
-        ## handle datadir creation
-        if datadir is None:
-            self.datadir = os.environ['HOME']+"/scratch/data/%s"%self.suite_name
-        else:
-            self.datadir = datadir
-
-        ## make top level datadir if it doesn't exist...
-        if not os.path.isdir(self.datadir):
-            os.makedirs(self.datadir)
-
-        if name not in self.datadir and name!='temp':
-            self.datadir = os.path.join(self.datadir,self.datadir_name)
-
-        if not os.path.isdir(self.datadir):
-            os.makedirs(self.datadir)
-
-        ## handle metadatadir creation
-        self.metadatadir = os.path.join(self.datadir,'metadata')
-        if not os.path.isdir(self.metadatadir):
-            os.makedirs(self.metadatadir)
-
-        ## handle plotdir creation
-        self.plotdir = os.path.join(self.datadir,'plots')
-        if not os.path.isdir(self.plotdir):
-            os.makedirs(self.plotdir)
 
         ## allow a MultiGalaxy wrapper to open histories files
         if self.snapdir is not None:
             self.finsnap = getfinsnapnum(self.snapdir)
             ## get the minimum snapnum
             self.minsnap = getfinsnapnum(self.snapdir,True)
-        else:
-            ## filler values
-            self.finsnap=self.minsnap=None
+        ## filler values
+        else: self.finsnap,self.minsnap=None,None
 
         try: self.get_snapshotTimes(assert_cached=True)
-        except (AssertionError,AttributeError): print(
-            "No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
+        except (AssertionError,AttributeError,KeyError): 
+            print("No snapshot times, create one manually with a Galaxy object and .get_snapshotTimes.")
 
         ## for anything else you'd like to pass to future loaded galaxies
         self.galaxy_kwargs = galaxy_kwargs
@@ -1601,8 +1480,7 @@ class ManyGalaxy(Galaxy):
                     return np.array(
                         [getattr(gal,attr) for gal 
                         in self.galaxies])
-                else:
-                    return getattr(self,attr) ## might fail but that's what we want
+                else: return getattr(self,attr) ## might fail but that's what we want
 
             def __getitem__(self,index):
                 return self.galaxies[index]
