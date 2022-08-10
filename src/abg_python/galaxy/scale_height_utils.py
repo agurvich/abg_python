@@ -308,8 +308,11 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 
             masses,coords = which_snap['Masses'][mask],which_snap['Coordinates'][mask]
 
-            if masses.size <= 1 and rmax < self.rvir*0.5:
-                return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
+            if masses.size <= 1:
+                if rmax < self.rvir*0.5:
+                    return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
+                else:
+                    return np.repeat(np.nan,6),np.repeat(np.nan,18).reshape(-1,3),np.repeat(np.nan,2)
             lengths,evecs = computeClumpRadius(masses,coords)
 
             e1 = evecs[0]
