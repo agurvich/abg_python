@@ -311,6 +311,8 @@ def get_cartesian_interpolation_mask(merged_df,rotate_support_thresh=0.333):
         vrot2_frac < rotate_support_thresh,
         np.logical_or(prev_rs > 30,next_rs > 30))
     
+    #print('cartesian fraction:',np.sum(cartesian_mask)/cartesian_mask.size)
+    
     return cartesian_mask
 
 def increment_interpolation_flags(t0,t1,merged_df,interpolation_flags):
