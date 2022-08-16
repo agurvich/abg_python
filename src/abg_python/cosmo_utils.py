@@ -5,21 +5,7 @@ import numpy as np
 
 from .array_utils import findArrayClosestIndices
 from .system_utils import getfinsnapnum
-
-
-### Constants
-G = 4.301e-9 #km^2 Mpc MSun^-1 s^-2
-
-##### THIS CHANGES WHAT HUBBLE IS
-REDSHIFT=0
-
-#from WMAP
-H0=71 # km /s / Mpc
-OMEGA_0 = 0.27
-OMEGA_B = 0.044
-OMEGA_LAMBDA = 1-OMEGA_0
-HUBBLE=H0*(OMEGA_0*(1+REDSHIFT)**3+OMEGA_LAMBDA)**0.5 #km/s / Mpc
-RHOCRIT = 3*HUBBLE**2./(8*np.pi*G)# 139 Msun / Mpc^3
+from .constants import cm_per_kpc
 
 ### Hernquist/NFW Profiles
 def findCCFromHernquistA(m200,akpc):
@@ -79,8 +65,7 @@ def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
 }
     """
     
-    km_per_kpc = 3.086e16
-    UnitTime_in_seconds = km_per_kpc / HubbleParam #/ 1 kms suppressed
+    UnitTime_in_seconds = 1e5*cm_per_kpc / HubbleParam #/ 1 kms suppressed
     UnitTime_in_Megayears = UnitTime_in_seconds/3.1536e13
     
     Hubble_H0_CodeUnits = 3.2407789e-18 * UnitTime_in_seconds 
@@ -101,12 +86,9 @@ def RydenLookbackTime(HubbleParam,Omega_Matter,scale_factors):
     """Compute the lookback time to a (list of) scale factor(s) analytically
         assuming a flat cosmology. """
 
-    km_per_kpc = 3.086e16
-    UnitTime_in_seconds = km_per_kpc / HubbleParam #/ 1 kms suppressed
+    UnitTime_in_seconds = 1e5*cm_per_kpc / HubbleParam #/ 1 kms suppressed
     UnitTime_in_Megayears = UnitTime_in_seconds/3.1536e13
-    
     Hubble_H0_CodeUnits = 3.2407789e-18 * UnitTime_in_seconds
-    
     
     prefactor = 2/3 * 1/np.sqrt(1-Omega_Matter)
     prefactor *= 0.001*UnitTime_in_Megayears/HubbleParam/Hubble_H0_CodeUnits
