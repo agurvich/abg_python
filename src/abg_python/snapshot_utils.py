@@ -289,10 +289,8 @@ def openSnapshot(
     ## handle Time in header for cosmological/isolated galaxy
     if 'Time' in new_dictionary:
         if cosmological:
-            if 'Omega0' in new_dictionary:
-                Omega0 = new_dictionary['Omega0']
-            else:
-                Omega0 = new_dictionary['Omega_Matter']
+            if 'Omega0' in new_dictionary: Omega0 = new_dictionary['Omega0']
+            else: Omega0 = new_dictionary['Omega_Matter']
             new_dictionary['TimeGyr'] = RydenLookbackTime(
                 new_dictionary['HubbleParam'],
                 Omega0,

@@ -2,3 +2,4 @@
 *.sw*
 .vscode/settings.json
 src/*egg*/*
+*workspace.code-workspace

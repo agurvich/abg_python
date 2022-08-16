@@ -114,8 +114,7 @@ class Metadata(object):
                     raise AttributeError("No unloaded or loaded metadata attrs matches %s!"%attr)
                 ## we have unloaded multiple partial matches
                 elif len(file_keys)>1:
-                    if loud:
-                        print(attr,file_keys)
+                    if loud: print(attr,file_keys)
                     raise KeyError("Too many unloaded metadata attrs match that key, be more precise!",file_keys)
                 ## we have a single partial match
                 else:
@@ -123,8 +122,7 @@ class Metadata(object):
 
             ## if we have loaded multiple partial matches
             elif len(dict_keys)>1:
-                if loud:
-                    print(attr,dict_keys)
+                if loud: print(attr,dict_keys)
                 raise KeyError("Too many loaded metadata attrs match that key, be more precise!",dict_keys)
 
             ## we have a single partial match
@@ -514,23 +512,16 @@ def metadata_cache(
                 else:
                     return_value = getattr(self,key)
 
-                if loud:
-                    print("cache",
-                        group,func_name,
-                        "success!")
+                if loud: print("cache",group,func_name,"success!")
             except (AssertionError,KeyError,AttributeError) as e:
-                if loud and use_metadata:
-                    print("cache",
-                        group,func_name,
-                        "fail :[",e)
+                if loud and use_metadata: print("cache",group,func_name,"fail :[",e)
                 if assert_cached:
                     raise AssertionError("User asserted cached for %s - %s"%(group,func_name),keys)
                 init = time.time()
                 ## go ahead and actually call the function
                 return_value = func(*func_args,**func_kwargs)
                 duration = time.time()-init
-                if loud:
-                    print(func_name,'%.2f s elapsed'%(duration))
+                print(func_name,'%.2f s elapsed'%(duration))
                 
                 ## must be explicitly asked to save to metadata
                 ##  with a kwarg

@@ -59,7 +59,25 @@ def contained_hernquist_profile(MR,R,a,r):
 
 ### Lookback time (in context of converting stellar ages)
 def convertStellarAges(HubbleParam,Omega0,stellar_tform,Time):
-    """ Assumes a flat cosmology"""
+    """ Assumes a flat cosmology
+
+        a0 = stellar_tform;
+        a2 = All.Time;        
+
+        /* use exact solution for flat universe, ignoring the radiation-dominated epoch [no stars forming then] */
+            /* use simple trap rule integration */
+            a1 = 0.5*(a0+a2);
+            x0 = 1./(a0*hubble_function(a0));
+            x1 = 1./(a1*hubble_function(a1));
+            x2 = 1./(a2*hubble_function(a2));
+            age = (a2-a0)*(x0+4.*x1+x2)/6.;
+        }
+    } 
+    age *= UNIT_TIME_IN_GYR; // convert to absolute Gyr
+    if((age<=1.e-5)||(isnan(age))) {age=1.e-5;}
+    return age;
+}
+    """
     
     km_per_kpc = 3.086e16
     UnitTime_in_seconds = km_per_kpc / HubbleParam #/ 1 kms suppressed
@@ -245,12 +263,12 @@ If you read the halo merger trees (tree*.dat or tree.hdf5) you have:
             try: my_tree[key] = handle[key][:halo_index]
             except: my_tree[key] = handle[key][()]
             
-    return my_tree 
+    return my_tree,treefile
 
 def trace_rockstar(*args,**kwargs):
 
     ## load the merger tree for this halo
-    my_tree = load_rockstar_tree(*args,**kwargs)
+    my_tree,treefile = load_rockstar_tree(*args,**kwargs)
 
     ## follow the progenitor.main.index chain, 
     ##  each main progenitor has its own main progenitor (and a snapshot
@@ -268,7 +286,7 @@ def trace_rockstar(*args,**kwargs):
     halo_traj = my_tree['position'][chain] ## in comoving kpc!
     r200s = my_tree['radius'][chain]
 
-    return snapshots[sort_inds],halo_traj[sort_inds],r200s[sort_inds]
+    return snapshots[sort_inds],halo_traj[sort_inds],r200s[sort_inds],treefile
 
 def fancy_trace_rockstar(snapdir,rockstar_path=None,fancy_trace=True,loud=False):
 

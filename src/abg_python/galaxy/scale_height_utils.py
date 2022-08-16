@@ -207,8 +207,8 @@ class ScaleHeight_helper(Plot_ScaleHeight):
 
         if rmax_rvirs is None: rmax_rvirs = np.linspace(0.05,1,20)
 
-        for rmax_rvir in rmax_rvirs:
-            for component in list(self.prefix_dict.keys())+['cold_gas+warm_gas']:
+        for component in self.components:
+            for rmax_rvir in rmax_rvirs:
                 self.get_simple_radius_and_height(component,rmax_rvir=rmax_rvir,**kwargs)
                 self.get_simple_radius_and_height('ann_'+component,rmax_rvir=rmax_rvir,**kwargs)
                 self.get_inertia_ellipsoid(component,rmax_rvir=rmax_rvir,**kwargs)
@@ -308,8 +308,11 @@ class ScaleHeight_helper(Plot_ScaleHeight):
                 
             masses,coords = which_snap['Masses'][mask],which_snap['Coordinates'][mask]
 
-            if masses.size <= 1 and rmax < self.rvir*0.5:
-                return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
+            if masses.size <= 1:
+                if rmax < self.rvir*0.5:
+                    return compute_inertia_ellipsoid(self,component,rmax=2*rmax)
+                else:
+                    return np.repeat(np.nan,6),np.repeat(np.nan,18).reshape(-1,3),np.repeat(np.nan,2)
             lengths,evecs = computeClumpRadius(masses,coords)
 
             e1 = evecs[0]

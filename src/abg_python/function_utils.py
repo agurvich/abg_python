@@ -1,4 +1,37 @@
 import inspect
+import functools
+import sys
+import getopt
+
+def CLI_args():
+    def decorator(func):
+        ## automatically read the argument names from the function we're passed
+        signature = inspect.signature(func)
+        cli_args = []
+
+        ## add each argument to the list of getopt options
+        for key,parameter in signature.parameters.items(): cli_args += [key]
+            #print(key,parameter.default,'empty:',parameter.default == parameter.empty)
+
+        ## use getopt to parse the CLI into tuples and raise errors if we're passed a bad one
+        argv = sys.argv[1:]
+        opts,args = getopt.getopt(argv,'',[arg+'=' for arg in cli_args])
+
+        ## evaluate CLI args
+        for i,opt in enumerate(opts):
+            if opt[1]=='': opts[i]=('mode',opt[0].replace('-',''))
+            else:
+                ## if it's an int or a float this should work
+                try: opts[i]=(opt[0].replace('-',''),eval(opt[1]))
+                ## if it's a string... not so much
+                except: opts[i]=(opt[0].replace('-',''),opt[1])
+
+        ## define a wrapper so that stack traces go through
+        @functools.wraps(func)
+        def wrapper(): func(**dict(opts))
+
+        return wrapper
+    return decorator
 
 def filter_kwargs(func,kwargs):
     good = {}
