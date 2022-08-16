@@ -502,6 +502,22 @@ def my_log_formatter(x,y):
 
 my_log_ticker = matplotlib.ticker.FuncFormatter(my_log_formatter)
 
+
+## from https://stackoverflow.com/questions/41597177/get-aspect-ratio-of-axes
+from operator import sub
+def get_aspect(ax):
+    # Total figure size
+    figW, figH = ax.get_figure().get_size_inches()
+    # Axis size on figure
+    _, _, w, h = ax.get_position().bounds
+    # Ratio of display units
+    disp_ratio = (figH * h) / (figW * w)
+    # Ratio of data units
+    # Negative over negative because of the order of subtraction
+    data_ratio = sub(*ax.get_ylim()) / sub(*ax.get_xlim())
+
+    return disp_ratio / data_ratio
+
 ## from https://gist.github.com/benmaier/31f5fa109cf8fae077bde3d2d68a3883
 def add_curve_label(
     ax,
@@ -628,21 +644,22 @@ def bufferAxesLabels(
         for ax in this_col:
             if ylabels and not ax.is_first_col():
                 ax.set_ylabel('')
-            try:
-                xticks = ax.get_xticklabels()
-                xtick_strings = np.array([xtick.get_text() for xtick in xticks])
-                if len(xticks) == 0:
-                    continue
+            if ncols > 1:
+                try:
+                    xticks = ax.get_xticklabels()
+                    xtick_strings = np.array([xtick.get_text() for xtick in xticks])
+                    if len(xticks) == 0:
+                        continue
 
-                ##  change the first tick
-                if not ax.is_first_col():
-                    xticks[0].set_horizontalalignment('left')
-                ## if we're in the right most 
-                ##  column we don't need to change the last tick
-                #if col_i != (ncols-1):
-                xticks[-1].set_horizontalalignment('right')
-            except IndexError:
-                pass ## this can fail if share_x = True
+                    ##  change the first tick
+                    if not ax.is_first_col():
+                        xticks[0].set_horizontalalignment('left')
+                    ## if we're in the right most 
+                    ##  column we don't need to change the last tick
+                    #if col_i != (ncols-1):
+                    xticks[-1].set_horizontalalignment('right')
+                except IndexError:
+                    pass ## this can fail if share_x = True
 
     for ax in axss.flatten():
         if xlabels:
