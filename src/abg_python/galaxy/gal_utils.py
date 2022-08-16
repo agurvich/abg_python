@@ -18,7 +18,7 @@ from ..physics_utils import iterativeCoM
 from ..cosmo_utils import load_AHF,load_rockstar,trace_rockstar
 from ..smooth_utils import smooth_x_varying_curve
 from ..math_utils import add_jhat_coords
-from ..cosmo_utils import convertStellarAges
+from ..cosmo_utils import RydenLookbackTime
 
 from .cosmoExtractor import extractDiskFromSnapdicts,offsetRotateSnapshot
 from .movie_utils import Draw_helper,FIREstudio_helper
@@ -643,7 +643,8 @@ class Galaxy(
         self,
         snaptimes='my_snapshot_times',
         assert_cached=False,
-        use_metadata=True): 
+        use_metadata=True,
+        target=None): 
         ## try looking in the simulation directory for a snapshot_times.txt file
         #snap_FIRE_SN_times = os.path.join(self.snapdir,'..','%s.txt'%snaptimes)
         ## try loading from the datadir
@@ -663,7 +664,8 @@ class Galaxy(
         ##  we'll try and make one ourself using the available snapshots
         ##  in the snapdir
 
-        data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
+        if target is None: data_FIRE_SN_times = os.path.join(self.datadir,'%s.txt'%snaptimes)
+        else: data_FIRE_SN_times = target
 
         if os.path.isfile(data_FIRE_SN_times) and use_metadata:
             (self.snapnums,
@@ -687,10 +689,9 @@ class Galaxy(
             if 'Omega0' in self.header.keys(): Omega0 = self.header['Omega0']
             else: Omega0 = self.header['Omega_Matter']
 
-            gyrs = convertStellarAges(
+            gyrs = RydenLookbackTime(
                 self.header['HubbleParam'],
                 Omega0,
-                1e-12,
                 sfs)
 
         else:
