@@ -246,5 +246,9 @@ if __name__ == '__main__':
     top_level_name = 'pfh-frontera-scratch'
     du_file_name = 'fire3_usage.txt'
     top_level_name = 'stampede2/GalaxiesOnFire/fire3'
+    du_file_name = 'stampede2_fire3.txt'
+    top_level_name = 'fire3_compatability'
+    du_file_name = 'frontera_5.4.22.txt'
+    top_level_name = 'frontera'
 
-    main(du_file_name,top_level_name)
+    main(du_file_name,top_level_name,min_size=1) ## TB
