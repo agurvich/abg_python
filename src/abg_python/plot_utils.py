@@ -247,6 +247,20 @@ def plotEllipse(
                 lw=lw,
                 **kwargs))
 
+def plotRing(ax,x0,y0,inner_radius,outer_radius,**kwargs):
+
+    n, radii = 50, np.array([inner_radius,outer_radius])
+    theta = np.linspace(0, 2*np.pi, n, endpoint=True)
+    xs = np.outer(radii, np.cos(theta))
+    ys = np.outer(radii, np.sin(theta))
+
+    # in order to have a closed area, the circles
+    # should be traversed in opposite directions
+    xs[1,:] = xs[1,::-1] + x0
+    ys[1,:] = ys[1,::-1] + y0
+
+    return ax.fill(np.ravel(xs), np.ravel(ys),**kwargs)
+
 def addColorbar(
     ax,cmap,
     vmin,vmax,
@@ -478,9 +492,9 @@ def talkifyAxes(axs,lw=2,labelsize=24,ticklabelsize=16):
               ax.spines[axis].set_linewidth(lw)
         ax.xaxis.label.set_size(labelsize)
         ax.yaxis.label.set_size(labelsize)
-        if ax.is_first_col():
+        if ax.get_subplotspec().is_first_col():
             ax.yaxis.set_ticklabels(ax.yaxis.get_ticklabels(),fontsize=ticklabelsize)
-        if ax.is_last_row():
+        if ax.get_subplotspec().is_last_row():
             ax.xaxis.set_ticklabels(ax.xaxis.get_ticklabels(),fontsize=ticklabelsize)
 
 def slackifyAxes(ax,width=8,height=6):
@@ -626,7 +640,7 @@ def bufferAxesLabels(
     for col_i in range(ncols):
         this_col = axss[:,col_i]
         for ax in this_col:
-            if ylabels and not ax.is_first_col():
+            if ylabels and not ax.get_subplotspec().is_first_col():
                 ax.set_ylabel('')
             try:
                 xticks = ax.get_xticklabels()
@@ -635,7 +649,7 @@ def bufferAxesLabels(
                     continue
 
                 ##  change the first tick
-                if not ax.is_first_col():
+                if not ax.get_subplotspec().is_first_col():
                     xticks[0].set_horizontalalignment('left')
                 ## if we're in the right most 
                 ##  column we don't need to change the last tick
@@ -653,11 +667,11 @@ def bufferAxesLabels(
             if len(yticks) == 0:
                 continue
             ##  need to mess with the top tick
-            if not ax.is_first_row():
+            if not ax.get_subplotspec().is_first_row():
                 yticks[-1].set_verticalalignment('top')
             ## if we're in the last row we 
             ##  don't need to mess with the bottom tick
-            if not ax.is_last_row():
+            if not ax.get_subplotspec().is_last_row():
                 yticks[0].set_verticalalignment('bottom')
         except IndexError as e:
             pass ## this can fail if share_y = True
@@ -1126,6 +1140,12 @@ def ffmpeg_frames(
                 os.environ['HOME'],
                 'movies',
                 savename + ('_'*(savename!='')) + frame_head+extension)
+            cmd = 'cp %s %s'%(src,dst)
+            print(cmd)
+            os.system(cmd)
+
+            src = os.path.join(outdir,frame_head+extension)
+            dst = os.path.join(os.getcwd(),os.path.basename(dst))
             cmd = 'cp %s %s'%(src,dst)
             print(cmd)
             os.system(cmd)
