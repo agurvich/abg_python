@@ -444,7 +444,7 @@ def interpolate_position(
     ## successively fall back to worse and worse interpolation schemes
     ##  as determined by the interpolation limiter in finalize_df
     for i in range(interpolation_flags.max()):
-        this_mask = np.ones(interpolation_flags.shape[0],dtype=bool)#interpolation_flags == i
+        this_mask = interpolation_flags == i
         ## 0 = polar
         if i == 0: 
             coords[this_mask],vels[this_mask] = polar_interpolate(
