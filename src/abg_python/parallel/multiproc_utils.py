@@ -40,8 +40,7 @@ def copyNumpyArrayToMPSharedMemory(
     # Now create a NumPy array backed by shared memory
     shm_arr = np.ndarray(input_arr.shape, dtype=input_arr.dtype, buffer=shm.buf)
     shm_arr[:] = input_arr[:]  # Copy the original data into shared memory
-    if loud:
-        print('Copied to the buffer.')
+    if loud: print('Copied an array to the buffer.')
     del input_arr
     return shm,shm_arr
 
