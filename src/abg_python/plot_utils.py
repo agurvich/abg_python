@@ -17,7 +17,11 @@ latex_pagewidth=6.9738480697 ## in
 latex_columnwidth=3.32 ## in
 
 from .pfh_colormaps import load_my_custom_color_tables
-load_my_custom_color_tables()
+try: load_my_custom_color_tables()
+except: pass
+
+try: import palettable
+except: pass #print("palettable colormaps are not installed")
 
 
 """
@@ -1185,9 +1189,6 @@ def place_text(ax,percentage):
     if logflag: 
         foo = 10**foo
     return foo
-
-try: import palettable
-except: print("palettable colormaps are not installed")
 
 def get_cmap(cmap_name):
     try: cmap = plt.get_cmap(cmap_name)
