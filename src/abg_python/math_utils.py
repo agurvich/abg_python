@@ -37,6 +37,21 @@ def construct_quaternion(angles,order='xyz',units='deg'):
 
     return quat
 
+def rotateQuaternion_math(quat,v,inverse=False):
+    ## from: https://gamedev.stackexchange.com/questions/28395/rotating-vector3-by-a-quaternion
+    if inverse: quat[1:]*=-1
+
+    s = quat[0]
+    u = quat[1:]
+
+    vprime = (2*np.dot(u, v) * u
+          + (s*s - np.dot(u, u)) * v
+          + 2*s * np.cross(u, v))
+
+    ## undo the conjugate since we did *=
+    if inverse: quat[1:]*=-1
+    return vprime
+
 def rotateQuaternion(quat,pos,inverse=False):
 
     ## basically throw away the entire point of having a quaternion

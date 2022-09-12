@@ -5,6 +5,7 @@ import os
 import multiprocessing
 import itertools
 import copy
+import time
 
 from scipy.interpolate import interp1d
 
@@ -376,7 +377,9 @@ class Galaxy(
 
     def load_ahf(self,halo_fname=None,halo_path=None,**kwargs):
 
-        raise Exception("We don't use ahf, only rockstar. join us.")
+        print("We don't use ahf, only rockstar. join us. ",end='\t')
+        time.sleep(3)
+        print("but we'll allow it this time.")
 
         if 'elvis' in self.snapdir:
             raise IOError("No AHF files for Elvis runs")

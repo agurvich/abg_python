@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="abg_python",
-    version="1.0.6",
+    version="1.1.1",
     author = 'Alex Gurvich',
     author_email = 'agurvich@u.northwestern.edu',
     description="shared python utilities for http://github.com/agurvich 's packages.",
