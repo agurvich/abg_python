@@ -62,6 +62,7 @@ def load_my_custom_color_tables():
     my_cmap = matplotlib.colors.LinearSegmentedColormap(fna,cdict_tmp,256);
     matplotlib.cm.register_cmap(name=fna,cmap=my_cmap);
 
+    """
     fna='rainbow'
     cdict_tmp = {'red':   ((0.0, 80/256., 80/256.),
                        (0.2, 0.0, 0.0),
@@ -81,3 +82,4 @@ def load_my_custom_color_tables():
                        (1.0, 0.0, 0.0))}
     my_cmap = matplotlib.colors.LinearSegmentedColormap(fna,cdict_tmp,256);
     matplotlib.cm.register_cmap(name=fna,cmap=my_cmap);
+    """

@@ -17,7 +17,8 @@ latex_pagewidth=6.9738480697 ## in
 latex_columnwidth=3.32 ## in
 
 from .pfh_colormaps import load_my_custom_color_tables
-load_my_custom_color_tables()
+try: load_my_custom_color_tables()
+except: pass ## don't want to re-register a colormap if plot_utils is imported multiple times
 
 
 """
