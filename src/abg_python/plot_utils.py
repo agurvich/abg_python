@@ -18,8 +18,7 @@ latex_columnwidth=3.32 ## in
 
 from .pfh_colormaps import load_my_custom_color_tables
 try: load_my_custom_color_tables()
-except: pass
-
+except: pass ## don't want to re-register a colormap if plot_utils is imported multiple times
 try: import palettable
 except: pass #print("palettable colormaps are not installed")
 

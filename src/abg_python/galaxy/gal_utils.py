@@ -276,7 +276,8 @@ class Galaxy(
         ## let's try and make a header object, shall we?
         if self.snapnum is None:
             ## load the header from my catalog file
-            self.header = self.loadHeaderFromCatalog() 
+            try: self.header = self.loadHeaderFromCatalog() 
+            except OSError: self.header = {}
 
             ## snapshot timing is not available because snapnum is None
             self.header['Redshift'] = None
