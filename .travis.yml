@@ -16,3 +16,4 @@ deploy:
   on: 
     tags: true
     python: 3.9
+  distributions: "sdist bdist_wheel"

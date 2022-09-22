@@ -31,5 +31,6 @@ setuptools.setup(
           'matplotlib'
       ],
     include_package_data=True,
+    options={"bdist_wheel": {"universal": True}}
 )
 
