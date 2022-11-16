@@ -16,11 +16,14 @@ from scipy.interpolate import interp1d
 latex_pagewidth=6.9738480697 ## in
 latex_columnwidth=3.32 ## in
 
-from .pfh_colormaps import load_my_custom_color_tables
-try: load_my_custom_color_tables()
-except: pass ## don't want to re-register a colormap if plot_utils is imported multiple times
+#from .pfh_colormaps import load_my_custom_color_tables
+#try: load_my_custom_color_tables()
+#except: pass ## don't want to re-register a colormap if plot_utils is imported multiple times
+
 try: import palettable
 except: pass #print("palettable colormaps are not installed")
+
+plt.rcParams['figure.dpi'] = 120
 
 
 """
@@ -385,7 +388,7 @@ def addSegmentedColorbar(ax,colors,vmin,vmax,label,logflag=0,fontsize=16,cmap_nu
     cb.ax.tick_params(labelsize=fontsize-2)
     return lambda x: cmap(norm(x))
 
-def plotMulticolorLine(ax,xs,ys,zs,cmap,n_interp=50,**kwargs):
+def plotMulticolorLine(ax,xs,ys,zs,cmap='viridis',n_interp=50,**kwargs):
     """
         takes x/y values and creates a line collection object
         of line segments between points in x/y colored by cmap(zs). 
@@ -396,8 +399,14 @@ def plotMulticolorLine(ax,xs,ys,zs,cmap,n_interp=50,**kwargs):
     ys = linearInterpolate(ys,n_interp)
     zs = linearInterpolate(zs,n_interp)
 
+    n_interp = max(3,n_interp)
     points = np.array([xs, ys]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    ## duplicate the final entry because otherwise it's ignored and you don't
+    ##  make it to zs[-1] ever, no matter how many n_interp you have
+    segments = np.append(segments,segments[-1:],axis=0)
+    zs = np.append(zs,zs[-1])
 
     lc = LineCollection(segments, cmap=cmap,norm=plt.Normalize(0, 1),**kwargs)
     lc.set_array(zs)
