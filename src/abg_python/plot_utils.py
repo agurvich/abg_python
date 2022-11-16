@@ -24,6 +24,7 @@ try: import palettable
 except: pass #print("palettable colormaps are not installed")
 
 plt.rcParams['figure.dpi'] = 120
+plt.rcParams['figure.facecolor'] = 'white'
 
 
 """
