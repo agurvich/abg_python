@@ -684,11 +684,20 @@ class Galaxy(
         FIRE_SN_times = os.path.join(self.snapdir,'..','snapshot_times.txt')
 
         if os.path.isfile(FIRE_SN_times):
-            (snapnums,
-                sfs,
-                zs,
-                _,
-                dTs) = np.genfromtxt(FIRE_SN_times,unpack=1)
+            try:
+                (snapnums,
+                    sfs,
+                    zs,
+                    _,
+                    dTs) = np.genfromtxt(FIRE_SN_times,unpack=1)
+            except:
+                # i scale-factor redshift time[Gyr] lookback-time[Gyr] time-width[Myr]
+                (snapnums,
+                    sfs,
+                    zs,
+                    _,
+                    _,
+                    dTs) = np.genfromtxt(FIRE_SN_times,unpack=1)
 
             if 'Omega0' in self.header.keys(): Omega0 = self.header['Omega0']
             else: Omega0 = self.header['Omega_Matter']
