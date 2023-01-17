@@ -1267,3 +1267,22 @@ def clean_savefig(fig,figname,width,height,plotdir=None,savefig_flag=True):
         print('skipping saving')
         return
     fig.savefig(os.path.join(plotdir,figname),bbox_inches='tight')
+
+
+from matplotlib.colors import LinearSegmentedColormap
+minor = [(0.0,  0.0, 0.0),
+        (0.7, 0.0, 0.0),
+        (1.0,  .5, 0.0)]
+major = [(0.0,  0.0, 0.0),
+        (0.1, 0.3, 0.3),
+        (1.0,  1.0, 0.0)]
+
+cmaps = []
+colors = ['red','green','blue']
+for color in colors:
+    cdict = {color:major,**dict([(subcolor,minor) for subcolor in colors if subcolor !=color])}
+    cmaps += [LinearSegmentedColormap('Blk'+color.title(),cdict)]
+
+BlkRed = cmaps[0]
+BlkGreen = cmaps[1]
+BlkBlue = cmaps[2]
