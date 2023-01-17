@@ -32,7 +32,7 @@ def getThetasTaitBryan(angMom):
     ## RETURNS DEGREES
     return theta_TB,phi_TB
 
-def offsetRotateSnapshot(snap,scom,vscom,theta_TB,phi_TB,orient_stars):
+def offsetRotateSnapshot(snap,scom,vscom,theta_TB,phi_TB,orient_component):
 
     if 'overwritten' in snap and snap['overwritten']:
         if (snap['theta_TB'] == theta_TB and 
@@ -61,7 +61,7 @@ def offsetRotateSnapshot(snap,scom,vscom,theta_TB,phi_TB,orient_stars):
         'theta_TB':theta_TB,
         'phi_TB':phi_TB,
         'overwritten':1,
-        'orient_stars':orient_stars}
+        'orient_component':orient_component}
 
     ## if the snap is already overwritten this info is in there
     if 'scom' not in snap:
@@ -102,7 +102,7 @@ def extractDiskFromSnapdicts(
     orient_radius,
     scom=None,
     dark_snap=None,
-    orient_stars=0,
+    orient_component='cold_gas',
     force_theta_TB=None,
     force_phi_TB=None,
     loud=True):
@@ -133,7 +133,7 @@ def extractDiskFromSnapdicts(
         snap,
         orient_radius,
         scom=scom,
-        orient_stars=orient_stars,
+        orient_component=orient_component,
         force_theta_TB=force_theta_TB,
         force_phi_TB=force_phi_TB)
     if loud: print("Done.")
@@ -144,7 +144,7 @@ def extractDiskFromSnapdicts(
             this_snap,
             scom,vscom,
             theta_TB,phi_TB,
-            orient_stars)
+            orient_component)
 
     ## dictionary to add to extracted snapshot
     add_to_dict = {
@@ -166,10 +166,10 @@ def extractDiskFromSnapdicts(
 
 def orientDiskFromSnapdicts(
     star_snap,
-    snap,
+    gas_snap,
     radius,
     scom,
-    orient_stars=0,
+    orient_component='cold_gas',
     force_theta_TB=None,
     force_phi_TB=None):
     """ Takes arrays from a snapshot and returns orientation.
@@ -179,23 +179,27 @@ def orientDiskFromSnapdicts(
             radius - radius to extract particles from
     """
 
-    if orient_stars:
-        if star_snap is None:
-            raise ValueError("Can't orient on stars if stars are not passed")
+    if 'star' in orient_component: which_snap = star_snap
+    elif 'gas' in orient_component: which_snap = gas_snap
+    else: raise KeyError(
+        f"Can't understand orient_component:{orient_component}")
 
-        these_rs = star_snap['Coordinates']
-        these_vs = star_snap['Velocities']
-        these_masses = star_snap['Masses']
-    else:
-        if snap is None:
-            raise ValueError("Can't orient on gas if gas is not passed")
+    these_rs = which_snap['Coordinates']
+    these_vs = which_snap['Velocities']
+    these_masses = which_snap['Masses']
 
-        these_rs = snap['Coordinates']
-        these_vs = snap['Velocities']
-        these_masses = snap['Masses']
+    mask = sphericalVolumeMask(these_rs,radius,scom)
 
-    mask = sphericalVolumeMask(
-            these_rs,radius,scom)
+    if '_' in orient_component:
+        ## hardcode in my definition of "cold", 1e3 K
+        if orient_component == 'cold_gas':
+            mask = np.logical_and(mask,which_snap['Temperature']<1e3)
+        ## hardcode in my definition of "young", 25 Myr
+        elif orient_component in ['young_star','young_stars']:
+            mask = np.logical_and(mask,which_snap['AgeGyr']<0.025)
+        ## catch for everything else
+        else: raise NotImplementedError(
+            f"Orient component {orient_component} is not implemented.")
 
     if not np.sum(mask):
         print(scom,radius)

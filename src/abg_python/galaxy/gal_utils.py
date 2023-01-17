@@ -809,7 +809,7 @@ class Galaxy(
     def extractMainHalo(
         self,
         save_meta=False, 
-        orient_stars=True, ## which angular momentum axis to orient along
+        orient_component='cold_gas', ## which angular momentum axis to orient along
         overwrite_full_snaps_with_rotated_versions=False,
         free_mem=True, ## delete the full snapshot from RAM
         extract_DM=True, ## do we want the DM particles? 
@@ -828,15 +828,12 @@ class Galaxy(
         force_phi_TB = None -- force orientation
         """
         
-        if orient_stars:
-            group_name = 'star_extract'
-        else:
-            group_name = 'gas_extract'
+        group_name = f"{orient_component}_extract"
 
         @metadata_cache(
             group_name,
             ['sub_radius',
-            'orient_stars',
+            'orient_component',
             'theta_TB',
             'phi_TB',
             'rvir',
@@ -847,7 +844,7 @@ class Galaxy(
             loud=loud)
         def extract_halo_inner(
             self,
-            orient_stars=True,
+            orient_component='cold_gas',
             radius=None,
             use_saved_subsnapshots=True,
             force=False,
@@ -863,19 +860,20 @@ class Galaxy(
                     self.star_snap['Masses'],
                     n=4)
 
-            if radius is None:
-                radius = self.rvir ## radius of the sub-snapshot
+            ## calculate the stellar half-mass radius to have--
+            ##  some analyses require 5rstar_half
+            if self.rstar_half is None: self.get_rstar_half(
+                save_meta=save_meta,
+                force_from_file=True,
+                loud=False,
+                within_radius=0.2*self.rvir)
 
-                ## manually calcualte rstar half using the star particles
-                ##  rather than relying on the output of AHF
-                if self.rstar_half is None: self.get_rstar_half(
-                    save_meta=save_meta,
-                    force_from_file=True,
-                    loud=False)
+            if radius is None: radius = self.rvir ## radius of the sub-snapshot 
 
-                ## radius to calculate angular momentum
-                ##  to orient on 
-                orient_radius = 5*self.rstar_half 
+            ## radius to calculate angular momentum to orient on
+            #orient_radius = 5*self.rstar_half 
+            ## switched on 1/16/2023 for paper 3, also orient on cold_gas
+            orient_radius =  0.1 * self.rvir 
 
             ## if this is not the first time extract_halo_inner has been 
             ##  called these properties may or may not exist
@@ -1005,7 +1003,7 @@ class Galaxy(
                 orient_radius, ## radius to orient on
                 scom=self.scom,
                 dark_snap=which_dark_snap, ## dark_snap = None will ignore dark matter particles
-                orient_stars=orient_stars,
+                orient_component=orient_component,
                 force_theta_TB=force_theta_TB,
                 force_phi_TB=force_phi_TB,
                 loud=loud)
@@ -1022,7 +1020,7 @@ class Galaxy(
             self.sub_radius = orient_radius
             ## denote whether the most recent extraction was 
             ##  oriented on stars or gas
-            self.orient_stars = orient_stars
+            self.orient_component = orient_component
 
             if compute_stellar_hsml and 'SmoothingLength' not in self.sub_star_snap: 
                 already_saved=False
@@ -1042,7 +1040,7 @@ class Galaxy(
             
 
             return (self.sub_radius,
-                self.orient_stars,
+                self.orient_component,
                 self.sub_snap['theta_TB'],
                 self.sub_snap['phi_TB'],
                 self.rvir,
@@ -1051,7 +1049,7 @@ class Galaxy(
 
         return_value = extract_halo_inner(
             self,
-            orient_stars=orient_stars,
+            orient_component=orient_component,
             **kwargs)
 
         ## this should happen by default when you do an extraction but if you are 
@@ -1103,10 +1101,10 @@ class Galaxy(
             loud=loud,
             assert_cached=assert_cached,
             force_from_file=force_from_file)
-        def compute_rstar_half(self):
+        def compute_rstar_half(self,within_radius=None):
             self.load_stars()
-            return self.calculate_half_mass_radius(),
-        return compute_rstar_half(self)
+            return self.calculate_half_mass_radius(within_radius=within_radius),
+        return compute_rstar_half(self,**kwargs)
 
     def get_HSML(
         self,
@@ -1266,10 +1264,10 @@ class Galaxy(
             snaps += [self.dark_snap]
 
         ## get the extraction parameters
-        theta_TB,phi_TB,scom,vscom,orient_stars = (
+        theta_TB,phi_TB,scom,vscom,orient_component = (
             self.sub_snap['theta_TB'],self.sub_snap['phi_TB'],
             self.sub_snap['scom'],self.sub_snap['vscom'],
-            self.sub_snap['orient_stars'])
+            self.sub_snap['orient_component'])
 
         ## if snaps doesn't have dark snap then zipped will stop at [0,4]
         for ptype,snap in zip([0,4,1],snaps):
@@ -1279,7 +1277,7 @@ class Galaxy(
                     snap,
                     scom,vscom,
                     theta_TB,phi_TB,
-                    orient_stars)
+                    orient_component)
 
                 ## snapdict holds ptype -> "snap"/"star_snap"/"dark_snap"
                 setattr(self,snap_dict[ptype],snap)
