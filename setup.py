@@ -28,7 +28,7 @@ setuptools.setup(
           'numpy',
           'h5py',
           'pandas',
-          'matplotlib'
+          'matplotlib>=3.5'
       ],
     include_package_data=True,
     options={"bdist_wheel": {"universal": True}}
