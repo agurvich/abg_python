@@ -2,7 +2,6 @@
 import os
 
 import matplotlib
-matplotlib.use("Agg")
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -22,9 +21,6 @@ latex_columnwidth=3.32 ## in
 
 try: import palettable
 except: pass #print("palettable colormaps are not installed")
-
-plt.rcParams['figure.dpi'] = 120
-plt.rcParams['figure.facecolor'] = 'white'
 
 
 """
